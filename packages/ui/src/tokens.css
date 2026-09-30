@@ -1,0 +1,16 @@
+/* Cutboard design tokens (main prompt §10.1: dark, minimal, pro-tool but friendly). */
+:root {
+  --cb-bg: #0b0b0d;
+  --cb-surface-1: #111114;
+  --cb-surface-2: #1c1c22;
+  --cb-line: #26262e;
+  --cb-text: #e5e5e8;
+  --cb-text-dim: #8a8a94;
+  --cb-accent: #fbbf24;
+  --cb-accent-hover: #fcd34d;
+  --cb-danger: #f87171;
+  --cb-success: #4ade80;
+  --cb-radius: 8px;
+  --cb-radius-lg: 12px;
+  --cb-motion: 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}

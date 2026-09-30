@@ -1,0 +1,26 @@
+# Third-party licenses
+
+Cutboard is MIT-licensed. This file tracks the licenses of bundled/distributed components.
+(Built dependencies of development — tooling, test runners, bundlers — are not listed here.)
+
+Bundled and distributed with the app:
+
+| Component | License | Why bundled | Notes |
+|---|---|---|---|
+| ffmpeg / ffprobe | LGPL 2.1+ (LGPL build, no GPL components) | probe, proxies, thumbnails, waveforms, export encode | We ship **LGPL builds only**: no libx264/libx265/xvid in the bundle. H.264 encode uses OS hardware encoders (VideoToolbox/NVENC/QSV/AMF) or OpenH264 (BSD, Cisco patent grant applies to Cisco's binary releases only — if we bundle openh264.dll/.dylib ourselves we must comply with Cisco's redistribution terms; default plan is hardware encoders + SVT-AV1). |
+| whisper.cpp models (downloaded at runtime, not distributed) | MIT (code); models: Apache-2.0 / MIT per OpenAI Whisper model licensing | ASR | Downloaded by the model manager with checksum verification; never shipped inside installers. |
+| ONNX Runtime | MIT | ML sidecar inference (embeddings, masks, bg removal) | Native EPs: CoreML/DirectML/CUDA when present. |
+| SQLite (via better-sqlite3) | Public domain / MIT | project storage | |
+| Electron | MIT | shell | Chromium/Node embedded; Chromium components (ffmpeg inside Chromium, etc.) covered by their own licenses — see Electron's LICENSES.chromium.html shipped with the runtime. |
+| React, Zustand, Immer, Tailwind, Radix UI, zod, Vercel AI SDK, MCP SDK | MIT / Apache-2.0 per package | UI, state, schemas, agent runtime, MCP server | Regenerate full list at release time with a license-report tool and attach the combined text here. |
+
+Fonts (bundled Google Fonts, e.g. Montserrat/Inter) are OFL 1.1 — include the OFL text and
+font copyright headers with any distribution that embeds them.
+
+## Note on codecs (distribution)
+
+Distributing H.264/H.265 encoders can implicate patent-pool licensing depending on
+jurisdiction and volume. This project's stance: use the OS's own hardware encoders (the
+patent position there follows the OS/hardware vendor), prefer AV1/VP9 (royalty-free) for
+software fallback, and leave H.264/HEVC patent-pool fees to distributors building commercial
+products from this source. This is not legal advice.

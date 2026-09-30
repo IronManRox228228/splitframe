@@ -1,0 +1,41 @@
+{
+  "name": "@cutboard/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "productName": "Cutboard",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@cutboard/agent": "workspace:*",
+    "@cutboard/editor-core": "workspace:*",
+    "@cutboard/platform": "workspace:*",
+    "@cutboard/renderer": "workspace:*",
+    "@cutboard/schema": "workspace:*",
+    "@cutboard/tools": "workspace:*",
+    "@cutboard/ui": "workspace:*",
+    "@electron/rebuild": "^4.0.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "^38.2.0",
+    "electron-vite": "^4.0.0",
+    "postcss": "^8.5.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^3.4.17",
+    "zustand": "^5.0.8"
+  }
+}
