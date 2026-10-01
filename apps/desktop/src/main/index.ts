@@ -6,6 +6,7 @@ import { getPaths } from './paths.ts';
 import { jobs } from './jobs.ts';
 import { registerIpc, wireEvents } from './ipc.ts';
 import { projectService } from './project-service.ts';
+import { setBroadcast } from './events.ts';
 
 /**
  * Cutboard desktop entry. Security posture (addendum §5.4): renderer is untrusted —
@@ -24,11 +25,12 @@ if (!singleInstance) {
   app.quit();
 }
 
-function broadcast(channel: string, payload: unknown): void {
+export function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(channel, payload);
   }
 }
+setBroadcast(broadcast);
 
 function createMainWindow(): void {
   mainWindow = new BrowserWindow({
@@ -307,6 +309,14 @@ void app.whenReady().then(() => {
   buildMenu();
   createMainWindow();
   jobs.resumePending();
+
+  // local MCP server (addendum §4): start only when the user enabled it
+  void (async () => {
+    const { getSettings } = await import('./settings.ts');
+    const { startMcpServer } = await import('./mcp-server.ts');
+    const settings = await getSettings();
+    if (settings.mcp.enabled) await startMcpServer();
+  })();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

@@ -302,7 +302,71 @@ function slug(name: string): string {
 
 export const exportService = new ExportService();
 
-/** IPC surface for the hidden export window (registered at app boot). */
+/**
+ * captureFrame (main prompt §6): render one timeline frame headlessly with the same
+ * compositor and return a PNG buffer. Used by tools/agents — "what the agent sees
+ * equals the export".
+ */
+const stillWaiters = new Map<string, { resolve: (buf: Buffer) => void; reject: (err: Error) => void }>();
+
+export async function renderStill(frame: number, width?: number, height?: number): Promise<Buffer> {
+  if (!projectService.isOpen) throw new Error('No project open');
+  const doc = projectService.doc;
+  const w = width ?? doc.project.width;
+  const h = height ?? doc.project.height;
+  const id = newId('exp');
+  const stillId = `still-${id}`;
+
+  const win = new BrowserWindow({
+    show: false,
+    width: w,
+    height: h,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.cjs'),
+      backgroundThrottling: false,
+    },
+  });
+  const query = new URLSearchParams({
+    exportId: stillId,
+    width: String(w),
+    height: String(h),
+    fps: String(doc.project.fps),
+    stillFrame: String(Math.max(0, Math.round(frame))),
+  });
+  const loadPromise = (async () => {
+    if (process.env['ELECTRON_RENDERER_URL']) {
+      const u = new URL(process.env['ELECTRON_RENDERER_URL']);
+      u.pathname = '/export.html';
+      u.search = query.toString();
+      await win.loadURL(u.href);
+    } else {
+      await win.loadFile(join(__dirname, '../renderer/export.html'), { search: query.toString() });
+    }
+  })();
+
+  const timeout = setTimeout(() => {
+    const waiter = stillWaiters.get(stillId);
+    if (waiter) {
+      stillWaiters.delete(stillId);
+      waiter.reject(new Error('captureFrame timed out'));
+      win.destroy();
+    }
+  }, 15000);
+
+  try {
+    const png = await new Promise<Buffer>((resolve, reject) => {
+      stillWaiters.set(stillId, { resolve, reject });
+      void loadPromise.catch(reject);
+    });
+    return png;
+  } finally {
+    clearTimeout(timeout);
+    stillWaiters.delete(stillId);
+    win.destroy();
+  }
+}
+
+/** IPC surface for the hidden export/still windows (registered at app boot). */
 export function registerExportWindowIpc(): void {
   ipcMain.handle('export:bundle', (_e, exportId: string) => {
     if (!projectService.isOpen) throw new Error('No project open');
@@ -317,12 +381,26 @@ export function registerExportWindowIpc(): void {
     return { doc, mediaUrls: Object.fromEntries(mediaUrls) };
   });
   ipcMain.on('export:window:frame', (_e, exportId: string, index: number, buffer: ArrayBuffer, width: number, height: number) => {
+    if (exportId.startsWith('still-')) {
+      const waiter = stillWaiters.get(exportId);
+      if (waiter) waiter.resolve(Buffer.from(buffer));
+      void index;
+      void width;
+      void height;
+      return;
+    }
     exportService.handleFrame(exportId, index, buffer, width, height);
   });
   ipcMain.on('export:window:done', (_e, exportId: string) => {
+    if (exportId.startsWith('still-')) return;
     exportService.handleFramesDone(exportId);
   });
   ipcMain.on('export:window:error', (_e, exportId: string, message: string) => {
+    if (exportId.startsWith('still-')) {
+      const waiter = stillWaiters.get(exportId);
+      if (waiter) waiter.reject(new Error(message));
+      return;
+    }
     exportService.handleWindowError(exportId, message);
   });
 }

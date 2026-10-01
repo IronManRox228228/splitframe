@@ -262,6 +262,15 @@ export function removeAsset(assetId: string): void {
   db.prepare(`DELETE FROM beat_maps WHERE asset_id=?`).run(assetId);
 }
 
+/** Word-level transcripts for every asset in a project (empty until ASR runs). */
+export function getTranscriptsForProject(projectId: string): { assetId: string; language: string; words: unknown[] }[] {
+  const db = getDb();
+  const rows = db
+    .prepare(`SELECT t.* FROM transcripts t JOIN assets a ON a.id = t.asset_id WHERE a.project_id=?`)
+    .all(projectId) as Record<string, unknown>[];
+  return rows.map((r) => ({ assetId: r.asset_id as string, language: (r.language as string) ?? 'en', words: JSON.parse((r.words as string) ?? '[]') }));
+}
+
 /** Assets are read by the renderer via cbmedia://media/<encodeURIComponent(path)> */
 export function mediaUrlFor(path: string): string {
   return `cbmedia://media/${encodeURIComponent(path)}`;

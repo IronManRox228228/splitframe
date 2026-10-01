@@ -12,10 +12,14 @@ import { Actor, Op } from '@cutboard/schema';
 export interface ToolContext {
   /** Apply ops to the project (main-process project service). */
   applyOps(ops: Op[], actor: Actor, groupLabel?: string): Promise<{ inverses: Op[]; seq: number }>;
-  /** Read-only access to the current project bundle + editor context. */
+  /** Read-only access to doc + assets + transcripts + editor context. */
   getSnapshot(): Promise<unknown>;
   /** Render a frame of the current timeline to a PNG buffer (captureFrame). */
-  captureFrame(frame: number): Promise<Buffer>;
+  captureFrame(frame: number, width?: number): Promise<Buffer>;
+  /** Export plumbing for the exportVideo/getExportStatus tools. */
+  startExport(presetName: string): Promise<unknown>;
+  getExportStatus(exportId: string): Promise<unknown>;
+  listExportPresets(): Promise<unknown>;
   /** Who is calling (builtin-agent | mcp:<client>). */
   actor: Actor;
 }
@@ -27,7 +31,9 @@ export interface ToolDef<I extends z.ZodType = z.ZodType> {
   input: I;
   /** Mutating tools return the affected items' new state so agents can self-verify. */
   mutates: boolean;
-  handler(input: z.infer<I>, ctx: ToolContext): Promise<unknown>;
+  /** `input` is zod-validated by ToolRegistry.call before the handler runs. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler(input: any, ctx: ToolContext): Promise<unknown>;
 }
 
 export class ToolRegistry {

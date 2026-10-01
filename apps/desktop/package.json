@@ -13,6 +13,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "better-sqlite3": "^12.2.0",
     "zod": "^4.1.0"
   },

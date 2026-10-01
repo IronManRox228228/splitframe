@@ -7,6 +7,10 @@ import { exportService, EXPORT_PRESETS, registerExportWindowIpc, onExportEvent }
 import { jobs, JobRow, onJobEvent } from './jobs.ts';
 import { getFfmpeg, FfmpegInfo } from './ffmpeg.ts';
 import { getPaths } from './paths.ts';
+import { editorContextCache } from './editor-context.ts';
+import { callTool } from './tools-bridge.ts';
+import { getSettings, saveSettings, rotateMcpToken } from './settings.ts';
+import { startMcpServer, stopMcpServer, revokeMcpSessions, getMcpActivity } from './mcp-server.ts';
 
 /**
  * IPC is the security boundary (addendum §5.4): the renderer is untrusted, every
@@ -159,6 +163,61 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     return exportService.start(presetName);
   });
   ipcMain.handle('exports:cancel', (_e, exportId: string) => exportService.cancel(exportId));
+
+  // ---------- editor context (for agent tools: "the selected clip", "at this point") ----------
+  ipcMain.on('editorContext:set', (_e, ctx: { selection?: string[]; playheadFrame?: number; highlightedRange?: { startFrame: number; endFrame: number } | null }) => {
+    editorContextCache.set(ctx);
+  });
+
+  // ---------- tools (shared front door for the built-in chat; MCP has its own) ----------
+  ipcMain.handle(
+    'tools:call',
+    (e, input: { name: string; args?: unknown }) => {
+      const parsed = z.object({ name: z.string().min(1), args: z.unknown().optional() }).parse(input);
+      return callTool(parsed.name, parsed.args ?? {}, actorFor(e));
+    },
+  );
+
+  // ---------- MCP server settings (addendum §4) ----------
+  ipcMain.handle('mcp:getStatus', async () => {
+    const settings = await getSettings();
+    return {
+      ...settings.mcp,
+      connectedClients: getMcpActivity().slice(0, 5),
+      activity: getMcpActivity(),
+    };
+  });
+  ipcMain.handle(
+    'mcp:setEnabled',
+    async (_e, enabled: boolean) => {
+      z.boolean().parse(enabled);
+      await saveSettings({ mcp: { ...(await getSettings()).mcp, enabled } });
+      const result = enabled ? await startMcpServer() : (stopMcpServer(), { port: (await getSettings()).mcp.port });
+      broadcast('event', { type: 'mcp:status', payload: { enabled } });
+      return result;
+    },
+  );
+  ipcMain.handle('mcp:rotateToken', async () => {
+    const token = await rotateMcpToken();
+    revokeMcpSessions();
+    return { token };
+  });
+  ipcMain.handle('mcp:snippets', async () => {
+    const { mcp } = await getSettings();
+    const url = `http://127.0.0.1:${mcp.port}/mcp`;
+    const token = mcp.token;
+    return {
+      url,
+      claudeCode: `claude mcp add --transport http cutboard ${url} --header "Authorization: Bearer ${token}"`,
+      claudeDesktop: JSON.stringify(
+        { mcpServers: { cutboard: { command: 'npx', args: ['cutboard-mcp'], env: { CUTBOARD_MCP_URL: url, CUTBOARD_MCP_TOKEN: token } } } },
+        null,
+        2,
+      ),
+      codex: `[mcp_servers.cutboard]\ncommand = "npx"\nargs = ["cutboard-mcp"]\nenv = { CUTBOARD_MCP_URL = "${url}", CUTBOARD_MCP_TOKEN = "${token}" }`,
+      cursor: JSON.stringify({ mcpServers: { cutboard: { url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2),
+    };
+  });
 
   // hidden export window channels
   registerExportWindowIpc();

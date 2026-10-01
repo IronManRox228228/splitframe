@@ -31,6 +31,12 @@ export interface CutboardApi {
   startExport(presetName: string): Promise<unknown>;
   cancelExport(exportId: string): Promise<boolean>;
   listExports(): Promise<unknown[]>;
+  setEditorContext(ctx: { selection?: string[]; playheadFrame?: number; highlightedRange?: { startFrame: number; endFrame: number } | null; openProjectId?: string }): void;
+  callTool(name: string, args?: unknown): Promise<unknown>;
+  mcpGetStatus(): Promise<unknown>;
+  mcpSetEnabled(enabled: boolean): Promise<unknown>;
+  mcpRotateToken(): Promise<{ token: string }>;
+  mcpSnippets(): Promise<{ url: string; claudeCode: string; claudeDesktop: string; codex: string; cursor: string }>;
   // hidden export-window helpers
   exportBundle(exportId: string): Promise<{ doc: unknown; mediaUrls: Record<string, string> }>;
   sendExportFrame(exportId: string, index: number, buffer: ArrayBuffer, width: number, height: number): void;
@@ -62,6 +68,12 @@ const api: CutboardApi = {
   startExport: (presetName) => ipcRenderer.invoke('exports:start', presetName),
   cancelExport: (exportId) => ipcRenderer.invoke('exports:cancel', exportId),
   listExports: () => ipcRenderer.invoke('exports:list'),
+  setEditorContext: (ctx) => ipcRenderer.send('editorContext:set', ctx),
+  callTool: (name, args) => ipcRenderer.invoke('tools:call', { name, args }),
+  mcpGetStatus: () => ipcRenderer.invoke('mcp:getStatus'),
+  mcpSetEnabled: (enabled) => ipcRenderer.invoke('mcp:setEnabled', enabled),
+  mcpRotateToken: () => ipcRenderer.invoke('mcp:rotateToken'),
+  mcpSnippets: () => ipcRenderer.invoke('mcp:snippets'),
   exportBundle: (exportId) => ipcRenderer.invoke('export:bundle', exportId),
   sendExportFrame: (exportId, index, buffer, width, height) => {
     ipcRenderer.send('export:window:frame', exportId, index, buffer, width, height);

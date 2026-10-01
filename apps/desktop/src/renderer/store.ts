@@ -248,6 +248,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
   setPlayhead(frame) {
     set({ playhead: Math.max(0, Math.round(frame)) });
+    pushEditorContext();
   },
 
   stepFrames(n) {
@@ -285,6 +286,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       const sel = get().selection;
       set({ selection: sel.includes(itemId) ? sel.filter((x) => x !== itemId) : [...sel, itemId] });
     } else set({ selection: [itemId] });
+    pushEditorContext();
   },
 
   async deleteSelection() {
@@ -387,4 +389,18 @@ export const useEditor = create<EditorState>((set, get) => ({
 
 export function itemName(item: Item): string {
   return item.labels?.name ?? `${item.type} ${item.id.slice(4, 10)}`;
+}
+
+/** Keep the main process informed for agent tools ("the selected clip", "at this point"). */
+function pushEditorContext(): void {
+  const s = useEditor.getState();
+  try {
+    window.cutboard.setEditorContext({
+      selection: s.selection,
+      playheadFrame: Math.round(s.playhead),
+      openProjectId: s.doc?.project.id,
+    });
+  } catch {
+    /* bridge not ready yet */
+  }
 }
