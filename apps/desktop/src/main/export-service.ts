@@ -247,8 +247,7 @@ class ExportService {
       }
       const startMs = Math.round((item.startFrame / fps) * 1000);
       parts.push(`adelay=${startMs}:all=1`);
-      const vol = Math.min(1, Math.max(0, item.volume));
-      parts.push(`volume=${vol.toFixed(3)}`);
+      parts.push(volumeFilterExpr(item, fps));
       filterParts.push(`${parts.join(',')}[a${i}]`);
     });
     if (audioItems.length > 0) {
@@ -298,6 +297,30 @@ class ExportService {
 
 function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'export';
+}
+
+/** Piecewise volume envelope (ducking keyframes + fades) as an ffmpeg volume expression. */
+function volumeFilterExpr(item: Item, fps: number): string {
+  const base = Math.min(1, Math.max(0, item.volume));
+  const kfs = [...(item.keyframes['volume'] ?? [])].sort((a, b) => a.frame - b.frame);
+  if (kfs.length === 0) {
+    // simple fades without keyframes
+    const fadeIn = ((item.props as { fadeInFrames?: number }).fadeInFrames ?? 0) / fps;
+    const fadeOut = ((item.props as { fadeOutFrames?: number }).fadeOutFrames ?? 0) / fps;
+    const durSec = item.durationFrames / fps;
+    if (fadeIn > 0 && fadeOut > 0) {
+      return `volume='if(lt(t,${fadeIn.toFixed(3)}),t/${fadeIn.toFixed(3)}*${base},if(gt(t,${(durSec - fadeOut).toFixed(3)}),max(0,(${durSec.toFixed(3)}-t)/${fadeOut.toFixed(3)})*${base},${base}))':eval=frame`;
+    }
+    return `volume=${base.toFixed(4)}`;
+  }
+  // keyframed envelope (ducking): nested if chain, sampled linearly between keyframes
+  const val = (v: number) => (Math.min(1, Math.max(0, v * base))).toFixed(4);
+  let expr = val(kfs[kfs.length - 1]!.value);
+  for (let i = kfs.length - 1; i >= 0; i--) {
+    const t = (kfs[i]!.frame / fps).toFixed(3);
+    expr = `if(lt(t,${t}),${val(kfs[i]!.value)},${expr})`;
+  }
+  return `volume='${expr}':eval=frame`;
 }
 
 export const exportService = new ExportService();

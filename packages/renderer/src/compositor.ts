@@ -1,4 +1,5 @@
 import { CaptionStyle, Item, TimelineDoc, TextStyle } from '@cutboard/schema';
+import type { MotionNode } from './motion.ts';
 import { itemEnd, sourceFrameAt, itemsOnTrack } from '@cutboard/editor-core';
 import { effectsToFilter } from './effects.ts';
 import { itemOpacityAt, resolveItemProperty } from './keyframes.ts';
@@ -114,9 +115,31 @@ async function drawItem(
     } else if (item.type === 'shape') {
       drawShape(ctx, item, cx, cy, scale * scaleX, scale * scaleY, rotation);
     } else if (item.type === 'motionGraphic') {
-      // The sandbox runtime (milestone: motion graphics) will evaluate the composition
-      // code; until then draw a labeled placeholder so timing is visible.
-      drawMotionGraphicPlaceholder(ctx, item, cx, cy, scale, rotation);
+      // Evaluate the generated composition in the sandbox and draw the scene tree;
+      // preview and export share this exact path (main prompt §9).
+      if (resolver.evaluateMotion) {
+        try {
+          const props = (item.props as { code: string; inputProps: Record<string, unknown> }).inputProps ?? {};
+          const code = (item.props as { code: string }).code;
+          const localFrame = frame - item.startFrame;
+          const tree = await resolver.evaluateMotion(code, props, localFrame, {
+            width: canvasW,
+            height: canvasH,
+            fps: doc.project.fps,
+            durationInFrames: item.durationFrames,
+          });
+          ctx.save();
+          ctx.translate(cx, cy);
+          if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
+          ctx.scale(scale, scale);
+          await drawSceneTree(ctx, tree as MotionNode | null, resolver, canvasW, canvasH);
+          ctx.restore();
+        } catch (err) {
+          drawMotionError(ctx, err instanceof Error ? err.message : String(err), cx, cy, canvasW, canvasH);
+        }
+      } else {
+        drawMotionGraphicPlaceholder(ctx, item, cx, cy, scale, rotation);
+      }
     }
   } finally {
     ctx.restore();
@@ -382,6 +405,118 @@ function drawMotionGraphicPlaceholder(
   ctx.textBaseline = 'middle';
   ctx.fillText(`▶ ${name}`, 0, 0);
   ctx.restore();
+}
+
+function drawMotionError(ctx: Ctx2D, message: string, cx: number, cy: number, canvasW: number, canvasH: number): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  const w = canvasW * 0.7;
+  const h = canvasH * 0.35;
+  ctx.fillStyle = 'rgba(127, 29, 29, 0.85)';
+  roundedRectPath(ctx, -w / 2, -h / 2, w, h, 12);
+  ctx.fill();
+  ctx.fillStyle = '#fecaca';
+  ctx.font = '600 26px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Motion graphic error', 0, -h / 4);
+  ctx.font = '16px system-ui, sans-serif';
+  wrapText(ctx, message, 0, 0, w - 40, 20);
+  ctx.restore();
+}
+
+function wrapText(ctx: Ctx2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): void {
+  const words = text.split(/\s+/);
+  let line = '';
+  let dy = y;
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, dy);
+      dy += lineHeight;
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) ctx.fillText(line, x, dy);
+}
+
+/** Render a motion-graphic scene tree (from the sandbox) onto the canvas. */
+async function drawSceneTree(
+  ctx: Ctx2D,
+  node: MotionNode | null,
+  resolver: import('./types.ts').MediaResolver,
+  canvasW: number,
+  canvasH: number,
+): Promise<void> {
+  if (!node || typeof node !== 'object') return;
+  const rel = (v: number | string | undefined, base: number, fallback = 0): number => {
+    if (v === undefined) return fallback;
+    if (typeof v === 'string' && v.endsWith('%')) return (parseFloat(v) / 100) * base;
+    return typeof v === 'number' ? v : fallback;
+  };
+  const opacity = Math.min(1, Math.max(0, node.opacity ?? 1));
+  if (opacity <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= opacity;
+  try {
+    const x = rel(node.x, canvasW, typeof node.x === 'number' ? node.x : 0);
+    const y = rel(node.y, canvasH, typeof node.y === 'number' ? node.y : 0);
+    const w = rel(node.width, canvasW, canvasW);
+    const h = rel(node.height, canvasH, canvasH);
+    if (node.rotation) {
+      ctx.translate(x + (typeof node.x === 'number' ? 0 : 0), y);
+      ctx.rotate((node.rotation * Math.PI) / 180);
+      ctx.translate(-x, -y);
+    }
+    if (node.type === 'box') {
+      ctx.fillStyle = node.fill ?? 'transparent';
+      roundedRectPath(ctx, x - w / 2, y - h / 2, w, h, node.radius ?? 0);
+      if (node.fill && node.fill !== 'transparent') ctx.fill();
+      if (node.strokeWidth && node.strokeColor) {
+        ctx.lineWidth = node.strokeWidth;
+        ctx.strokeStyle = node.strokeColor;
+        ctx.stroke();
+      }
+    } else if (node.type === 'ellipse') {
+      ctx.beginPath();
+      ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fillStyle = node.fill ?? '#ffffff';
+      ctx.fill();
+    } else if (node.type === 'text') {
+      let text = node.text ?? '';
+      if (node.uppercase) text = text.toUpperCase();
+      ctx.font = `${node.fontWeight ?? 800} ${node.fontSize ?? 96}px ${node.fontFamily ?? 'Inter'}, system-ui, sans-serif`;
+      ctx.textAlign = (node.align as 'left' | 'center' | 'right') ?? 'center';
+      ctx.textBaseline = 'middle';
+      if (node.strokeWidth && node.strokeColor) {
+        ctx.lineWidth = node.strokeWidth;
+        ctx.strokeStyle = node.strokeColor;
+        ctx.strokeText(text, x, y);
+      }
+      ctx.fillStyle = node.color ?? '#ffffff';
+      ctx.fillText(text, x, y);
+    } else if (node.type === 'img' && node.src) {
+      const assetId = node.src.startsWith('asset:') ? node.src.slice(6) : null;
+      if (assetId) {
+        const media = await safeResolve(resolver, assetId, 0, { type: 'image' } as never);
+        if (media) {
+          const size = drawableSize(media);
+          if (size.width > 0 && size.height > 0) {
+            ctx.drawImage(media as CanvasImageSource, x - w / 2, y - h / 2, w, h);
+          }
+        }
+      }
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        await drawSceneTree(ctx, child, resolver, canvasW, canvasH);
+      }
+    }
+  } finally {
+    ctx.restore();
+  }
 }
 
 function applyMasks(ctx: Ctx2D, item: Item, canvasW: number, canvasH: number): void {

@@ -58,6 +58,22 @@ export class MediaPool implements MediaResolver {
     return this.videos;
   }
 
+  /** Motion-graphic sandbox host (lazy; created on first use). */
+  private motionHost: import('./motion-host.ts').MotionHost | null = null;
+
+  async evaluateMotion(
+    code: string,
+    props: Record<string, unknown>,
+    frame: number,
+    videoConfig: { width: number; height: number; fps: number; durationInFrames: number },
+  ): Promise<unknown> {
+    if (!this.motionHost) {
+      const { MotionHost } = await import('./motion-host.ts');
+      this.motionHost = new MotionHost();
+    }
+    return this.motionHost.evaluate(code, props, frame, videoConfig);
+  }
+
   constructor(
     private readonly assets: Map<string, { proxyPath?: string; path: string; kind: string; fps?: number }>,
     private readonly projectFps: number,

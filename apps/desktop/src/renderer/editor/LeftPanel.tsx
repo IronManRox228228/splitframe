@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useEditor } from '../store.ts';
 import { mediaUrl } from '../lib/url.ts';
+import { ChatTab } from './ChatTab.tsx';
 
 export function LeftPanel() {
   const [tab, setTab] = useState<'footage' | 'references' | 'chat'>('footage');
@@ -26,7 +27,7 @@ export function LeftPanel() {
           per project, analyzed for cut rhythm, caption style, and grade.
         </div>
       )}
-      {tab === 'chat' && <ChatPlaceholder />}
+      {tab === 'chat' && <ChatTab />}
     </div>
   );
 }
@@ -143,21 +144,6 @@ function MissingBadge({ assetId }: { assetId: string }) {
     <button className="chip bg-amber-500/15 text-amber-400 hover:bg-amber-500/25" onClick={() => void relink()}>
       missing — relink
     </button>
-  );
-}
-
-function ChatPlaceholder() {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-3">
-      <div className="w-10 h-10 rounded-lg bg-surface-800 flex items-center justify-center text-accent text-lg">
-        ✦
-      </div>
-      <p className="text-xs text-neutral-400 leading-relaxed">
-        The built-in agent lands with the tool-registry milestone: streaming chat, tool-call
-        cards, and editor-context awareness. The same tools will be exposed over local MCP so
-        Claude, Codex, or Cursor can drive the timeline.
-      </p>
-    </div>
   );
 }
 

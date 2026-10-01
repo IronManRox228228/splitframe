@@ -31,6 +31,11 @@ export interface MediaResolver {
   getVisual(assetId: string, sourceFrame: number, item: Item): Promise<DrawableSource | null>;
   /** Resolve the media URL used by a resolver (cbmedia:// in the desktop app). */
   resolveMediaUrl(assetId: string): string | null;
+  /**
+   * Evaluate one frame of motion-graphic code in the sandbox (main prompt §7).
+   * Returns the scene tree, or throws with the agent-facing error for the repair loop.
+   */
+  evaluateMotion?(code: string, props: Record<string, unknown>, frame: number, videoConfig: { width: number; height: number; fps: number; durationInFrames: number }): Promise<unknown>;
 }
 
 export interface DrawOptions {

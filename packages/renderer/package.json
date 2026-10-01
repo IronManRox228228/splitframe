@@ -8,7 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@cutboard/editor-core": "workspace:*",
     "@cutboard/schema": "workspace:*",
-    "@cutboard/editor-core": "workspace:*"
+    "acorn": "^8.18.0"
   }
 }

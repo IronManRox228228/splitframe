@@ -20,6 +20,10 @@ export interface ToolContext {
   startExport(presetName: string): Promise<unknown>;
   getExportStatus(exportId: string): Promise<unknown>;
   listExportPresets(): Promise<unknown>;
+  /** Beat detection for an audio asset (computed + cached on demand). */
+  analyzeBeats(assetId: string): Promise<{ bpm: number; beatsMs: number[]; downbeatsMs: number[]; sections: { startMs: number; endMs: number; label: string; energy: number }[] }>;
+  /** Static sandbox-policy check for generated motion-graphic code. */
+  validateMotion(code: string): { ok: boolean; error?: string };
   /** Who is calling (builtin-agent | mcp:<client>). */
   actor: Actor;
 }

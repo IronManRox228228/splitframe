@@ -11,6 +11,10 @@ import { editorContextCache } from './editor-context.ts';
 import { callTool } from './tools-bridge.ts';
 import { getSettings, saveSettings, rotateMcpToken } from './settings.ts';
 import { startMcpServer, stopMcpServer, revokeMcpSessions, getMcpActivity } from './mcp-server.ts';
+import { listModels, downloadModel, deleteModel, cancelModelDownload, onModelProgress } from './models.ts';
+import { searchWords, groupWordHits, searchScenes, isVectorSearchEnabled } from './analysis/search.ts';
+import { getVlmConfig, setVlmConfig } from './analysis/vlm.ts';
+import { sendChatMessage, abortChat } from './agent/chat.ts';
 
 /**
  * IPC is the security boundary (addendum §5.4): the renderer is untrusted, every
@@ -219,13 +223,70 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     };
   });
 
+  // ---------- built-in agent chat (Milestone 3) ----------
+  ipcMain.on('chat:send', (_e, input: { chatId: string; message: string }) => {
+    const parsed = z.object({ chatId: z.string().min(4), message: z.string().min(1).max(8000) }).parse(input);
+    void sendChatMessage(parsed.chatId, parsed.message);
+  });
+  ipcMain.on('chat:abort', (_e, chatId: string) => abortChat(chatId));
+
+  // ---------- models / analysis / search (Milestone 2) ----------
+  ipcMain.handle('models:list', () => listModels());
+  ipcMain.handle('models:download', (_e, id: string) => downloadModel(id));
+  ipcMain.handle('models:delete', (_e, id: string) => {
+    deleteModel(id);
+    return true;
+  });
+  ipcMain.handle('models:cancel', (_e, id: string) => {
+    cancelModelDownload(id);
+    return true;
+  });
+  ipcMain.handle(
+    'search:query',
+    async (_e, query: string) => {
+      z.string().min(1).parse(query);
+      const words = groupWordHits(searchWords(query));
+      const scenes = await searchScenes(query);
+      return { words, scenes, vectorSearch: isVectorSearchEnabled() };
+    },
+  );
+  ipcMain.handle('ai:getConfig', async () => {
+    const settings = await getSettings();
+    const vlm = await getVlmConfig();
+    return {
+      agentProvider: settings.ai?.agentProvider ?? 'anthropic',
+      agentModel: settings.ai?.agentModel ?? '',
+      vlmProvider: vlm.provider,
+      vlmModel: vlm.model,
+      ollamaUrl: vlm.ollamaUrl,
+      asrModel: settings.asr?.model ?? 'base.en',
+    };
+  });
+  ipcMain.handle(
+    'ai:setConfig',
+    (_e, patch: { agentProvider?: string; agentModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
+      z.object({
+        agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama']).optional(),
+        agentModel: z.string().max(120).optional(),
+        vlmProvider: z.enum(['none', 'ollama', 'anthropic', 'openai']).optional(),
+        vlmModel: z.string().max(120).optional(),
+        ollamaUrl: z.string().url().optional(),
+        agentKey: z.string().max(400).optional(),
+        anthropicKey: z.string().max(400).optional(),
+        openaiKey: z.string().max(400).optional(),
+      }).parse(patch);
+      return setVlmConfig(patch as never).then(() => true);
+    },
+  );
+
   // hidden export window channels
   registerExportWindowIpc();
 }
 
-/** Forward main-process events (jobs, assets, exports) to all windows. */
+/** Forward main-process events (jobs, assets, exports, models, MCP) to all windows. */
 export function wireEvents(broadcast: (channel: string, payload: unknown) => void): void {
   onJobEvent((job: JobRow) => broadcast('event', { type: 'job', payload: job }));
   onAssetEvent((asset) => broadcast('event', { type: 'asset', payload: asset }));
   onExportEvent((row) => broadcast('event', { type: 'export', payload: row }));
+  onModelProgress((p) => broadcast('event', { type: 'model:progress', payload: p }));
 }

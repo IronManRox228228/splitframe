@@ -5,6 +5,11 @@ import { getPaths, projectDir } from './paths.ts';
 import { ffprobe, makeProxy, makeThumbnail, makeWaveform } from './ffmpeg.ts';
 import { jobs, JobRow } from './jobs.ts';
 import { projectService } from './project-service.ts';
+import { transcribe } from './analysis/whisper.ts';
+import { detectScenes, extractKeyframe, keyframePath } from './analysis/scenes.ts';
+import { describeKeyframe, getVlmConfig } from './analysis/vlm.ts';
+import { indexTranscriptWords, indexScene } from './analysis/search.ts';
+import { getSettings } from './settings.ts';
 import { Asset, AssetKind, assetSchema, newId } from '@cutboard/schema';
 
 type AssetListener = (asset: Asset) => void;
@@ -165,22 +170,19 @@ function registerIngestHandler(): void {
     const dir = projectService.isOpen ? projectService.dir : projectDir(getPaths().projectsRoot, asset.projectId, 'assets');
     const cache = join(dir, 'cache');
 
-    ctx.progress(0.05, 'proxy');
+    ctx.progress(0.03, 'proxy');
     const proxyPath = join(cache, `${asset.id}-proxy.mp4`);
     if (asset.kind === 'video') {
       await makeProxy(asset.path, proxyPath, {
         durationMs: asset.durationMs,
         signal: ctx.signal,
-        onProgress: (done, total) => ctx.progress(0.05 + 0.6 * (done / Math.max(1, total)), 'proxy'),
+        onProgress: (done, total) => ctx.progress(0.03 + 0.27 * (done / Math.max(1, total)), 'proxy'),
       });
-    } else if (asset.kind === 'audio') {
-      // audio assets need no proxy; reuse the original
-    } else {
-      // images: copy nothing; use original directly
     }
     asset.proxyPath = asset.kind === 'video' ? proxyPath : asset.path;
+    saveAsset(asset);
 
-    ctx.progress(0.7, 'thumbnail');
+    ctx.progress(0.32, 'thumbnail');
     if (asset.kind === 'video') {
       const thumbPath = join(cache, `${asset.id}-thumb.jpg`);
       await makeThumbnail(asset.path, thumbPath, Math.min(2, asset.durationMs / 2000 || 0.1));
@@ -188,8 +190,9 @@ function registerIngestHandler(): void {
     } else if (asset.kind === 'image') {
       asset.thumbPath = asset.path;
     }
+    saveAsset(asset);
 
-    ctx.progress(0.85, 'waveform');
+    ctx.progress(0.36, 'waveform');
     if (asset.hasAudio) {
       const wavePath = join(cache, `${asset.id}-wave.png`);
       try {
@@ -197,6 +200,73 @@ function registerIngestHandler(): void {
         asset.waveformPath = wavePath;
       } catch {
         // waveform is cosmetic; ignore failures
+      }
+    }
+    saveAsset(asset);
+    if (ctx.signal.aborted) return;
+
+    // ---- ASR (word-level transcript) — audio-bearing assets only ----
+    if (asset.hasAudio) {
+      ctx.progress(0.4, 'transcribe');
+      const settings = await getSettings();
+      try {
+        const { words, language } = await transcribe(asset.path, {
+          modelId: settings.asr?.model ?? 'base.en',
+          workDir: cache,
+          signal: ctx.signal,
+          progress: (p) => ctx.progress(0.4 + 0.25 * p, 'transcribe'),
+        });
+        if (words.length > 0) {
+          db.prepare(
+            `INSERT OR REPLACE INTO transcripts (asset_id, language, words) VALUES (?, ?, ?)`,
+          ).run(assetId, language, JSON.stringify(words));
+          indexTranscriptWords(assetId, words);
+          // speech-quality hint for take selection
+          const speechMs = words.reduce((sum, w) => sum + (w.endMs - w.startMs), 0);
+          db.prepare(`UPDATE assets SET has_speech=? WHERE id=?`).run(speechMs > 2000 ? 1 : 0, assetId);
+          asset.hasSpeech = speechMs > 2000;
+        }
+      } catch (err) {
+        // ASR unavailable (no model) or failed: degrade gracefully, keep analyzing
+        process.stderr.write(`[ingest] ASR skipped for ${assetId}: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+    }
+    saveAsset(asset);
+    if (ctx.signal.aborted) return;
+
+    // ---- scene detection + keyframes (video only) ----
+    if (asset.kind === 'video') {
+      ctx.progress(0.68, 'scenes');
+      let scenes: { startMs: number; endMs: number }[] = [];
+      try {
+        scenes = await detectScenes(asset.path, asset.durationMs, { signal: ctx.signal });
+      } catch {
+        scenes = [{ startMs: 0, endMs: asset.durationMs }]; // single scene fallback
+      }
+      if (scenes.length === 0) scenes = [{ startMs: 0, endMs: asset.durationMs }];
+      const { provider } = await getVlmConfig();
+      for (let i = 0; i < scenes.length; i++) {
+        if (ctx.signal.aborted) return;
+        const scene = scenes[i]!;
+        const kfPath = keyframePath(cache, assetId, i);
+        try {
+          await extractKeyframe(asset.path, (scene.startMs + scene.endMs) / 2, kfPath);
+        } catch { /* continue without keyframe */ }
+        let description = '';
+        const tags: string[] = [];
+        if (provider !== 'none') {
+          try {
+            description = await describeKeyframe(kfPath, `Scene ${i + 1}/${scenes.length} of ${asset.originalName}.`);
+          } catch (err) {
+            process.stderr.write(`[ingest] VLM skipped: ${err instanceof Error ? err.message : String(err)}\n`);
+          }
+        }
+        const sceneId = newId('scn');
+        db.prepare(
+          `INSERT OR REPLACE INTO scenes (id, asset_id, start_ms, end_ms, description, tags, keyframe_paths) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ).run(sceneId, assetId, scene.startMs, scene.endMs, description, JSON.stringify(tags), JSON.stringify([kfPath]));
+        if (description) await indexScene(sceneId, description);
+        ctx.progress(0.68 + 0.24 * ((i + 1) / scenes.length), 'scenes');
       }
     }
 

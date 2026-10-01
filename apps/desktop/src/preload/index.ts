@@ -37,6 +37,15 @@ export interface CutboardApi {
   mcpSetEnabled(enabled: boolean): Promise<unknown>;
   mcpRotateToken(): Promise<{ token: string }>;
   mcpSnippets(): Promise<{ url: string; claudeCode: string; claudeDesktop: string; codex: string; cursor: string }>;
+  listModels(): Promise<unknown[]>;
+  downloadModel(id: string): Promise<{ ok: boolean; error?: string }>;
+  deleteModel(id: string): Promise<boolean>;
+  cancelModelDownload(id: string): Promise<boolean>;
+  searchQuery(query: string): Promise<{ words: unknown[]; scenes: unknown[]; vectorSearch: boolean }>;
+  aiGetConfig(): Promise<unknown>;
+  aiSetConfig(patch: Record<string, unknown>): Promise<boolean>;
+  sendChat(chatId: string, message: string): void;
+  abortChat(chatId: string): void;
   // hidden export-window helpers
   exportBundle(exportId: string): Promise<{ doc: unknown; mediaUrls: Record<string, string> }>;
   sendExportFrame(exportId: string, index: number, buffer: ArrayBuffer, width: number, height: number): void;
@@ -74,6 +83,15 @@ const api: CutboardApi = {
   mcpSetEnabled: (enabled) => ipcRenderer.invoke('mcp:setEnabled', enabled),
   mcpRotateToken: () => ipcRenderer.invoke('mcp:rotateToken'),
   mcpSnippets: () => ipcRenderer.invoke('mcp:snippets'),
+  listModels: () => ipcRenderer.invoke('models:list'),
+  downloadModel: (id) => ipcRenderer.invoke('models:download', id),
+  deleteModel: (id) => ipcRenderer.invoke('models:delete', id),
+  cancelModelDownload: (id) => ipcRenderer.invoke('models:cancel', id),
+  searchQuery: (query) => ipcRenderer.invoke('search:query', query),
+  aiGetConfig: () => ipcRenderer.invoke('ai:getConfig'),
+  aiSetConfig: (patch) => ipcRenderer.invoke('ai:setConfig', patch),
+  sendChat: (chatId, message) => ipcRenderer.send('chat:send', { chatId, message }),
+  abortChat: (chatId) => ipcRenderer.send('chat:abort', chatId),
   exportBundle: (exportId) => ipcRenderer.invoke('export:bundle', exportId),
   sendExportFrame: (exportId, index, buffer, width, height) => {
     ipcRenderer.send('export:window:frame', exportId, index, buffer, width, height);

@@ -4,6 +4,9 @@ import { projectService } from './project-service.ts';
 import { getAssets, getAsset, getTranscriptsForProject } from './asset-service.ts';
 import { renderStill, exportService, EXPORT_PRESETS } from './export-service.ts';
 import { editorContextCache } from './editor-context.ts';
+import { detectBeats } from './analysis/beats.ts';
+import { getDb } from './db.ts';
+import { validateMotionCode } from '@cutboard/renderer';
 
 /**
  * Tool registry bridge (addendum §2): one registry, two front doors — the built-in chat
@@ -42,6 +45,31 @@ export function makeToolContext(actor: Actor): ToolContext {
     startExport: (presetName) => exportService.start(presetName),
     getExportStatus: async (exportId) => exportService.get(exportId) ?? { exportId, status: 'unknown' },
     listExportPresets: async () => EXPORT_PRESETS,
+    analyzeBeats: async (assetId) => {
+      // cached in the beat_maps table; detected on demand otherwise
+      const db = getDb();
+      const row = db.prepare(`SELECT * FROM beat_maps WHERE asset_id=?`).get(assetId) as Record<string, unknown> | undefined;
+      if (row && row.beats) {
+        return {
+          bpm: (row.bpm as number) ?? 120,
+          beatsMs: JSON.parse((row.beats as string) ?? '[]'),
+          downbeatsMs: JSON.parse((row.downbeats as string) ?? '[]'),
+          sections: JSON.parse((row.sections as string) ?? '[]'),
+        };
+      }
+      const asset = getAsset(assetId);
+      if (!asset) throw new Error(`Asset ${assetId} not found.`);
+      const map = await detectBeats(asset.path);
+      db.prepare(`INSERT OR REPLACE INTO beat_maps (asset_id, bpm, beats, downbeats, sections) VALUES (?, ?, ?, ?, ?)`).run(
+        assetId,
+        map.bpm,
+        JSON.stringify(map.beatsMs),
+        JSON.stringify(map.downbeatsMs),
+        JSON.stringify(map.sections),
+      );
+      return map;
+    },
+    validateMotion: (code) => validateMotionCode(code),
   };
 }
 

@@ -1,7 +1,10 @@
-import { CanvasCompositor } from '@cutboard/renderer';
+import { CanvasCompositor, MOTION_RUNTIME_SOURCE, MOTION_EVAL_SOURCE } from '@cutboard/renderer';
 import { docDurationFrames } from '@cutboard/editor-core';
 import type { TimelineDoc } from '@cutboard/schema';
 import { MediaPool } from './lib/media.ts';
+
+// motion-graphics sandbox runtime (provisioned before any frame renders)
+(window as unknown as Record<string, unknown>)['__cutboardMotionRuntime'] = MOTION_RUNTIME_SOURCE + MOTION_EVAL_SOURCE;
 
 /**
  * Export window script: renders the timeline frame-by-frame with the same compositor as

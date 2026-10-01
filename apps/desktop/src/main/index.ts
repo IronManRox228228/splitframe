@@ -310,6 +310,11 @@ void app.whenReady().then(() => {
   createMainWindow();
   jobs.resumePending();
 
+  void (async () => {
+    const { initSearchSchema } = await import('./analysis/search.ts');
+    initSearchSchema();
+  })();
+
   // local MCP server (addendum §4): start only when the user enabled it
   void (async () => {
     const { getSettings } = await import('./settings.ts');
