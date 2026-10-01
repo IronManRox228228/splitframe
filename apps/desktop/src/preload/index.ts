@@ -31,6 +31,8 @@ export interface CutboardApi {
   startExport(presetName: string): Promise<unknown>;
   cancelExport(exportId: string): Promise<boolean>;
   listExports(): Promise<unknown[]>;
+  revealExportPath(path: string): Promise<boolean>;
+  exportOtio(): Promise<{ path: string }>;
   setEditorContext(ctx: { selection?: string[]; playheadFrame?: number; highlightedRange?: { startFrame: number; endFrame: number } | null; openProjectId?: string }): void;
   callTool(name: string, args?: unknown): Promise<unknown>;
   mcpGetStatus(): Promise<unknown>;
@@ -77,6 +79,8 @@ const api: CutboardApi = {
   startExport: (presetName) => ipcRenderer.invoke('exports:start', presetName),
   cancelExport: (exportId) => ipcRenderer.invoke('exports:cancel', exportId),
   listExports: () => ipcRenderer.invoke('exports:list'),
+  revealExportPath: (path) => ipcRenderer.invoke('exports:revealPath', path),
+  exportOtio: () => ipcRenderer.invoke('exports:otio'),
   setEditorContext: (ctx) => ipcRenderer.send('editorContext:set', ctx),
   callTool: (name, args) => ipcRenderer.invoke('tools:call', { name, args }),
   mcpGetStatus: () => ipcRenderer.invoke('mcp:getStatus'),

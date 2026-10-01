@@ -29,6 +29,10 @@ const opSchemaBase = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project.rename'), name: z.string().min(1) }),
   z.object({ type: z.literal('project.setCanvas'), width: frameSchema.positive(), height: frameSchema.positive() }),
   z.object({ type: z.literal('project.setStyleConfig'), styleConfig: styleConfigSchema }),
+  z.object({
+    type: z.literal('project.setReference'),
+    assetId: z.string().nullable().describe('Reference video for style matching; never used in output'),
+  }),
 
   z.object({
     type: z.literal('track.add'),

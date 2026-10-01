@@ -1,0 +1,45 @@
+appId: dev.cutboard.app
+productName: Cutboard
+copyright: MIT — openCardboard contributors
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  # bundled LGPL ffmpeg/ffprobe + whisper-cli (scripts/fetch-ffmpeg, scripts/fetch-whisper)
+  - from: bin
+    to: bin
+    filter:
+      - "**/*"
+asar: true
+compression: normal
+
+mac:
+  category: public.app-category.video
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  # signing/notarization: set CSC_LINK + CSC_KEY_PASSWORD (and Apple ID vars) when certs
+  # exist; without them this builds unsigned dev installers (docs/DECISIONS.md #6).
+  identity: null
+  hardenedRuntime: false
+
+win:
+  target: nsis
+  # signing: set CSC_LINK when a Windows cert exists; unsigned otherwise
+  signAndEditExecutable: false
+
+linux:
+  target: AppImage
+  category: AudioVideo
+
+# Auto-update (addendum §3): electron-updater is wired in main/index.ts behind
+# CUTBOARD_AUTOUPDATE. Configure a generic/HTTPS feed here when releases exist:
+# publish:
+#   provider: generic
+#   url: https://releases.example.com/cutboard/
+publish: null

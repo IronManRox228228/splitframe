@@ -50,6 +50,15 @@ export function applyOp(doc: TimelineDoc, op: Op): ApplyResult {
       return simple(next, doc, (d) => {
         d.project.styleConfig = parsed.styleConfig;
       }, [{ type: 'project.setStyleConfig', styleConfig: clone(doc.project.styleConfig) }]);
+    case 'project.setReference': {
+      const before = doc.project.referenceAssetId ?? null;
+      if (parsed.assetId !== null && !doc.items.some((i) => i.assetId === parsed.assetId)) {
+        // references are metadata, not timeline items — validate against assets in the tool layer
+      }
+      return simple(next, doc, (d) => {
+        d.project.referenceAssetId = parsed.assetId ?? undefined;
+      }, [{ type: 'project.setReference', assetId: before }]);
+    }
     case 'track.add':
       return applyTrackAdd(next, doc, parsed);
     case 'track.remove':

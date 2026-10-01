@@ -159,6 +159,26 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     return exportService.start(presetName);
   });
   ipcMain.handle('exports:cancel', (_e, exportId: string) => exportService.cancel(exportId));
+  ipcMain.handle('exports:revealPath', (_e, path: string) => {
+    z.string().min(1).parse(path);
+    void import('electron').then(({ shell }) => shell.showItemInFolder(path));
+    return true;
+  });
+  ipcMain.handle('exports:otio', async (_e) => {
+    if (!projectService.isOpen) throw new Error('No project open');
+    const { buildOtio } = await import('./analysis/otio.ts');
+    const { saveOtio } = await import('./analysis/reference.ts');
+    const { getAssets } = await import('./asset-service.ts');
+    const doc = projectService.doc;
+    const media = new Map<string, string>();
+    for (const asset of getAssets(projectService.projectId)) {
+      media.set(asset.id, asset.proxyPath ?? asset.path);
+    }
+    const json = buildOtio(doc, (assetId) => media.get(assetId) ?? null);
+    const slug = doc.project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'timeline';
+    const path = await saveOtio(`${slug}-${Date.now()}`, json, projectService.dir);
+    return { path };
+  });
 
   // ---------- editor context (for agent tools: "the selected clip", "at this point") ----------
   ipcMain.on('editorContext:set', (_e, ctx: { selection?: string[]; playheadFrame?: number; highlightedRange?: { startFrame: number; endFrame: number } | null }) => {
@@ -277,8 +297,27 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
 
 /** Forward main-process events (jobs, assets, exports, models, MCP) to all windows. */
 export function wireEvents(broadcast: (channel: string, payload: unknown) => void): void {
-  onJobEvent((job: JobRow) => broadcast('event', { type: 'job', payload: job }));
+  onJobEvent((job: JobRow) => {
+    broadcast('event', { type: 'job', payload: job });
+    // system notifications (addendum §5.3): only when the window isn't focused
+    if (job.status === 'done' && job.type === 'ingest-asset') {
+      notifyUnlessFocused('Analysis complete', 'Footage is ready to edit.');
+    }
+  });
   onAssetEvent((asset) => broadcast('event', { type: 'asset', payload: asset }));
-  onExportEvent((row) => broadcast('event', { type: 'export', payload: row }));
+  onExportEvent((row) => {
+    broadcast('event', { type: 'export', payload: row });
+    if (row.status === 'done') notifyUnlessFocused('Export complete', row.outputPath ?? '');
+    else if (row.status === 'failed') notifyUnlessFocused('Export failed', row.error ?? '');
+  });
   onModelProgress((p) => broadcast('event', { type: 'model:progress', payload: p }));
+}
+
+function notifyUnlessFocused(title: string, body: string): void {
+  void (async () => {
+    const { Notification, BrowserWindow } = await import('electron');
+    const focused = BrowserWindow.getAllWindows().some((w) => w.isFocused());
+    if (focused || !Notification.isSupported()) return;
+    new Notification({ title, body, silent: true }).show();
+  })();
 }

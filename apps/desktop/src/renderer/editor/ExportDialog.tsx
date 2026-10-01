@@ -110,7 +110,9 @@ export function ExportDialog() {
             <ul className="space-y-1">
               {exportsList.slice(0, 4).map((e) => (
                 <li key={e.id} className="flex items-center justify-between text-[11px]">
-                  <span className="text-neutral-400 truncate">{e.preset.name}</span>
+                  <button className="text-neutral-400 truncate hover:text-neutral-200" onClick={() => void window.cutboard.revealExportPath(e.outputPath ?? '')}>
+                    {e.preset.name}
+                  </button>
                   <span className={e.status === 'done' ? 'text-emerald-400' : e.status === 'failed' ? 'text-red-400' : 'text-neutral-600'}>
                     {e.status}
                   </span>
@@ -119,6 +121,17 @@ export function ExportDialog() {
             </ul>
           </div>
         )}
+
+        <button
+          className="btn-outline w-full mt-4"
+          onClick={() =>
+            void window.cutboard.exportOtio().then(({ path }) => {
+              useEditor.getState().showToast(`Timeline exported for Resolve/Premiere: ${path}`);
+            })
+          }
+        >
+          Export timeline as OTIO (Resolve / Premiere / FCP)
+        </button>
       </div>
     </div>
   );

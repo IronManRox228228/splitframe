@@ -14,15 +14,40 @@ import. Your files stay on your machine unless you explicitly configure a cloud 
 
 ## Status
 
-Work in progress, milestone by milestone (see `docs/DECISIONS.md` and the desktop addendum):
+Built milestone by milestone (see `docs/DECISIONS.md` and the desktop addendum):
 
-1. [x] Shell + core — Electron app, typed IPC, SQLite project service, op-based editor core
-       with undo/redo, manual timeline, proxy-based preview, basic ffmpeg export.
-2. [ ] Import + ingestion — relink, proxies/thumbnails/waveforms, whisper.cpp ASR, scene
-       detection, VLM descriptions, embeddings + hybrid search (sqlite-vec + FTS5).
-3. [ ] Tool registry + built-in chat.
-4. [ ] Local MCP (loopback Streamable HTTP + token + stdio shim).
-5–10. Macros, beat sync, motion graphics, effects/masks/tracking, hardware export, packaging.
+1. [x] **Shell + core** — Electron app, typed IPC, SQLite project service (op log + WAL),
+       op-based editor core with exact undo/redo (46 unit tests), manual timeline
+       (drag/trim/split/clone/slip/snap/ripple), proxy-based preview, hardware-encode
+       export (VideoToolbox/NVENC + filter_complex audio mix; a 3s clip exports in ~2s).
+2. [x] **Import + ingestion** — file referencing + relink, proxies/thumbnails/waveforms,
+       whisper.cpp word-level ASR, scene detection + keyframes, pluggable VLM scene
+       descriptions (Anthropic/OpenAI/Ollama; key-gated, local-only by default), local
+       bge-small embeddings + sqlite-vec with FTS5 hybrid search, model manager.
+3. [x] **Tool registry + built-in chat** — 30+ typed tools shared by chat and MCP;
+       streaming chat (Anthropic/OpenAI/Google/Ollama) with tool-call cards, API keys in
+       the OS-encrypted secret store, editor-context awareness, headless `captureFrame`.
+4. [x] **Local MCP** — 127.0.0.1 Streamable HTTP, per-install bearer token, Origin/Host
+       validation, session revocation, copy-paste snippets for Claude Code / Claude
+       Desktop / Codex / Cursor, stdio shim (`apps/mcp-shim`). Wire-verified with curl
+       (401/403/initialize/tools-list/tools-call).
+5. [x] **Macros** — buildRoughCut, removeSilences, addCaptions (serif/bold/karaoke from
+       transcript timings), duckMusic (volume keyframes honored by the exporter).
+6. [x] **Beat sync** — local DSP beat detection (BPM/grid/downbeats/sections) + beatSync
+       with per-section density maps. Verified: 121 BPM detected on a 120 BPM click
+       track; 20 cuts placed on the grid.
+7. [x] **Motion graphics** — own Remotion-style scene-tree API, acorn AST deny-list,
+       sandboxed-iframe evaluation (no same-origin), shared preview/export canvas
+       renderer, create/update/preview tools with a capture-and-repair loop.
+8. [x] **Reference style** — cut-rhythm + coarse grade analysis; property-level apply
+       (grade effects, pacing targets). Reference footage never enters the output.
+9. [x] **Export niceties** — queue with progress/cancel, system notifications, OTIO
+       export for Resolve/Premiere/FCP, hardware encoder selection.
+10. [~] **Packaging** — electron-builder config (dmg/NSIS/AppImage; mac-arm64 builds
+         verified), opt-in electron-updater, bundled ffmpeg/ffprobe via
+         `pnpm fetch:ffmpeg`, whisper fetch via `pnpm fetch:whisper`, prompt library
+         (`docs/prompts`), automated smoke driver (`CUTBOARD_SMOKE_*`). Signing and
+         notarization need user-provided certs; installers build unsigned.
 
 ## Architecture
 

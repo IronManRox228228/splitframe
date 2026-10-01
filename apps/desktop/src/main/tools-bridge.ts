@@ -7,6 +7,7 @@ import { editorContextCache } from './editor-context.ts';
 import { detectBeats } from './analysis/beats.ts';
 import { getDb } from './db.ts';
 import { validateMotionCode } from '@cutboard/renderer';
+import { analyzeReferenceStyle, getReferenceProfile } from './analysis/reference.ts';
 
 /**
  * Tool registry bridge (addendum §2): one registry, two front doors — the built-in chat
@@ -70,6 +71,11 @@ export function makeToolContext(actor: Actor): ToolContext {
       return map;
     },
     validateMotion: (code) => validateMotionCode(code),
+    analyzeReference: async (assetId) => {
+      if (!projectService.isOpen) throw new Error('No project open');
+      return analyzeReferenceStyle(assetId, projectService.dir);
+    },
+    getReferenceProfile: (assetId) => getReferenceProfile(assetId),
   };
 }
 

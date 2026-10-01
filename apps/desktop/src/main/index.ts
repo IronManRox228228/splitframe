@@ -361,6 +361,16 @@ void app.whenReady().then(() => {
     if (settings.mcp.enabled) await startMcpServer();
   })();
 
+  // auto-update (addendum §3): opt-in via env until a signed release feed exists
+  if (app.isPackaged && process.env['CUTBOARD_AUTOUPDATE'] === '1') {
+    void (async () => {
+      const { autoUpdater } = await import('electron-updater');
+      autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+        process.stderr.write(`[updater] ${err instanceof Error ? err.message : String(err)}\n`);
+      });
+    })();
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });

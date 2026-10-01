@@ -24,6 +24,9 @@ export interface ToolContext {
   analyzeBeats(assetId: string): Promise<{ bpm: number; beatsMs: number[]; downbeatsMs: number[]; sections: { startMs: number; endMs: number; label: string; energy: number }[] }>;
   /** Static sandbox-policy check for generated motion-graphic code. */
   validateMotion(code: string): { ok: boolean; error?: string };
+  /** Reference-style analysis (computed + cached on demand). */
+  analyzeReference(assetId: string): Promise<unknown>;
+  getReferenceProfile(assetId: string): Promise<unknown>;
   /** Who is calling (builtin-agent | mcp:<client>). */
   actor: Actor;
 }
