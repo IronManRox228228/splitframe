@@ -1,9 +1,23 @@
 import { z } from 'zod';
 import { frameSchema } from './time.ts';
-import { itemPatchSchema, itemSchema, itemPropsSchemas, timeRemapPointSchema } from './item.ts';
+import { itemPatchSchema, itemSchemas, itemPropsSchemas, timeRemapPointSchema } from './item.ts';
 import { effectSchema, maskSchema } from './transform.ts';
 import { markerSchema, trackKindSchema, styleConfigSchema } from './project.ts';
 import { Keyframe, keyframeSchema } from './time.ts';
+
+/**
+ * item.add accepts items WITHOUT type-specific props (tools omit them); the apply
+ * engine fills defaults. Every other field stays required.
+ */
+const itemAddLoose = z.discriminatedUnion('type', [
+  itemSchemas.video.extend({ props: itemPropsSchemas.video.optional() }),
+  itemSchemas.audio.extend({ props: itemPropsSchemas.audio.optional() }),
+  itemSchemas.image.extend({ props: itemPropsSchemas.image.optional() }),
+  itemSchemas.text.extend({ props: itemPropsSchemas.text.optional() }),
+  itemSchemas.caption.extend({ props: itemPropsSchemas.caption.optional() }),
+  itemSchemas.shape.extend({ props: itemPropsSchemas.shape.optional() }),
+  itemSchemas.motionGraphic.extend({ props: itemPropsSchemas.motionGraphic.optional() }),
+]);
 
 /**
  * Ops are the only way timeline state changes. They are validated with zod, applied by
@@ -40,7 +54,7 @@ const opSchemaBase = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('track.reorder'), trackIds: z.array(z.string()) }),
 
-  z.object({ type: z.literal('item.add'), item: itemSchema }),
+  z.object({ type: z.literal('item.add'), item: itemAddLoose }),
   z.object({
     type: z.literal('item.remove'),
     itemIds: z.array(z.string()).min(1),

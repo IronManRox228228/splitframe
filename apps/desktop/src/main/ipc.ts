@@ -108,16 +108,8 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     'ops:apply',
     (e, input: { ops: Op[]; groupLabel?: string }) => {
       const parsed = opsInput.parse(input);
+      // projectService.apply broadcasts doc:changed itself (single source of truth)
       const result = projectService.apply(parsed.ops, actorFor(e), parsed.groupLabel);
-      broadcast('event', {
-        type: 'doc:changed',
-        payload: {
-          doc: projectService.doc,
-          seq: result.seq,
-          actor: 'user',
-          label: parsed.groupLabel ?? null,
-        },
-      });
       return { ok: true, seq: result.seq, inverses: result.inverses, doc: projectService.doc };
     },
   );

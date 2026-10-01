@@ -3,6 +3,7 @@ import { applyOp, applyOps, createEmptyDoc, parseDoc, History, OpError } from '@
 import type { UndoGroup } from '@cutboard/editor-core';
 import { Actor, Op, TimelineDoc, assetSchema, beatMapSchema, sceneSchema, transcriptSchema, newId } from '@cutboard/schema';
 import type { ProjectBundle } from '@cutboard/schema';
+import { broadcast } from './events.ts';
 import { projectDir, getPaths } from './paths.ts';
 
 /**
@@ -153,6 +154,11 @@ export class ProjectService {
     );
     this.current.doc = result.doc;
     this.history.push(ops, result.inverse, groupLabel, actor);
+    // single source of doc-change events: UI, agent, and MCP edits all flow through here
+    broadcast('event', {
+      type: 'doc:changed',
+      payload: { doc: this.current.doc, seq: Number(info.lastInsertRowid), actor, label: groupLabel ?? null },
+    });
     return { inverses: result.inverse, seq: Number(info.lastInsertRowid) };
   }
 

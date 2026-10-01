@@ -133,10 +133,48 @@ async function smokeRun(capturePath: string, clipPath: string | undefined): Prom
         })()`,
         true,
       ).then((r) => process.stderr.write(`[smoke] after add: ${JSON.stringify(r)}\n`));
-      await sleep(1500);
+      await sleep(800);
+
+      // exercise the tool pipeline through the front door (same as chat/MCP)
+      const toolResults: Record<string, unknown> = {};
+      const call = async (name: string, args: unknown) =>
+        wc.executeJavaScript(`window.cutboard.callTool(${JSON.stringify(name)}, ${JSON.stringify(args)})`, true);
+      try {
+        toolResults['captions'] = await call('addCaptions', { preset: 'karaoke' });
+        toolResults['silences'] = await call('removeSilences', { thresholdSec: 0.4 });
+      } catch (err) {
+        toolResults['macroError'] = err instanceof Error ? err.message : String(err);
+      }
+      summary['tools'] = toolResults;
+      await sleep(1000);
       summary['items'] = projectService.doc.items.length;
       const editorShot = await wc.capturePage();
       writeFile(capturePath.replace(/\.png$/, '-editor.png'), editorShot.toPNG(), () => undefined);
+
+      // beat sync against a click track, if provided
+      const beatPath = process.env['CUTBOARD_SMOKE_BEAT'];
+      if (beatPath) {
+        try {
+          const beatAsset = (await importFiles([beatPath]))[0]!;
+          for (let i = 0; i < 300; i++) {
+            const a = getAssets(projectService.projectId).find((x) => x.id === beatAsset.id);
+            if (a?.status === 'analyzed' || a?.status === 'failed') break;
+            await sleep(100);
+          }
+          await wc.executeJavaScript(
+            `(async () => { const s = window.__cutboardStore; await s.getState().addAssetToTimeline(${JSON.stringify(beatAsset.id)}, 0); })()`,
+            true,
+          );
+          await sleep(500);
+          const beats = await call('analyzeBeats', { assetId: beatAsset.id });
+          const beatMap = beats as { bpm?: number };
+          const musicItem = projectService.doc.items.find((i) => i.assetId === beatAsset.id);
+          const sync = await call('beatSync', { musicItemId: musicItem!.id });
+          toolResults['beats'] = { bpm: beatMap.bpm, sync };
+        } catch (err) {
+          toolResults['beatError'] = err instanceof Error ? err.message : String(err);
+        }
+      }
 
       // export through the real service (hidden render window + ffmpeg)
       const { exportService } = await import('./export-service.ts');

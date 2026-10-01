@@ -259,17 +259,22 @@ function applyItemAdd(
   doc: TimelineDoc,
   op: Extract<Op, { type: 'item.add' }>,
 ): ApplyResult {
-  const item = op.item;
-  const track = requireTrack(doc, item.trackId);
-  if (doc.items.some((i) => i.id === item.id)) {
-    throw new OpError(`Item ${item.id} already exists.`);
+  const rawItem = op.item;
+  const track = requireTrack(doc, rawItem.trackId);
+  if (doc.items.some((i) => i.id === rawItem.id)) {
+    throw new OpError(`Item ${rawItem.id} already exists.`);
   }
-  if (!trackAllowsItem(track.kind, item.type)) {
+  if (!trackAllowsItem(track.kind, rawItem.type)) {
     throw new OpError(
-      `A ${item.type} item cannot live on the "${track.kind}" track "${track.name}".`,
+      `A ${rawItem.type} item cannot live on the "${track.kind}" track "${track.name}".`,
       `Allowed item types on a ${track.kind} track: see the track-kind rules.`,
     );
   }
+  // normalize: type-specific props may be omitted by tools; fill from the schema defaults
+  const item = {
+    ...rawItem,
+    props: rawItem.props ?? itemPropsSchemas[rawItem.type].parse({}),
+  } as Item;
   next.items.push(clone(item));
   return { doc: next, inverse: [{ type: 'item.remove', itemIds: [item.id], ripple: false }] };
 }
