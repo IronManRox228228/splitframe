@@ -2,7 +2,7 @@
   "name": "opencardboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Cutboard — local-first desktop AI video editor (open-source chat-to-edit). Repo: openCardboard.",
+  "description": "Cutboard \u2014 local-first desktop AI video editor (open-source chat-to-edit). Repo: openCardboard.",
   "license": "MIT",
   "packageManager": "pnpm@10.33.2",
   "engines": {
@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "turbo run lint",
-    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs"
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
+    "fetch:whisper": "node scripts/fetch-whisper.mjs",
+    "logo": "node scripts/generate-logo.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.5.0",
     "@typescript-eslint/eslint-plugin": "^8.43.0",
     "@typescript-eslint/parser": "^8.43.0",
@@ -40,6 +43,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "opentype.js": "^2.0.0",
     "tslib": "^2.8.1"
   }
 }

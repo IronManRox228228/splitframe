@@ -148,6 +148,16 @@ async function smokeRun(capturePath: string, clipPath: string | undefined): Prom
       summary['tools'] = toolResults;
       await sleep(1000);
       summary['items'] = projectService.doc.items.length;
+      // make sure the window is actually on the editor screen before capturing
+      for (let i = 0; i < 20; i++) {
+        const screen = await wc.executeJavaScript(`window.__cutboardStore?.getState().screen`);
+        if (screen === 'editor') break;
+        await wc.executeJavaScript(
+          `(async () => { const s = window.__cutboardStore; const r = await window.cutboard.listRecentProjects(); await s.getState().openProject(r[0].id); })()`,
+          true,
+        );
+        await sleep(500);
+      }
       const editorShot = await wc.capturePage();
       writeFile(capturePath.replace(/\.png$/, '-editor.png'), editorShot.toPNG(), () => undefined);
 

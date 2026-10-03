@@ -78,11 +78,25 @@ export function ProjectListScreen() {
 }
 
 function Logo() {
+  // sliced-play mark — mirrors scripts/generate-logo.mjs playHalves()
+  const s = 40;
+  const c = s / 2;
+  const scale = s * 0.62;
+  const gap = s * 0.018;
+  const S = (x: number, y: number): [number, number] => [c + (x - 0.5) * scale, c + (y - 0.5) * scale];
+  const n = [0.377, 0.926];
+  const off = (pts: [number, number][], sign: number) =>
+    pts.map(([x, y]) => [x + n[0]! * gap * sign, y + n[1]! * gap * sign] as [number, number]);
+  const A = [0.25, 0.15] as const, B = [0.25, 0.85] as const, C = [0.78, 0.5] as const;
+  const Q1 = [0.25, 0.581] as const, Q2 = [0.654, 0.417] as const;
+  const poly = (pts: [number, number][]) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const top = poly(off([S(...A), S(...Q2), S(...Q1)], -0.5));
+  const bottom = poly(off([S(...Q1), S(...B), S(...C), S(...Q2)], 0.5));
   return (
-    <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center shadow-lg shadow-accent/10">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0b0b0d" strokeWidth="2.4" strokeLinecap="round">
-        <rect x="3" y="5" width="13" height="14" rx="2.5" />
-        <path d="M16 9.5 21 7v10l-5-2.5" />
+    <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center shadow-lg shadow-accent/10 overflow-hidden">
+      <svg width={s} height={s} viewBox={`0 0 ${s} ${s}`}>
+        <polygon points={top} fill="#0b0b0d" />
+        <polygon points={bottom} fill="#0b0b0d" />
       </svg>
     </div>
   );
