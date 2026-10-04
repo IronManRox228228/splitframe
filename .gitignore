@@ -12,3 +12,6 @@ coverage/
 .vendor/
 sidecars/ml/models/
 apps/desktop/bin/
+
+# packaged build output
+apps/desktop/release/
