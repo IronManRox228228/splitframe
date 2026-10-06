@@ -1,4 +1,5 @@
 import { stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { getDb } from './db.ts';
 import { getPaths, projectDir } from './paths.ts';
@@ -96,7 +97,6 @@ export function isMediaFile(path: string): boolean {
 async function importFile(filePath: string): Promise<Asset> {
   if (!projectService.isOpen) throw new Error('Open a project first');
   const projectId = projectService.projectId;
-  const dir = projectService.dir;
 
   const st = await stat(filePath);
   const db = getDb();
@@ -172,21 +172,33 @@ function registerIngestHandler(): void {
 
     ctx.progress(0.03, 'proxy');
     const proxyPath = join(cache, `${asset.id}-proxy.mp4`);
+    let proxyOk = asset.kind !== 'video';
     if (asset.kind === 'video') {
-      await makeProxy(asset.path, proxyPath, {
-        durationMs: asset.durationMs,
-        signal: ctx.signal,
-        onProgress: (done, total) => ctx.progress(0.03 + 0.27 * (done / Math.max(1, total)), 'proxy'),
-      });
+      try {
+        await makeProxy(asset.path, proxyPath, {
+          durationMs: asset.durationMs,
+          signal: ctx.signal,
+          onProgress: (done, total) => ctx.progress(0.03 + 0.27 * (done / Math.max(1, total)), 'proxy'),
+        });
+        proxyOk = existsSync(proxyPath);
+      } catch (err) {
+        process.stderr.write(`[ingest] proxy failed for ${assetId}: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
     }
-    asset.proxyPath = asset.kind === 'video' ? proxyPath : asset.path;
+    if (ctx.signal.aborted) return;
+    // a proxy that was never written must not be recorded; the preview falls back to the original
+    asset.proxyPath = asset.kind === 'video' && proxyOk ? proxyPath : asset.path;
     saveAsset(asset);
 
     ctx.progress(0.32, 'thumbnail');
     if (asset.kind === 'video') {
       const thumbPath = join(cache, `${asset.id}-thumb.jpg`);
-      await makeThumbnail(asset.path, thumbPath, Math.min(2, asset.durationMs / 2000 || 0.1));
-      asset.thumbPath = thumbPath;
+      try {
+        await makeThumbnail(asset.path, thumbPath, Math.min(2, asset.durationMs / 2000 || 0.1));
+        if (existsSync(thumbPath)) asset.thumbPath = thumbPath;
+      } catch {
+        // thumbnails are cosmetic; ignore failures
+      }
     } else if (asset.kind === 'image') {
       asset.thumbPath = asset.path;
     }
