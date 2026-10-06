@@ -19,6 +19,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'cbmedia', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
+// Windows only shows notifications (and groups the taskbar icon) under the installed app id
+if (process.platform === 'win32') app.setAppUserModelId('dev.cutboard.app');
+
 let mainWindow: BrowserWindow | null = null;
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
