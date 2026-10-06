@@ -139,6 +139,9 @@ export const addCaptions: ToolDef = {
         const nextCard = words[i + input.wordsPerCard];
         const end = Math.min(itemEnd(item), Math.max(card[card.length - 1]!.endFrame, nextCard ? nextCard.startFrame - 1 : card[card.length - 1]!.endFrame + pad));
         if (end - start < 1) continue;
+        // word times are stored relative to the caption's own start, so they stay valid
+        // when the caption moves and no matter where the source clip sits on the timeline
+        const msFromCardStart = (frame: number) => Math.max(0, Math.round(((frame - start) / fps) * 1000));
         ops.push({
           type: 'item.add',
           item: {
@@ -148,7 +151,7 @@ export const addCaptions: ToolDef = {
             startFrame: start,
             durationFrames: end - start,
             transform: { x: 0, y: 0, scale: 1, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 },
-            props: { words: card.map((w) => ({ w: w.w, startMs: w.startMs, endMs: w.endMs })), style, mode: 'phrase', maxWordsPerCard: input.wordsPerCard },
+            props: { words: card.map((w) => ({ w: w.w, startMs: msFromCardStart(w.startFrame), endMs: msFromCardStart(w.endFrame) })), style, mode: 'phrase', maxWordsPerCard: input.wordsPerCard },
             labels: { name: card.map((w) => w.w).join(' ').slice(0, 24) },
           } as never,
         });
