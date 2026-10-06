@@ -9,7 +9,7 @@ import { registerIpc, wireEvents } from './ipc.ts';
 import { projectService } from './project-service.ts';
 import { setBroadcast } from './events.ts';
 import { buildCsp, MOTION_SANDBOX_CSP } from './csp.ts';
-import { isMediaPathAllowed } from './media-access.ts';
+import { canServeMediaPath } from './media-access.ts';
 import { buildMotionSandboxHtml } from './motion-sandbox.ts';
 import { isKnownAssetPath } from './asset-service.ts';
 
@@ -311,11 +311,10 @@ function registerMediaProtocol(): void {
       // the renderer is untrusted: serve only project folders and registered assets, and
       // check again after resolving symlinks so a link inside a project cannot escape
       const roots = [getPaths().projectsRoot];
-      const allowed = (p: string) => isMediaPathAllowed(p, { roots, isKnownAssetPath });
       const real = await realpath(filePath).catch(() => null);
       if (!real) return new Response('Not found', { status: 404 });
       const realRoots = await Promise.all(roots.map((r) => realpath(r).catch(() => r)));
-      if (!allowed(filePath) || !(allowed(real) || isMediaPathAllowed(real, { roots: realRoots, isKnownAssetPath }))) {
+      if (!canServeMediaPath(filePath, real, { roots, realRoots, isKnownAssetPath })) {
         return new Response('Forbidden', { status: 403 });
       }
       const fileUrl = pathToFileURL(filePath).href;

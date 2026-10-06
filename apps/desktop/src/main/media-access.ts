@@ -24,3 +24,22 @@ export function isMediaPathAllowed(
   if (opts.roots.some((root) => isInsideRoot(filePath, root, platform))) return true;
   return opts.isKnownAssetPath(filePath);
 }
+
+/**
+ * Full cbmedia check, given the requested path and its symlink-resolved form. A registered
+ * asset is matched on the exact path stored at import (the user picked that file), because
+ * its resolved form can legitimately differ (8.3 short names, symlinks, mapped drives, case).
+ * Anything allowed only by living under a project root must still be under a root once
+ * resolved, so a symlink inside a project cannot point elsewhere.
+ */
+export function canServeMediaPath(
+  filePath: string,
+  realPath: string,
+  opts: { roots: string[]; realRoots: string[]; isKnownAssetPath: (path: string) => boolean; platform?: NodeJS.Platform },
+): boolean {
+  if (!isAbsolute(filePath)) return false;
+  if (opts.isKnownAssetPath(filePath)) return true;
+  const platform = opts.platform ?? process.platform;
+  const under = (p: string, roots: string[]) => roots.some((root) => isInsideRoot(p, root, platform));
+  return under(filePath, opts.roots) && (under(realPath, opts.realRoots) || under(realPath, opts.roots));
+}
