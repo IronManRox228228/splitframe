@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { streamText, tool as aiTool, type LanguageModel } from 'ai';
+import { streamText, stepCountIs, tool as aiTool, type LanguageModel } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -7,6 +7,9 @@ import { AGENT_SYSTEM_PROMPT } from '@cutboard/agent';
 import { getSettings, getSecret, getAgentKey, type AiSettings } from '../settings.ts';
 import { callTool, registry } from '../tools-bridge.ts';
 import { broadcast } from '../events.ts';
+import { editorContextCache } from '../editor-context.ts';
+import { buildMessages, formatEditorContext, type ChatTurn } from './messages.ts';
+import { splitImageResult, stripImageData } from './tool-output.ts';
 
 /**
  * Built-in agent (addendum §2, main prompt §6): Vercel AI SDK streaming with the shared
@@ -21,6 +24,9 @@ export interface ChatMessage {
 }
 
 const LOCAL_PROVIDERS = new Set(['ollama', 'llamacpp']);
+
+/** Tool-call rounds per user message (read, edit, verify, ...); one round was too few to finish an edit. */
+const MAX_AGENT_STEPS = 12;
 
 function providerModel(provider: string, model: string, key: string, ai: AiSettings): LanguageModel {
   switch (provider) {
@@ -54,7 +60,23 @@ function providerModel(provider: string, model: string, key: string, ai: AiSetti
 
 const aborts = new Map<string, AbortController>();
 
-export async function sendChatMessage(chatId: string, userMessage: string): Promise<void> {
+export async function sendChatMessage(chatId: string, userMessage: string, history: ChatTurn[] = []): Promise<void> {
+  // everything below runs inside the try: a failure while setting up (bad settings, an
+  // invalid server URL) must still end the turn in the UI instead of leaving it spinning
+  aborts.get(chatId)?.abort();
+  const controller = new AbortController();
+  aborts.set(chatId, controller);
+  try {
+    await runChatTurn(chatId, userMessage, history, controller);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    broadcastChat(chatId, 'chat:done', { error: message });
+  } finally {
+    if (aborts.get(chatId) === controller) aborts.delete(chatId);
+  }
+}
+
+async function runChatTurn(chatId: string, userMessage: string, history: ChatTurn[], controller: AbortController): Promise<void> {
   const settings = await getSettings();
   const provider = settings.ai?.agentProvider ?? 'anthropic';
   const model = settings.ai?.agentModel ?? '';
@@ -78,52 +100,63 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
     tools[tool.name] = aiTool({
       description: tool.description,
       inputSchema: z.object(shape as never),
-      execute: async (args: unknown) => {
-        broadcastChat(chatId, 'chat:tool', { tool: tool.name, args, phase: 'call' });
+      execute: async (args: unknown, options?: { toolCallId?: string }) => {
+        const callId = options?.toolCallId;
+        broadcastChat(chatId, 'chat:tool', { tool: tool.name, callId, args, phase: 'call' });
         try {
           const result = await callTool(tool.name, args, 'builtin-agent');
-          broadcastChat(chatId, 'chat:tool', { tool: tool.name, args, phase: 'result', result });
+          // the UI only needs to know an image was returned, not receive its bytes
+          broadcastChat(chatId, 'chat:tool', { tool: tool.name, callId, args, phase: 'result', result: stripImageData(result) });
           return result;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const hint = (err as { hint?: string }).hint;
-          broadcastChat(chatId, 'chat:tool', { tool: tool.name, args, phase: 'result', error: message });
+          broadcastChat(chatId, 'chat:tool', { tool: tool.name, callId, args, phase: 'result', error: message });
           return { error: hint ? `${message} (hint: ${hint})` : message };
         }
       },
-    });
-  }
-
-  const controller = new AbortController();
-  aborts.set(chatId, controller);
-
-  try {
-    // streamText reports failures (e.g. a local server that isn't running) via onError
-    // instead of throwing, which would otherwise end the reply silently
-    let streamError: unknown;
-    const result = streamText({
-      model: languageModel,
-      system: AGENT_SYSTEM_PROMPT,
-      messages: [{ role: 'user' as const, content: userMessage }],
-      tools,
-      maxOutputTokens: 4000,
-      abortSignal: controller.signal,
-      onError: ({ error }) => {
-        streamError = error;
+      // images (captureFrame) go to the model as images, not as megabytes of base64 text
+      toModelOutput: ({ output }: { output: unknown }) => {
+        const { image, rest } = splitImageResult(output);
+        if (!image) return { type: 'json', value: output } as never;
+        const text = JSON.stringify(rest);
+        if (LOCAL_PROVIDERS.has(provider)) return { type: 'text', value: `${text} (image not sent: local models are text-only here)` } as never;
+        return {
+          type: 'content',
+          value: [
+            { type: 'text', text },
+            { type: 'file', data: { type: 'data', data: image.data }, mediaType: image.mimeType },
+          ],
+        } as never;
       },
     });
-    for await (const chunk of result.textStream) {
-      broadcastChat(chatId, 'chat:delta', { text: chunk });
-    }
-    if (streamError) throw streamError;
-    const finish = await result.finishReason;
-    broadcastChat(chatId, 'chat:done', { finishReason: finish });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    broadcastChat(chatId, 'chat:done', { error: message });
-  } finally {
-    aborts.delete(chatId);
   }
+
+  // streamText reports failures (e.g. a local server that isn't running) via onError
+  // instead of throwing, which would otherwise end the reply silently
+  let streamError: unknown;
+  const result = streamText({
+    model: languageModel,
+    system: AGENT_SYSTEM_PROMPT,
+    messages: buildMessages(history, userMessage, formatEditorContext(editorContextCache.get())),
+    tools,
+    // keep going through tool results until the model has finished (or the step budget runs out)
+    stopWhen: stepCountIs(MAX_AGENT_STEPS),
+    maxOutputTokens: 4000,
+    abortSignal: controller.signal,
+    onError: ({ error }) => {
+      streamError = error;
+    },
+  });
+  for await (const chunk of result.textStream) {
+    broadcastChat(chatId, 'chat:delta', { text: chunk });
+  }
+  if (streamError) throw streamError;
+  const finish = await result.finishReason;
+  broadcastChat(chatId, 'chat:done', {
+    finishReason: finish,
+    ...(finish === 'tool-calls' ? { note: `Stopped after ${MAX_AGENT_STEPS} steps. Say "continue" to let the agent keep going.` } : {}),
+  });
 }
 
 export function abortChat(chatId: string): void {

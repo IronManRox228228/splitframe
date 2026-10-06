@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { AGENT_SYSTEM_PROMPT } from '@cutboard/agent';
 import { registry, callTool } from './tools-bridge.ts';
 import { getSettings } from './settings.ts';
+import { splitImageResult } from './agent/tool-output.ts';
 import { broadcast } from './events.ts';
 
 /**
@@ -45,7 +46,14 @@ async function buildServer(clientName: string): Promise<McpServer> {
       try {
         const result = await callTool(tool.name, args, `mcp:${clientName}` as never);
         logActivity({ at: new Date().toISOString(), client: clientName, tool: tool.name, ok: true, ms: Date.now() - t0 });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 1) }] };
+        // captureFrame returns an image: hand it over as MCP image content, not base64 text
+        const { image, rest } = splitImageResult(result);
+        return {
+          content: [
+            ...(image ? [{ type: 'image' as const, data: image.data, mimeType: image.mimeType }] : []),
+            { type: 'text' as const, text: JSON.stringify(rest, null, 1) },
+          ],
+        };
       } catch (err) {
         logActivity({ at: new Date().toISOString(), client: clientName, tool: tool.name, ok: false, ms: Date.now() - t0 });
         const message = err instanceof Error ? err.message : String(err);
