@@ -8,6 +8,14 @@ export function TopBar() {
   const setExportDialog = useEditor((s) => s.setExportDialog);
   const revealProjectDir = useEditor((s) => s.revealProjectDir);
   const [name, setName] = useState(doc?.project.name ?? '');
+  const [mcpOn, setMcpOn] = useState(false);
+
+  useEffect(() => {
+    void window.cutboard.mcpGetStatus().then((s) => setMcpOn(Boolean((s as { enabled?: boolean }).enabled)));
+    return window.cutboard.onEvent((envelope) => {
+      if (envelope.type === 'mcp:status') setMcpOn(Boolean((envelope.payload as { enabled?: boolean }).enabled));
+    });
+  }, []);
 
   useEffect(() => {
     setName(doc?.project.name ?? '');
@@ -42,11 +50,13 @@ export function TopBar() {
         }}
         className="bg-transparent border border-transparent hover:border-line focus:border-accent-dim rounded px-2 py-1 text-sm font-medium text-neutral-100 outline-none w-56"
       />
-      <span className="chip bg-surface-700 text-neutral-400">1080p · {doc.project.fps} fps</span>
+      <span className="chip bg-surface-700 text-neutral-400">
+        {doc.project.width}×{doc.project.height} · {doc.project.fps} fps
+      </span>
       <div className="flex-1" />
-      <span className="flex items-center gap-1.5 text-[11px] text-neutral-600">
-        <span className="w-1.5 h-1.5 rounded-full bg-neutral-700" />
-        MCP off
+      <span className={`flex items-center gap-1.5 text-[11px] ${mcpOn ? 'text-emerald-400' : 'text-neutral-600'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${mcpOn ? 'bg-emerald-400' : 'bg-neutral-700'}`} />
+        {mcpOn ? 'MCP on' : 'MCP off'}
       </span>
       <button className="btn-ghost" title="Reveal project folder" onClick={() => void revealProjectDir()}>
         Reveal

@@ -251,7 +251,8 @@ function buildMenu(): void {
         { type: 'separator' },
         { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: send('zoomIn') },
         { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: send('zoomOut') },
-        { label: 'Zoom to Fit', accelerator: 'Shift+Z', click: send('zoomFit') },
+        // no accelerator: a bare Shift+Z would swallow capital Z in text fields; the editor handles the key itself
+        { label: 'Zoom to Fit', click: send('zoomFit') },
       ],
     },
     {
@@ -272,7 +273,7 @@ function buildMenu(): void {
       submenu: [
         {
           label: 'Learn More',
-          click: () => void shell.openExternal('https://github.com/'),
+          click: () => void shell.openExternal('https://github.com/rakesh0x/OpenCardboard'),
         },
       ],
     },

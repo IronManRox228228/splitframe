@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { z } from 'zod';
 import { Op, opSchema, Actor } from '@cutboard/schema';
 import { projectService } from './project-service.ts';
@@ -42,7 +42,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       ffmpeg = null;
     }
     return {
-      version: '0.1.0',
+      version: app.getVersion(),
       platform: process.platform,
       projectsRoot: getPaths().projectsRoot,
       ffmpeg,
