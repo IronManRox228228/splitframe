@@ -142,8 +142,9 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   async createProject(name) {
-    await window.cutboard.createProject({ name: name ?? 'Untitled project' });
+    const project = await window.cutboard.createProject({ name: name ?? 'Untitled project' });
     await get().refreshRecents();
+    await get().openProject(project.id);
   },
 
   async openProject(id) {
