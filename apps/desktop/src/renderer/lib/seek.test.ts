@@ -45,4 +45,18 @@ describe('seekTo', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(resolved).toBe(true);
   });
+
+  it('for video, also waits until the sought frame is presented', async () => {
+    vi.useFakeTimers();
+    const el = fakeMedia(40) as ReturnType<typeof fakeMedia> & { requestVideoFrameCallback: (cb: () => void) => number };
+    // the new frame reaches the compositor 60ms after the seek itself has completed
+    el.requestVideoFrameCallback = (cb) => setTimeout(cb, 100) as unknown as number;
+    let resolved = false;
+    void seekTo(el as unknown as HTMLVideoElement, 5).then(() => { resolved = true; });
+    await vi.advanceTimersByTimeAsync(60);
+    expect(el.seeking).toBe(false);
+    expect(resolved).toBe(false); // seek done, frame not presented yet
+    await vi.advanceTimersByTimeAsync(60);
+    expect(resolved).toBe(true);
+  });
 });

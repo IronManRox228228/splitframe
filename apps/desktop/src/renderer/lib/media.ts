@@ -15,24 +15,37 @@ export function seekTo(el: HTMLVideoElement | HTMLAudioElement, seconds: number)
   const ready = () => !el.seeking && el.readyState >= 2;
   if (Math.abs(el.currentTime - target) < 0.004 && ready()) return Promise.resolve();
   return new Promise((resolve) => {
+    // After a seek completes Chromium can still hand drawImage the previously presented
+    // frame for a moment (reliably so in the hidden export/still windows), so for video also
+    // wait for requestVideoFrameCallback. It is registered before the seek starts so a fast
+    // seek can't present the frame before we are listening; if no new frame comes (the target
+    // maps to the frame already shown) a short grace period ends the wait.
+    const video = el as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number; cancelVideoFrameCallback?: (id: number) => void };
+    const watchFrames = typeof video.requestVideoFrameCallback === 'function';
+    let framed = !watchFrames;
+    const frameCb = watchFrames ? video.requestVideoFrameCallback!(() => { framed = true; check(); }) : 0;
+    let readyAt = 0;
     let settled = false;
     const done = () => {
       if (settled) return;
       settled = true;
       clearInterval(poll);
       clearTimeout(cap);
-      el.removeEventListener('seeked', done);
+      el.removeEventListener('seeked', check);
+      if (watchFrames && !framed) video.cancelVideoFrameCallback?.(frameCb);
       resolve();
     };
-    // Events (seeked/loadeddata) are unreliable in hidden windows, so also poll. currentTime
-    // reports the target as soon as it is assigned, before the frame is decoded, so poll the
-    // seeking flag instead; drawing earlier shows the previous frame (frame 0 when cold).
-    // The cap only guards against a seek that never finishes.
-    const poll = setInterval(() => {
-      if (ready()) done();
-    }, 16);
+    // currentTime reports the target as soon as it is assigned, before anything is decoded, so
+    // readiness comes from the seeking flag + readyState. Events are unreliable in hidden
+    // windows, hence the poll; the cap only guards against a seek that never finishes.
+    function check(): void {
+      if (!ready()) return;
+      if (!readyAt) readyAt = performance.now();
+      if (framed || performance.now() - readyAt > 120) done();
+    }
+    const poll = setInterval(check, 8);
     const cap = setTimeout(done, 3000);
-    el.addEventListener('seeked', done);
+    el.addEventListener('seeked', check);
     el.currentTime = target;
   });
 }
