@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canServeMediaPath, isInsideRoot, isMediaPathAllowed } from './media-access.ts';
+import { canServeMediaPath, isInsideRoot, isMediaPathAllowed, parseByteRange } from './media-access.ts';
 
 describe('isInsideRoot', () => {
   it('accepts files under the root and rejects siblings that merely share a prefix', () => {
@@ -57,5 +57,26 @@ describe('canServeMediaPath', () => {
 
   it('refuses unregistered files outside the roots', () => {
     expect(can('/etc/passwd', '/etc/passwd')).toBe(false);
+  });
+});
+
+describe('parseByteRange', () => {
+  it('serves open-ended, bounded and suffix ranges', () => {
+    expect(parseByteRange('bytes=0-', 1000)).toEqual({ start: 0, end: 999 });
+    expect(parseByteRange('bytes=100-199', 1000)).toEqual({ start: 100, end: 199 });
+    expect(parseByteRange('bytes=900-5000', 1000)).toEqual({ start: 900, end: 999 });
+    expect(parseByteRange('bytes=-100', 1000)).toEqual({ start: 900, end: 999 });
+  });
+
+  it('answers 416 for ranges past the end of the file', () => {
+    expect(parseByteRange('bytes=1000-', 1000)).toBe('unsatisfiable');
+    expect(parseByteRange('bytes=-0', 1000)).toBe('unsatisfiable');
+  });
+
+  it('falls back to the whole file for no header, multi-range or malformed headers', () => {
+    expect(parseByteRange(null, 1000)).toBeNull();
+    expect(parseByteRange('bytes=0-10,20-30', 1000)).toBeNull();
+    expect(parseByteRange('bytes=50-10', 1000)).toBeNull();
+    expect(parseByteRange('items=0-10', 1000)).toBeNull();
   });
 });

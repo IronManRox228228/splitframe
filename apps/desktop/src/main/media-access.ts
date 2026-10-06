@@ -43,3 +43,23 @@ export function canServeMediaPath(
   const under = (p: string, roots: string[]) => roots.some((root) => isInsideRoot(p, root, platform));
   return under(filePath, opts.roots) && (under(realPath, opts.realRoots) || under(realPath, opts.roots));
 }
+
+/**
+ * Parse a single-range `Range: bytes=...` header against a file of `size` bytes. Returns the
+ * inclusive byte span to serve as 206, 'unsatisfiable' for a 416, or null to serve the whole
+ * file as 200 (no header, a multi-range request, or one we don't understand).
+ */
+export function parseByteRange(header: string | null, size: number): { start: number; end: number } | 'unsatisfiable' | null {
+  const m = header ? /^bytes=(\d*)-(\d*)$/.exec(header.trim()) : null;
+  if (!m || (m[1] === '' && m[2] === '')) return null;
+  if (m[1] === '') {
+    // suffix range: the last N bytes
+    const n = Number(m[2]);
+    if (n === 0 || size === 0) return 'unsatisfiable';
+    return { start: Math.max(0, size - n), end: size - 1 };
+  }
+  const start = Number(m[1]);
+  if (start >= size) return 'unsatisfiable';
+  const end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1);
+  return end < start ? null : { start, end };
+}
