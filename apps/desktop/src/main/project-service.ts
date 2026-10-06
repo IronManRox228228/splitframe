@@ -18,6 +18,13 @@ export interface ProjectRow {
   updatedAt: string;
 }
 
+/** Folder of any project (not only the open one), e.g. for background jobs of another project. */
+export function resolveProjectDir(projectId: string): string {
+  const row = getDb().prepare(`SELECT id, name FROM projects WHERE id=?`).get(projectId) as { id: string; name: string } | undefined;
+  if (!row) throw new Error(`Project ${projectId} not found`);
+  return projectDir(getPaths().projectsRoot, row.id, row.name);
+}
+
 export class ProjectService {
   private current: { id: string; doc: TimelineDoc; dir: string } | null = null;
   private history = new History();

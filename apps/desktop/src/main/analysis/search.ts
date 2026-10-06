@@ -1,6 +1,7 @@
 import { getDb } from '../db.ts';
 import * as sqliteVec from 'sqlite-vec';
 import type { Transcript } from '@cutboard/schema';
+import { buildFtsQuery } from './search-query.ts';
 
 /**
  * Search stack (main prompt §5, addendum §3): FTS5 over transcript words, sqlite-vec
@@ -66,11 +67,12 @@ export interface WordHit {
 }
 
 /** Full-text word search → group consecutive hits into phrase ranges. */
-export function searchWords(query: string, limit = 60): WordHit[] {
+export function searchWords(query: string, limit = 200): WordHit[] {
   const db = getDb();
-  // sanitize FTS query: quote each term to avoid syntax errors on punctuation
-  const terms = query.trim().split(/\s+/).filter(Boolean).map((t) => `"${t.replaceAll('"', '')}"`);
-  if (terms.length === 0) return [];
+  // one word per row: terms are OR-ed (quoted, so punctuation can't break FTS syntax) and
+  // the caller keeps only groups that contain every term
+  const match = buildFtsQuery(query);
+  if (!match) return [];
   const rows = db
     .prepare(
       `SELECT w.asset_id, w.start_ms, w.end_ms, w.text
@@ -78,7 +80,7 @@ export function searchWords(query: string, limit = 60): WordHit[] {
        WHERE words_fts MATCH ?
        ORDER BY rank LIMIT ?`,
     )
-    .all(terms.join(' '), limit) as { asset_id: string; start_ms: number; end_ms: number; text: string }[];
+    .all(match, limit) as { asset_id: string; start_ms: number; end_ms: number; text: string }[];
   return rows.map((r) => ({ assetId: r.asset_id, text: r.text, startMs: r.start_ms, endMs: r.end_ms }));
 }
 
@@ -113,7 +115,64 @@ export function groupWordHits(hits: WordHit[]): { assetId: string; startMs: numb
   return groups.slice(0, 20);
 }
 
+/** Drop everything searchable about an asset (transcript words and scene vectors). */
+export function removeAssetIndex(assetId: string, sceneIds: string[] = []): void {
+  const db = getDb();
+  try {
+    db.prepare(`DELETE FROM words WHERE asset_id=?`).run(assetId);
+  } catch {
+    /* search schema not initialised yet */
+  }
+  removeSceneVectors(sceneIds);
+}
+
+export function removeSceneVectors(sceneIds: string[]): void {
+  if (!vectorSearchEnabled || sceneIds.length === 0) return;
+  const del = getDb().prepare(`DELETE FROM scene_vec WHERE scene_id=?`);
+  for (const id of sceneIds) del.run(id);
+}
+
 // ---------- embeddings ----------
+
+export const EMBEDDING_MODEL_ID = 'bge-small-en-v1.5 (embeddings)';
+const EMBEDDING_REPO = 'Xenova/bge-small-en-v1.5';
+
+async function embeddingCacheDir(): Promise<string> {
+  const { app } = await import('electron');
+  const { join } = await import('node:path');
+  return join(app.getPath('userData'), 'models', 'transformers-cache');
+}
+
+export async function isEmbeddingModelDownloaded(): Promise<boolean> {
+  const { existsSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  return existsSync(join(await embeddingCacheDir(), ...EMBEDDING_REPO.split('/'), 'onnx', 'model_quantized.onnx'));
+}
+
+type TransformersModule = {
+  pipeline: (task: string, model: string, opts: Record<string, unknown>) => Promise<unknown>;
+  env: { cacheDir?: string; allowRemoteModels: boolean };
+};
+
+/**
+ * The only place the embedding model is fetched from the network, and only when the user
+ * asks for it (Models panel). Everything else runs with remote models disabled.
+ */
+export async function downloadEmbeddingModel(): Promise<{ ok: boolean; error?: string }> {
+  const mod = (await import('@huggingface/transformers')) as unknown as TransformersModule;
+  mod.env.cacheDir = await embeddingCacheDir();
+  mod.env.allowRemoteModels = true;
+  try {
+    await mod.pipeline('feature-extraction', EMBEDDING_REPO, { quantized: true });
+    embedFn = null;
+    embedLoadAttempted = false; // let the next search pick the model up
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    mod.env.allowRemoteModels = false;
+  }
+}
 
 type EmbedFn = (texts: string[]) => Promise<number[][]>;
 let embedFn: EmbedFn | null = null;
@@ -121,22 +180,19 @@ let embedLoadAttempted = false;
 
 /**
  * Lazily load the bge-small embedding pipeline via transformers.js (local ONNX, no data
- * leaves the machine). Returns null when the model isn't downloaded/available.
+ * leaves the machine). Returns null when the model hasn't been downloaded by the user.
  */
 async function getEmbedFn(): Promise<EmbedFn | null> {
   if (embedFn) return embedFn;
   if (embedLoadAttempted) return null;
   embedLoadAttempted = true;
   try {
-    const { app } = await import('electron');
-    const { join } = await import('node:path');
-    const cacheDir = join(app.getPath('userData'), 'models', 'transformers-cache');
-    const mod = (await import('@huggingface/transformers')) as unknown as {
-      pipeline: (task: string, model: string, opts: Record<string, unknown>) => Promise<unknown>;
-      env: { cacheDir?: string; allowRemoteModels: boolean };
-    };
-    mod.env.cacheDir = cacheDir;
-    const extractor = (await mod.pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5', {
+    const mod = (await import('@huggingface/transformers')) as unknown as TransformersModule;
+    mod.env.cacheDir = await embeddingCacheDir();
+    // never fetch silently: without the downloaded model, semantic search is simply off
+    mod.env.allowRemoteModels = false;
+    if (!(await isEmbeddingModelDownloaded())) return null;
+    const extractor = (await mod.pipeline('feature-extraction', EMBEDDING_REPO, {
       quantized: true,
     })) as (input: string[], opts: Record<string, unknown>) => Promise<{ tolist: () => number[][] }>;
     embedFn = async (texts: string[]) => {
