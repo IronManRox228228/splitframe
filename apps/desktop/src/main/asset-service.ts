@@ -129,15 +129,17 @@ async function importFile(filePath: string): Promise<Asset> {
     asset.height = probe.height;
     asset.fps = probe.fps;
     asset.hasAudio = probe.hasAudio;
+    if (probe.codec) asset.metadata = { ...asset.metadata, codec: probe.codec };
     asset.stage = 'queued';
     saveAsset(asset);
-    db.prepare(`UPDATE assets SET kind=?, duration_ms=?, width=?, height=?, fps=?, has_audio=? WHERE id=?`).run(
+    db.prepare(`UPDATE assets SET kind=?, duration_ms=?, width=?, height=?, fps=?, has_audio=?, metadata=? WHERE id=?`).run(
       asset.kind,
       asset.durationMs,
       asset.width,
       asset.height,
       asset.fps ?? null,
       asset.hasAudio ? 1 : 0,
+      JSON.stringify(asset.metadata),
       id,
     );
   } catch (err) {

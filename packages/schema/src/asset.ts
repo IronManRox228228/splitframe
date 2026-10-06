@@ -44,6 +44,8 @@ export const assetSchema = z.object({
     .object({
       location: z.string().optional(),
       capturedAt: z.string().optional(),
+      /** video codec reported by ffprobe (lets export use the original when Chromium can decode it) */
+      codec: z.string().optional(),
     })
     .default({}),
   createdAt: z.string(),
