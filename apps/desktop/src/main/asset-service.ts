@@ -312,8 +312,9 @@ export function getAssets(projectId: string): Asset[] {
 export function isKnownAssetPath(path: string): boolean {
   const db = getDb();
   const row = db
-    .prepare(`SELECT 1 FROM assets WHERE path=?1 OR proxy_path=?1 OR thumb_path=?1 OR waveform_path=?1 LIMIT 1`)
-    .get(path);
+    // named parameter: better-sqlite3 counts each `?1` as a separate binding and throws
+    .prepare(`SELECT 1 FROM assets WHERE path=@p OR proxy_path=@p OR thumb_path=@p OR waveform_path=@p LIMIT 1`)
+    .get({ p: path });
   return row !== undefined;
 }
 
