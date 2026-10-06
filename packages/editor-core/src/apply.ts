@@ -27,16 +27,25 @@ export interface ApplyResult {
   inverse: Op[];
 }
 
+export interface ApplyOptions {
+  /**
+   * Reject edits to items on locked tracks (default true). Undo/redo replay recorded
+   * inverses and pass false, so a track locked after an edit can still be undone.
+   */
+  enforceLocks?: boolean;
+}
+
 /**
  * Apply one op to a doc and return a new doc plus its inverse.
  * Pure: the input doc is never mutated. Atomic: on error the input doc is untouched.
  */
-export function applyOp(doc: TimelineDoc, op: Op): ApplyResult {
+export function applyOp(doc: TimelineDoc, op: Op, opts: ApplyOptions = {}): ApplyResult {
   const parsed = opSchema.parse(op); // throws ZodError on malformed ops
+  if (opts.enforceLocks !== false) assertTracksUnlocked(doc, parsed);
   const next = clone(doc);
   switch (parsed.type) {
     case 'batch':
-      return applyBatch(doc, parsed.ops);
+      return applyBatch(doc, parsed.ops, opts);
     case 'project.rename':
       return simple(next, doc, (d) => {
         d.project.name = parsed.name;
@@ -125,11 +134,11 @@ export function applyOp(doc: TimelineDoc, op: Op): ApplyResult {
 }
 
 /** Apply a list of ops; inverses are flattened in reverse so they undo the whole list. */
-export function applyOps(doc: TimelineDoc, ops: Op[]): ApplyResult {
+export function applyOps(doc: TimelineDoc, ops: Op[], opts: ApplyOptions = {}): ApplyResult {
   let current = doc;
   const inverses: Op[] = [];
   for (const op of ops) {
-    const r = applyOp(current, op);
+    const r = applyOp(current, op, opts);
     current = r.doc;
     inverses.unshift(...r.inverse);
   }
@@ -146,13 +155,66 @@ function simple(
   return { doc: next, inverse };
 }
 
-function applyBatch(doc: TimelineDoc, ops: Op[]): ApplyResult {
+function applyBatch(doc: TimelineDoc, ops: Op[], opts: ApplyOptions): ApplyResult {
   for (const op of ops) {
     if (op.type === 'batch') {
       throw new OpError('Nested batch ops are not allowed.', 'Flatten the op list.');
     }
   }
-  return applyOps(doc, ops);
+  return applyOps(doc, ops, opts);
+}
+
+/** Tracks an op would modify: its items' tracks and any destination track. */
+function assertTracksUnlocked(doc: TimelineDoc, op: Op): void {
+  const trackIds = new Set<string>();
+  const ofItem = (itemId: string) => {
+    const item = doc.items.find((i) => i.id === itemId);
+    if (item) trackIds.add(item.trackId);
+  };
+  switch (op.type) {
+    case 'item.add':
+      trackIds.add(op.item.trackId);
+      break;
+    case 'item.remove':
+      op.itemIds.forEach(ofItem);
+      break;
+    case 'item.update':
+      ofItem(op.itemId);
+      if (op.patch.trackId) trackIds.add(op.patch.trackId);
+      break;
+    case 'item.move':
+      ofItem(op.itemId);
+      if (op.trackId) trackIds.add(op.trackId);
+      break;
+    case 'item.clone': {
+      // reading from a locked track is fine; the copy lands on the destination
+      const src = doc.items.find((i) => i.id === op.itemId);
+      trackIds.add(op.trackId ?? src?.trackId ?? '');
+      break;
+    }
+    case 'track.remove':
+      trackIds.add(op.trackId);
+      break;
+    case 'item.trim':
+    case 'item.split':
+    case 'item.slip':
+    case 'item.setSpeed':
+    case 'item.setTimeRemap':
+    case 'item.setKeyframes':
+    case 'effect.add':
+    case 'effect.remove':
+    case 'effect.update':
+    case 'mask.add':
+    case 'mask.remove':
+      ofItem(op.itemId);
+      break;
+    default:
+      return;
+  }
+  for (const id of trackIds) {
+    const track = doc.tracks.find((t) => t.id === id);
+    if (track?.locked) throw new OpError(`Track "${track.name}" is locked.`, 'Unlock the track first.');
+  }
 }
 
 // ---------- tracks ----------
@@ -381,7 +443,12 @@ function applyItemUpdate(
     }
     inversePatch.keyframes = kf;
   }
-  if (patch.labels !== undefined) inversePatch.labels = clone(item.labels);
+  if (patch.labels !== undefined) {
+    // labels merge, so the inverse names every touched key (undefined = remove it again)
+    const l: Record<string, string | undefined> = {};
+    for (const key of Object.keys(patch.labels)) l[key] = (item.labels as Record<string, string | undefined>)[key];
+    inversePatch.labels = l;
+  }
   if (patch.props !== undefined) inversePatch.props = clone(item.props);
 
   return simple(next, doc, (d) => {
@@ -399,10 +466,18 @@ function applyItemUpdate(
     if (patch.masks !== undefined) target.masks = clone(patch.masks);
     if (patch.keyframes !== undefined) {
       for (const [prop, kfs] of Object.entries(patch.keyframes)) {
-        target.keyframes[prop] = clone(kfs);
+        if (kfs.length === 0) delete target.keyframes[prop];
+        else target.keyframes[prop] = clone(kfs);
       }
     }
-    if (patch.labels !== undefined) target.labels = { ...target.labels, ...patch.labels };
+    if (patch.labels !== undefined) {
+      const labels: Record<string, string | undefined> = { ...target.labels };
+      for (const [key, value] of Object.entries(patch.labels)) {
+        if (value === undefined) delete labels[key];
+        else labels[key] = value;
+      }
+      target.labels = labels;
+    }
     if (patch.props !== undefined) target.props = clone(patch.props) as typeof target.props;
   }, [{ type: 'item.update', itemId: op.itemId, patch: inversePatch }]);
 }
@@ -464,28 +539,19 @@ function computeTrim(doc: TimelineDoc, op: TrimSpec) {
 
   if (op.edge === 'in') {
     const delta = op.frame - oldStart; // >0: shorten head, <0: extend head
-    if (isMedia) {
-      // keep sourceIn >= 0: limit how far the head can extend
-      const minDelta = item.speed > 0 ? Math.ceil(-oldSourceIn / item.speed) : delta;
-      const clampedDelta = Math.max(delta, minDelta);
-      newSourceIn = oldSourceIn + Math.round(clampedDelta * item.speed);
-      if (op.ripple) {
-        newStart = oldStart;
-        newDuration = Math.max(1, oldEnd - (oldStart + clampedDelta));
-        downstreamDelta = -clampedDelta;
-      } else {
-        newStart = oldStart + clampedDelta;
-        newDuration = Math.max(1, oldEnd - newStart);
-      }
+    // Furthest the head may extend: keep sourceIn >= 0 for media and, when the start moves
+    // (plain trim), keep the start >= 0. Furthest it may shorten: leave one frame.
+    const sourceLimit = isMedia && item.speed > 0 ? Math.ceil(-oldSourceIn / item.speed) : -Infinity;
+    const minDelta = Math.max(sourceLimit, op.ripple ? -Infinity : -oldStart);
+    const clampedDelta = Math.min(item.durationFrames - 1, Math.max(delta, minDelta));
+    if (isMedia) newSourceIn = oldSourceIn + Math.round(clampedDelta * item.speed);
+    if (op.ripple) {
+      newStart = oldStart;
+      newDuration = oldEnd - (oldStart + clampedDelta);
+      downstreamDelta = -clampedDelta;
     } else {
-      if (op.ripple) {
-        newStart = oldStart;
-        newDuration = Math.max(1, oldEnd - (oldStart + delta));
-        downstreamDelta = -delta;
-      } else {
-        newStart = Math.min(Math.max(0, op.frame), oldEnd - 1);
-        newDuration = Math.max(1, oldEnd - newStart);
-      }
+      newStart = oldStart + clampedDelta;
+      newDuration = oldEnd - newStart;
     }
   } else {
     const newEnd = Math.max(op.frame, oldStart + 1);
@@ -517,17 +583,11 @@ function applyItemTrim(
     return i;
   });
 
-  const inverse: Op[] = [];
-  // Ripple trims keep the item's start anchored (in-edge) so restoring the duration is
-  // always an out-edge trim; plain in-trims moved the start and are restored with one.
-  if (op.ripple || op.edge === 'out') {
-    inverse.push({ type: 'item.trim', itemId: op.itemId, edge: 'out', frame: t.oldEnd, ripple: false });
-  } else {
-    inverse.push({ type: 'item.trim', itemId: op.itemId, edge: 'in', frame: t.oldStart, ripple: false });
-  }
-  if (t.isMedia && t.newSourceIn !== t.oldSourceIn) {
-    inverse.push({ type: 'item.update', itemId: op.itemId, patch: { sourceInFrame: t.oldSourceIn } });
-  }
+  // Restore the old geometry directly: re-running a trim would re-derive sourceIn from a
+  // rounded value and could land a frame off at fractional speeds.
+  const restore: ItemPatch = { startFrame: t.oldStart, durationFrames: t.item.durationFrames };
+  if (t.isMedia && t.newSourceIn !== t.oldSourceIn) restore.sourceInFrame = t.oldSourceIn;
+  const inverse: Op[] = [{ type: 'item.update', itemId: op.itemId, patch: restore }];
   if (t.downstreamDelta !== 0) {
     for (const i of doc.items) {
       if (i.trackId === t.item.trackId && i.id !== op.itemId && i.startFrame >= t.oldEnd) {
@@ -594,6 +654,12 @@ function applyItemClone(
   const item = requireItem(doc, op.itemId);
   if (doc.items.some((i) => i.id === op.newItemId)) {
     throw new OpError(`Item ${op.newItemId} already exists.`);
+  }
+  if (op.trackId !== undefined && op.trackId !== item.trackId) {
+    const track = requireTrack(doc, op.trackId);
+    if (!trackAllowsItem(track.kind, item.type)) {
+      throw new OpError(`A ${item.type} item cannot live on the "${track.kind}" track "${track.name}".`);
+    }
   }
   const copy: Item = {
     ...clone(item),

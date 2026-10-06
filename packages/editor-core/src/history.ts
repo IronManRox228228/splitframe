@@ -36,7 +36,8 @@ export class History {
     if (ops.length === 0) return;
     if (this.openGroup) {
       this.openGroup.ops.push(...ops);
-      this.openGroup.inverses.push(...inverses);
+      // undo applies a group's inverses in order, so later pushes must come first
+      this.openGroup.inverses.unshift(...inverses);
     } else {
       this.commit({ ops: [...ops], inverses: [...inverses], label, actor });
     }

@@ -1,5 +1,5 @@
 import { getDb } from './db.ts';
-import { applyOp, applyOps, createEmptyDoc, parseDoc, History, OpError } from '@cutboard/editor-core';
+import { applyOps, createEmptyDoc, parseDoc, History, OpError } from '@cutboard/editor-core';
 import type { UndoGroup } from '@cutboard/editor-core';
 import { Actor, Op, TimelineDoc, assetSchema, beatMapSchema, sceneSchema, transcriptSchema, newId } from '@cutboard/schema';
 import type { ProjectBundle } from '@cutboard/schema';
@@ -166,7 +166,7 @@ export class ProjectService {
     if (!this.current) return null;
     const group = this.history.undo();
     if (!group) return null;
-    const result = applyOps(this.current.doc, group.inverses);
+    const result = applyOps(this.current.doc, group.inverses, { enforceLocks: false });
     this.persistDoc(result.doc);
     this.current.doc = result.doc;
     return { applied: group.inverses, label: group.label ?? null };
@@ -176,7 +176,7 @@ export class ProjectService {
     if (!this.current) return null;
     const group = this.history.redo();
     if (!group) return null;
-    const result = applyOps(this.current.doc, group.ops);
+    const result = applyOps(this.current.doc, group.ops, { enforceLocks: false });
     this.persistDoc(result.doc);
     this.current.doc = result.doc;
     return { applied: group.ops, label: group.label ?? null };
