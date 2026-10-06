@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { newId, frameSchema, type Op } from '@cutboard/schema';
-import { createItem, docDurationFrames } from '@cutboard/editor-core';
+import { createItem, docDurationFrames, trackAllowsItem } from '@cutboard/editor-core';
 import type { ToolDef } from '../registry.ts';
 
 /**
@@ -27,7 +27,7 @@ function summarize(doc: unknown, itemIds: string[]): unknown {
   return { applied: true, items, itemCount: d?.items?.length ?? 0 };
 }
 
-function requireSnapshot(snap: unknown): { doc: { tracks: { id: string; kind: string; name: string; locked: boolean }[]; items: { id: string; trackId: string; startFrame: number; durationFrames: number }[]; project: { fps: number }; markers: unknown[] }; assets: { id: string; kind: string }[] } {
+function requireSnapshot(snap: unknown): { doc: { tracks: { id: string; kind: string; name: string; locked: boolean }[]; items: { id: string; trackId: string; startFrame: number; durationFrames: number }[]; project: { fps: number }; markers: unknown[] }; assets: { id: string; kind: string; durationMs?: number }[] } {
   const s = snap as never;
   if (!s || typeof s !== 'object' || !('doc' in s)) {
     throw new Error('No project open. Open or create a project first.');
@@ -52,25 +52,30 @@ export const addClip: ToolDef = {
     const asset = snap.assets.find((a) => a.id === input.assetId);
     if (!asset) throw new Error(`Asset ${input.assetId} not found. Call listAssets first.`);
     const fps = snap.doc.project.fps;
+    const itemType = asset.kind === 'audio' ? 'audio' : asset.kind === 'image' ? 'image' : 'video';
+    // the first unlocked track that can hold this kind of item (audio goes to an audio track)
     const track =
       (input.trackId ? snap.doc.tracks.find((t) => t.id === input.trackId) : undefined) ??
-      snap.doc.tracks.find((t) => t.kind === 'video');
-    if (!track) throw new Error('No video track available. Create one with the UI or use batchEdit after track.add.');
+      snap.doc.tracks.find((t) => !t.locked && trackAllowsItem(t.kind as never, itemType));
+    if (!track) throw new Error(`No unlocked track can hold a ${itemType} clip. Create one with the UI or use batchEdit after track.add.`);
     if (track.locked) throw new Error(`Track "${track.name}" is locked. Unlock it first.`);
     const start =
       input.startFrame ??
       snap.doc.items
         .filter((i) => i.trackId === track.id)
         .reduce((end, i) => Math.max(end, i.startFrame + i.durationFrames), 0);
+    // default = the whole asset from sourceIn (stills get 5 seconds)
+    const sourceIn = input.sourceInFrame ?? 0;
+    const assetFrames = asset.durationMs ? Math.round((asset.durationMs / 1000) * fps) : Math.round(fps);
     const duration =
-      input.durationFrames ?? Math.max(1, Math.round(fps)); // refined below for media
-    const item = createItem(asset.kind === 'audio' ? 'audio' : asset.kind === 'image' ? 'image' : 'video', {
+      input.durationFrames ?? (itemType === 'image' ? Math.round(fps * 5) : Math.max(1, assetFrames - sourceIn));
+    const item = createItem(itemType, {
       id: newId('itm'),
       trackId: track.id,
       startFrame: Math.max(0, start),
       durationFrames: duration,
       assetId: asset.id,
-      sourceInFrame: input.sourceInFrame ?? 0,
+      sourceInFrame: sourceIn,
       labels: { name: `clip` },
     } as never);
     const ops: Op[] = [{ type: 'item.add', item: item as never }];
@@ -97,8 +102,9 @@ export const addText: ToolDef = {
   mutates: true,
   async handler(input, ctx) {
     const snap = requireSnapshot(await ctx.getSnapshot());
-    const track = (input.trackId ? snap.doc.tracks.find((t) => t.id === input.trackId) : undefined) ?? snap.doc.tracks.find((t) => t.kind === 'text');
-    if (!track) throw new Error('No text track available.');
+    const track = (input.trackId ? snap.doc.tracks.find((t) => t.id === input.trackId) : undefined) ?? snap.doc.tracks.find((t) => t.kind === 'text' && !t.locked);
+    if (!track) throw new Error('No unlocked text track available.');
+    if (track.locked) throw new Error(`Track "${track.name}" is locked. Unlock it first.`);
     const item = createItem('text', {
       id: newId('itm'),
       trackId: track.id,
@@ -108,7 +114,7 @@ export const addText: ToolDef = {
       labels: { name: input.text.slice(0, 24) },
       props: { text: input.text, style: input.style ?? {} } as never,
     } as never);
-    const { inverses } = await ctx.applyOps([{ type: 'item.add', item: item as never }], ctx.actor, 'addText');
+    await ctx.applyOps([{ type: 'item.add', item: item as never }], ctx.actor, 'addText');
     return summarize(await ctx.getSnapshot(), [item.id]);
   },
 };
@@ -144,7 +150,7 @@ export const updateItem: ToolDef = {
   }),
   mutates: true,
   async handler(input, ctx) {
-    const { inverses } = await ctx.applyOps(
+    await ctx.applyOps(
       [{ type: 'item.update', itemId: input.itemId, patch: input.patch as never }],
       ctx.actor,
       'updateItem',
@@ -334,10 +340,11 @@ export const addAudio: ToolDef = {
     const asset = snap.assets.find((a) => a.id === input.assetId);
     if (!asset) throw new Error(`Asset ${input.assetId} not found.`);
     if (asset.kind !== 'audio') throw new Error(`Asset ${input.assetId} is ${asset.kind}, not audio. Use addClip for video.`);
-    const track = snap.doc.tracks.find((t) => t.kind === 'audio');
-    if (!track) throw new Error('No audio track available.');
+    const track = snap.doc.tracks.find((t) => t.kind === 'audio' && !t.locked);
+    if (!track) throw new Error('No unlocked audio track available.');
     const fps = snap.doc.project.fps;
-    const duration = input.durationFrames ?? Math.max(1, Math.round(fps * 10));
+    // default = the whole asset
+    const duration = input.durationFrames ?? Math.max(1, asset.durationMs ? Math.round((asset.durationMs / 1000) * fps) : Math.round(fps * 10));
     const item = createItem('audio', {
       id: newId('itm'),
       trackId: track.id,

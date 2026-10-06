@@ -68,7 +68,7 @@ export const getTimeline: ToolDef = {
 export const getTranscript: ToolDef = {
   name: 'getTranscript',
   description:
-    'Get the word-level transcript of an asset (word, startMs, endMs). Available after analysis (milestone: ingestion); returns an empty word list with a clear status until then.',
+    'Get the word-level transcript of an asset (word, startMs, endMs). Available once the asset has been analyzed and transcription ran; otherwise returns an empty word list with a clear status.',
   input: z.object({ assetId: z.string() }),
   mutates: false,
   async handler(input, ctx) {
@@ -79,7 +79,7 @@ export const getTranscript: ToolDef = {
       assetId: input.assetId,
       status: asset?.status ?? 'missing',
       words: transcript?.words ?? [],
-      note: transcript ? undefined : 'Transcription has not run for this asset yet (ASR arrives with the ingestion milestone).',
+      note: transcript ? undefined : 'No transcript for this asset: it has no speech, is still being analyzed, or transcription is unavailable (no whisper model installed).',
     };
   },
 };
