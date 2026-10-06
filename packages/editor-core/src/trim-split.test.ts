@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newId } from '@cutboard/schema';
 import { applyOp, applyOps, makeDoc, videoItem, audioItem } from './test-helpers.ts';
+import { createItem } from './timeline-doc.ts';
 import { itemEnd, sourceOutFrame } from './timeline-doc.ts';
 
 describe('trim (plain)', () => {
@@ -282,6 +283,39 @@ describe('clone', () => {
     });
     const c = d2.items.find((i) => i.id === cloneId)!;
     expect(c.startFrame).toBe(60);
+    const { doc: d3 } = applyOps(d2, inverse);
+    expect(d3.items).toEqual(d1.items);
+  });
+});
+
+describe('splitting captions', () => {
+  it('re-bases word times for the second half and restores them on undo', () => {
+    const doc = makeDoc();
+    const textTrack = doc.tracks.find((t) => t.kind === 'text')!;
+    const caption = createItem('caption', {
+      id: newId('itm'),
+      trackId: textTrack.id,
+      startFrame: 100,
+      durationFrames: 90, // 3s at 30fps
+      props: {
+        words: [
+          { w: 'one', startMs: 0, endMs: 900 },
+          { w: 'two', startMs: 1000, endMs: 1900 },
+          { w: 'three', startMs: 2000, endMs: 2900 },
+        ],
+        style: { fontFamily: 'Inter', fontSize: 64, color: '#fff' },
+      },
+    } as never);
+    const { doc: d1 } = applyOp(doc, { type: 'item.add', item: caption });
+    const newItemId = newId('itm');
+    const { doc: d2, inverse } = applyOp(d1, { type: 'item.split', itemId: caption.id, atFrame: 130, newItemId }); // cut at 1000ms
+    const a = d2.items.find((i) => i.id === caption.id)!.props as { words: { w: string }[] };
+    const b = d2.items.find((i) => i.id === newItemId)!.props as { words: { w: string; startMs: number; endMs: number }[] };
+    expect(a.words.map((w) => w.w)).toEqual(['one']);
+    expect(b.words).toEqual([
+      { w: 'two', startMs: 0, endMs: 900 },
+      { w: 'three', startMs: 1000, endMs: 1900 },
+    ]);
     const { doc: d3 } = applyOps(d2, inverse);
     expect(d3.items).toEqual(d1.items);
   });

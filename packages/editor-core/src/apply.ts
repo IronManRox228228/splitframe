@@ -625,6 +625,16 @@ function applyItemSplit(
       .map((p) => ({ ...p, frame: p.frame - splitLocal })),
   };
   a.timeRemap = item.timeRemap.filter((p) => p.frame < splitLocal);
+  // caption word times are relative to the item start: re-base the second half
+  const splitsCaption = item.type === 'caption';
+  if (splitsCaption && a.type === 'caption' && b.type === 'caption') {
+    const cutMs = Math.round((splitLocal / doc.project.fps) * 1000);
+    a.props = { ...a.props, words: a.props.words.filter((w) => w.startMs < cutMs) };
+    b.props = {
+      ...b.props,
+      words: b.props.words.filter((w) => w.endMs > cutMs).map((w) => ({ ...w, startMs: w.startMs - cutMs, endMs: w.endMs - cutMs })),
+    };
+  }
   // split keyframe lists at the cut
   a.keyframes = {};
   b.keyframes = {};
@@ -637,7 +647,16 @@ function applyItemSplit(
 
   const inverse: Op[] = [
     { type: 'item.remove', itemIds: [op.newItemId], ripple: false },
-    { type: 'item.update', itemId: item.id, patch: { durationFrames: item.durationFrames, timeRemap: clone(item.timeRemap), keyframes: clone(item.keyframes) } },
+    {
+      type: 'item.update',
+      itemId: item.id,
+      patch: {
+        durationFrames: item.durationFrames,
+        timeRemap: clone(item.timeRemap),
+        keyframes: clone(item.keyframes),
+        ...(splitsCaption ? { props: clone(item.props) } : {}),
+      },
+    },
   ];
   return simple(next, doc, (d) => {
     const idx = d.items.findIndex((i) => i.id === item.id)!;
