@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { Op, opSchema, Actor } from '@cutboard/schema';
 import { projectService } from './project-service.ts';
-import { checkAssetAvailability, getAsset, importFiles, relinkAsset, removeAsset, onAssetEvent } from './asset-service.ts';
+import { checkAssetAvailability, getAsset, importFiles, isMediaFile, relinkAsset, removeAsset, onAssetEvent } from './asset-service.ts';
 import { exportService, EXPORT_PRESETS, registerExportWindowIpc, onExportEvent } from './export-service.ts';
 import { jobs, JobRow, onJobEvent } from './jobs.ts';
 import { getFfmpeg, FfmpegInfo } from './ffmpeg.ts';
@@ -38,6 +38,17 @@ const chatSendInput = z.object({
     .default([]),
 });
 
+// a sender without a window (closed mid-request) falls back to an app-modal dialog
+const showOpen = (win: BrowserWindow | null, options: Electron.OpenDialogOptions) =>
+  win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options);
+
+const editorContextInput = z.object({
+  selection: z.array(z.string().max(80)).max(500).optional(),
+  playheadFrame: z.number().int().nonnegative().optional(),
+  highlightedRange: z.object({ startFrame: z.number().int(), endFrame: z.number().int() }).nullable().optional(),
+  openProjectId: z.string().max(80).optional(),
+});
+
 const actorFor = (event: Electron.IpcMainInvokeEvent): Actor => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const isExportWindow = win?.webContents.getURL().includes('export.html') ?? false;
@@ -63,7 +74,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
 
   ipcMain.handle('dialog:pickMedia', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
-    const res = await dialog.showOpenDialog(win!, {
+    const res = await showOpen(win, {
       title: 'Import media',
       properties: ['openFile', 'multiSelections'],
       filters: [
@@ -76,7 +87,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
 
   ipcMain.handle('dialog:pickFile', async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
-    const res = await dialog.showOpenDialog(win!, {
+    const res = await showOpen(win, {
       title: 'Choose file',
       properties: ['openFile'],
     });
@@ -144,6 +155,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     'assets:relink',
     (_e, input: { assetId: string; newPath: string }) => {
       const parsed = z.object({ assetId: z.string(), newPath: z.string().min(1) }).parse(input);
+      if (!isMediaFile(parsed.newPath)) throw new Error('Choose a supported media file.');
       return relinkAsset(parsed.assetId, parsed.newPath);
     },
   );
@@ -173,7 +185,9 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   ipcMain.handle('exports:cancel', (_e, exportId: string) => exportService.cancel(exportId));
   ipcMain.handle('exports:revealPath', (_e, path: string) => {
     z.string().min(1).parse(path);
-    void import('electron').then(({ shell }) => shell.showItemInFolder(path));
+    // only reveal files this app exported; the renderer must not probe arbitrary paths
+    if (!exportService.list().some((row) => row.outputPath === path)) return false;
+    shell.showItemInFolder(path);
     return true;
   });
   ipcMain.handle('exports:otio', async (_e) => {
@@ -193,8 +207,9 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   });
 
   // ---------- editor context (for agent tools: "the selected clip", "at this point") ----------
-  ipcMain.on('editorContext:set', (_e, ctx: { selection?: string[]; playheadFrame?: number; highlightedRange?: { startFrame: number; endFrame: number } | null }) => {
-    editorContextCache.set(ctx);
+  ipcMain.on('editorContext:set', (_e, ctx: unknown) => {
+    const parsed = editorContextInput.safeParse(ctx);
+    if (parsed.success) editorContextCache.set(parsed.data);
   });
 
   // ---------- tools (shared front door for the built-in chat; MCP has its own) ----------
@@ -289,7 +304,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   ipcMain.handle(
     'ai:setConfig',
     (_e, patch: { agentProvider?: string; agentModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
-      z.object({
+      const parsed = z.object({
         agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'llamacpp']).optional(),
         agentModel: z.string().max(120).optional(),
         vlmProvider: z.enum(['none', 'ollama', 'anthropic', 'openai']).optional(),
@@ -301,7 +316,8 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
         anthropicKey: z.string().max(400).optional(),
         openaiKey: z.string().max(400).optional(),
       }).parse(patch);
-      return setVlmConfig(patch as never).then(() => true);
+      // use the validated copy: it drops keys the schema doesn't know instead of merging them into settings.json
+      return setVlmConfig(parsed as never).then(() => true);
     },
   );
 

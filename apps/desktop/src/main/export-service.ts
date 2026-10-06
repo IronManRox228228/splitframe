@@ -62,7 +62,10 @@ class ExportService {
 
   async start(presetName: string): Promise<ExportRow> {
     if (!projectService.isOpen) throw new Error('No project open');
-    const preset = EXPORT_PRESETS.find((p) => p.name === presetName) ?? EXPORT_PRESETS[0]!;
+    const preset = EXPORT_PRESETS.find((p) => p.name === presetName);
+    if (!preset) {
+      throw new Error(`Unknown export preset "${presetName}". Available: ${EXPORT_PRESETS.map((p) => p.name).join(', ')}.`);
+    }
     const projectId = projectService.projectId;
     const doc = projectService.doc;
     const totalFrames = docDurationFrames(doc);
@@ -149,6 +152,11 @@ class ExportService {
 
   handleWindowError(exportId: string, message: string): void {
     this.fail(exportId, message);
+  }
+
+  ownsWindow(exportId: string, sender: Electron.WebContents): boolean {
+    const win = this.active.get(exportId)?.window;
+    return Boolean(win && !win.isDestroyed() && win.webContents === sender);
   }
 
   async cancel(exportId: string): Promise<void> {
@@ -348,6 +356,15 @@ export async function renderStill(frame: number, width?: number, height?: number
   }
 }
 
+/**
+ * Frames/done/error messages are only honoured from the window that export created, so
+ * the editor window (or anything it hosts) cannot feed or abort a running export.
+ */
+function isTrustedRenderSender(sender: Electron.WebContents, exportId: string): boolean {
+  if (exportId.startsWith('still-')) return stillWaiters.has(exportId);
+  return exportService.ownsWindow(exportId, sender);
+}
+
 /** IPC surface for the hidden export/still windows (registered at app boot). */
 export function registerExportWindowIpc(): void {
   ipcMain.handle('export:bundle', (_e, exportId: string) => {
@@ -362,7 +379,8 @@ export function registerExportWindowIpc(): void {
     }
     return { doc, mediaUrls: Object.fromEntries(mediaUrls) };
   });
-  ipcMain.on('export:window:frame', (_e, exportId: string, index: number, buffer: ArrayBuffer, width: number, height: number) => {
+  ipcMain.on('export:window:frame', (e, exportId: string, index: number, buffer: ArrayBuffer, width: number, height: number) => {
+    if (typeof exportId !== 'string' || !isTrustedRenderSender(e.sender, exportId)) return;
     if (exportId.startsWith('still-')) {
       const waiter = stillWaiters.get(exportId);
       if (waiter) waiter.resolve(Buffer.from(buffer));
@@ -373,11 +391,13 @@ export function registerExportWindowIpc(): void {
     }
     exportService.handleFrame(exportId, index, buffer, width, height);
   });
-  ipcMain.on('export:window:done', (_e, exportId: string) => {
+  ipcMain.on('export:window:done', (e, exportId: string) => {
+    if (typeof exportId !== 'string' || !isTrustedRenderSender(e.sender, exportId)) return;
     if (exportId.startsWith('still-')) return;
     exportService.handleFramesDone(exportId);
   });
-  ipcMain.on('export:window:error', (_e, exportId: string, message: string) => {
+  ipcMain.on('export:window:error', (e, exportId: string, message: string) => {
+    if (typeof exportId !== 'string' || !isTrustedRenderSender(e.sender, exportId)) return;
     if (exportId.startsWith('still-')) {
       const waiter = stillWaiters.get(exportId);
       if (waiter) waiter.reject(new Error(message));

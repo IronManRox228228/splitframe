@@ -1,5 +1,6 @@
 import { app, BrowserWindow, Menu, protocol, session, shell } from 'electron';
 import { join } from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { getDb, closeDb } from './db.ts';
 import { getPaths } from './paths.ts';
@@ -7,6 +8,10 @@ import { jobs } from './jobs.ts';
 import { registerIpc, wireEvents } from './ipc.ts';
 import { projectService } from './project-service.ts';
 import { setBroadcast } from './events.ts';
+import { buildCsp, MOTION_SANDBOX_CSP } from './csp.ts';
+import { isMediaPathAllowed } from './media-access.ts';
+import { buildMotionSandboxHtml } from './motion-sandbox.ts';
+import { isKnownAssetPath } from './asset-service.ts';
 
 /**
  * Cutboard desktop entry. Security posture (addendum §5.4): renderer is untrusted —
@@ -17,6 +22,8 @@ import { setBroadcast } from './events.ts';
 // must be called before app ready
 protocol.registerSchemesAsPrivileged([
   { scheme: 'cbmedia', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  // network-less document that evaluates generated motion-graphic code (see motion-sandbox.ts)
+  { scheme: 'cbsandbox', privileges: { standard: true, secure: true } },
 ]);
 
 // Windows only shows notifications (and groups the taskbar icon) under the installed app id
@@ -283,6 +290,17 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function registerSandboxProtocol(): void {
+  const html = buildMotionSandboxHtml();
+  protocol.handle('cbsandbox', () => new Response(html, {
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy': MOTION_SANDBOX_CSP,
+      'x-content-type-options': 'nosniff',
+    },
+  }));
+}
+
 function registerMediaProtocol(): void {
   protocol.handle('cbmedia', async (request) => {
     try {
@@ -293,9 +311,21 @@ function registerMediaProtocol(): void {
       if (!filePath.startsWith('/') && !/^[a-zA-Z]:\\/.test(filePath)) {
         return new Response('Invalid path', { status: 400 });
       }
+      // the renderer is untrusted: serve only project folders and registered assets, and
+      // check again after resolving symlinks so a link inside a project cannot escape
+      const roots = [getPaths().projectsRoot];
+      const allowed = (p: string) => isMediaPathAllowed(p, { roots, isKnownAssetPath });
+      const real = await realpath(filePath).catch(() => null);
+      if (!real) return new Response('Not found', { status: 404 });
+      const realRoots = await Promise.all(roots.map((r) => realpath(r).catch(() => r)));
+      if (!allowed(filePath) || !(allowed(real) || isMediaPathAllowed(real, { roots: realRoots, isKnownAssetPath }))) {
+        return new Response('Forbidden', { status: 403 });
+      }
       const fileUrl = pathToFileURL(filePath).href;
       const { net } = await import('electron');
-      const res = await net.fetch(fileUrl);
+      // forward Range so media elements can seek without re-reading the whole file
+      const range = request.headers.get('range');
+      const res = await net.fetch(fileUrl, range ? { headers: { range } } : undefined);
       // explicit content-type + CORS so crossOrigin=anonymous media elements (and canvas
       // readback in the compositor) work from any window
       const headers = new Headers(res.headers);
@@ -337,17 +367,10 @@ void app.whenReady().then(() => {
   // security headers for the renderer session (single source of truth; dev allows the
   // inline scripts vite's react plugin injects, prod stays strict)
   const isDev = Boolean(process.env['ELECTRON_RENDERER_URL']);
-  const csp = [
-    "default-src 'self'",
-    `script-src 'self'${isDev ? " 'unsafe-inline'" : ''}`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: cbmedia:",
-    "media-src 'self' blob: cbmedia:",
-    "connect-src 'self' ws: http://localhost:*",
-    "font-src 'self' data:",
-    "worker-src 'self' blob:",
-  ].join('; ');
+  const csp = buildCsp({ dev: isDev });
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    // the motion sandbox carries its own, stricter policy
+    if (details.url.startsWith('cbsandbox:')) return callback({});
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -357,6 +380,7 @@ void app.whenReady().then(() => {
   });
 
   registerMediaProtocol();
+  registerSandboxProtocol();
   getDb();
   registerIpc(broadcast);
   wireEvents(broadcast);

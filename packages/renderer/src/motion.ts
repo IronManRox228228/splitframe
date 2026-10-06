@@ -42,7 +42,11 @@ const DENIED_IDENTIFIERS = new Set([
   'sessionStorage', 'indexedDB', 'fetchLater', 'globalThis', 'self', 'process',
   'Worker', 'SharedWorker', 'Notification', 'postMessage', 'serviceWorker',
   'navigator', 'location', 'history', 'EventSource', 'crypto',
+  'Reflect', 'Proxy', 'WebAssembly', 'importScripts',
 ]);
+
+/** Property names that reach the Function constructor or prototype chain without naming a denied global. */
+const DENIED_PROPERTIES = new Set(['constructor', '__proto__', 'prototype', '__defineGetter__', '__defineSetter__', '__lookupGetter__']);
 
 const ALLOWED_GLOBALS = new Set([
   'Math', 'Date', 'JSON', 'Number', 'String', 'Boolean', 'Array', 'Object',
@@ -72,6 +76,11 @@ export function validateMotionCode(code: string): { ok: boolean; error?: string 
       }
     }
     if (node.type === 'MemberExpression') {
+      const prop = node.property as { type?: string; name?: string; value?: unknown } | undefined;
+      const propName = node.computed ? (prop?.type === 'Literal' ? prop.value : undefined) : prop?.name;
+      if (typeof propName === 'string' && DENIED_PROPERTIES.has(propName)) {
+        errors.push(`Forbidden property access: ${propName}`);
+      }
       const obj = node.object as { type?: string; name?: string; object?: { name?: string } } | undefined;
       // detect window.parent / document.cookie style escapes even after aliasing attempts
       if (obj && obj.type === 'Identifier' && typeof obj.name === 'string' && DENIED_IDENTIFIERS.has(obj.name)) {
