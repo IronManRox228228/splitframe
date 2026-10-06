@@ -19,6 +19,9 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'cbmedia', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
+// Windows only shows notifications (and groups the taskbar icon) under the installed app id
+if (process.platform === 'win32') app.setAppUserModelId('dev.cutboard.app');
+
 let mainWindow: BrowserWindow | null = null;
 const singleInstance = app.requestSingleInstanceLock();
 if (!singleInstance) {
@@ -328,6 +331,9 @@ app.on('second-instance', () => {
 });
 
 void app.whenReady().then(() => {
+  // app.quit() above is asynchronous: a losing second instance must not boot (it would open the
+  // same database and resume the same background jobs as the running instance)
+  if (!singleInstance) return;
   // security headers for the renderer session (single source of truth; dev allows the
   // inline scripts vite's react plugin injects, prod stays strict)
   const isDev = Boolean(process.env['ELECTRON_RENDERER_URL']);

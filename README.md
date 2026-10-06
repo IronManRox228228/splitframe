@@ -56,9 +56,13 @@ opposite:
 ```bash
 git clone <your-fork-url> cutboard && cd cutboard
 pnpm install
-pnpm fetch:ffmpeg        # bundled LGPL ffmpeg/ffprobe (optional — falls back to PATH)
+pnpm fetch:ffmpeg        # bundled LGPL ffmpeg/ffprobe on Windows/Linux (optional — falls back to PATH)
+pnpm fetch:whisper       # whisper-cli for transcripts on Windows/Linux (macOS: brew install whisper-cpp)
 pnpm dev                 # apps/desktop → Electron dev server
 ```
+
+On macOS there is no published LGPL ffmpeg build, so install `ffmpeg` (e.g. Homebrew) for
+development; see the header of `scripts/fetch-ffmpeg.mjs` before bundling one.
 
 1. **Create a project** and import media (⌘I).
 2. **Wait for analysis** — proxies, transcript (`✓ analyzed` badge). The first ASR model
