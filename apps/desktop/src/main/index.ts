@@ -331,6 +331,9 @@ app.on('second-instance', () => {
 });
 
 void app.whenReady().then(() => {
+  // app.quit() above is asynchronous: a losing second instance must not boot (it would open the
+  // same database and resume the same background jobs as the running instance)
+  if (!singleInstance) return;
   // security headers for the renderer session (single source of truth; dev allows the
   // inline scripts vite's react plugin injects, prod stays strict)
   const isDev = Boolean(process.env['ELECTRON_RENDERER_URL']);
