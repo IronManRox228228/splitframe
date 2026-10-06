@@ -3,21 +3,9 @@ import { useEditor } from '../store.ts';
 import { Item, Track, formatTimecode } from '@cutboard/schema';
 import { docDurationFrames, itemEnd, trackAllowsItem, getSnapCandidates, snapFrame } from '@cutboard/editor-core';
 import { mediaUrl } from '../lib/url.ts';
+import { HEADER_W, dragCommit, frameFromPointer, type DragState } from '../lib/timeline-math.ts';
 
-const HEADER_W = 168;
 const ROW_H = 56;
-
-interface DragState {
-  kind: 'move' | 'trim-in' | 'trim-out';
-  itemId: string;
-  pointerId: number;
-  grabOffsetFrames: number;
-  origStart: number;
-  origTrackId: string;
-  ghostStart: number;
-  ghostTrackId: string;
-  ghostFrame?: number;
-}
 
 export function Timeline() {
   const doc = useEditor((s) => s.doc);
@@ -38,13 +26,14 @@ export function Timeline() {
 
   const lanesRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  // the pointerup handler is registered once per drag; it reads the live state from here
+  const dragRef = useRef<DragState | null>(null);
 
   const frameFromClientX = useCallback(
     (clientX: number): number => {
       const el = lanesRef.current;
       if (!el) return 0;
-      const rect = el.getBoundingClientRect();
-      return Math.max(0, Math.round((clientX - rect.left) / pxPerFrame));
+      return frameFromPointer(clientX, el.getBoundingClientRect().left, pxPerFrame);
     },
     [pxPerFrame],
   );
@@ -85,32 +74,14 @@ export function Timeline() {
       } else {
         next = { ghostFrame: frame };
       }
+      if (dragRef.current) dragRef.current = { ...dragRef.current, ...next } as DragState;
       setDrag((d) => (d ? { ...d, ...next } as DragState : d));
     };
     const onUp = () => {
-      const state = useEditor.getState();
-      if (drag.kind === 'move') {
-        const changed = drag.ghostStart !== drag.origStart || drag.ghostTrackId !== drag.origTrackId;
-        if (changed) {
-          void applyOps(
-            [
-              {
-                type: 'item.move',
-                itemId: drag.itemId,
-                ...(drag.ghostTrackId !== drag.origTrackId ? { trackId: drag.ghostTrackId } : {}),
-                ...(drag.ghostStart !== drag.origStart ? { startFrame: drag.ghostStart } : {}),
-              },
-            ],
-            'Move clip',
-          );
-        }
-      } else if (drag.ghostFrame !== undefined) {
-        const edge = drag.kind === 'trim-in' ? 'in' : 'out';
-        void applyOps(
-          [{ type: 'item.trim', itemId: drag.itemId, edge, frame: drag.ghostFrame, ripple: state.rippleEnabled }],
-          edge === 'in' ? 'Trim in' : 'Trim out',
-        );
-      }
+      const final = dragRef.current;
+      const commit = final ? dragCommit(final, useEditor.getState().rippleEnabled) : null;
+      if (commit) void applyOps(commit.ops, commit.label);
+      dragRef.current = null;
       setDrag(null);
     };
     window.addEventListener('pointermove', onMove);
@@ -132,7 +103,7 @@ export function Timeline() {
     e.stopPropagation();
     select(item.id, e.shiftKey);
     setPlaying(false);
-    setDrag({
+    const next: DragState = {
       kind,
       itemId: item.id,
       pointerId: e.pointerId,
@@ -141,7 +112,9 @@ export function Timeline() {
       origTrackId: item.trackId,
       ghostStart: item.startFrame,
       ghostTrackId: item.trackId,
-    });
+    };
+    dragRef.current = next;
+    setDrag(next);
   };
 
   return (
@@ -219,6 +192,7 @@ export function Timeline() {
                         <ItemBlock
                           key={item.id}
                           item={item}
+                          startFrame={startFrame}
                           selected={selection.includes(item.id)}
                           pxPerFrame={pxPerFrame}
                           fps={doc.project.fps}
@@ -324,6 +298,7 @@ const TYPE_COLORS: Record<string, { bg: string; border: string }> = {
 
 function ItemBlock({
   item,
+  startFrame,
   selected,
   pxPerFrame,
   fps,
@@ -331,6 +306,8 @@ function ItemBlock({
   onPointerDown,
 }: {
   item: Item;
+  /** position to draw at (differs from item.startFrame while the clip is being dragged) */
+  startFrame: number;
   selected: boolean;
   pxPerFrame: number;
   fps: number;
@@ -339,7 +316,7 @@ function ItemBlock({
 }) {
   const asset = useEditor((s) => s.assets.find((a) => a.id === item.assetId));
   const width = Math.max(6, item.durationFrames * pxPerFrame);
-  const left = item.startFrame * pxPerFrame;
+  const left = startFrame * pxPerFrame;
   const colors = TYPE_COLORS[item.type] ?? TYPE_COLORS.video!;
   const thumb = asset?.thumbPath && (item.type === 'video' || item.type === 'image') ? mediaUrl(asset.thumbPath) : null;
 
@@ -381,7 +358,7 @@ function ItemBlock({
       {ghostFrame !== undefined && (
         <div
           className="absolute top-0 bottom-0 w-px bg-accent"
-          style={{ left: (ghostFrame - item.startFrame) * pxPerFrame }}
+          style={{ left: (ghostFrame - startFrame) * pxPerFrame }}
         />
       )}
     </div>
