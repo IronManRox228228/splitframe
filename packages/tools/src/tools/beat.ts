@@ -78,7 +78,10 @@ export const beatSync: ToolDef = {
       ...snapshot.doc.items.map(itemEnd),
       musicStart + Math.round((music.durationFrames * 1) / 1),
     );
-    const beatFrames = map.beatsMs.map((ms) => musicStart + Math.round(((ms / 1000) * fps) / speedRatio) - Math.round(((music.sourceInFrame ?? 0) / 1) / speedRatio));
+    // beats that fall before the music's trimmed-in point would land before musicStart (even below frame 0)
+    const beatFrames = map.beatsMs
+      .map((ms) => musicStart + Math.round(((ms / 1000) * fps) / speedRatio) - Math.round(((music.sourceInFrame ?? 0) / 1) / speedRatio))
+      .filter((frame) => frame >= musicStart);
     const slots: { start: number; end: number; section: string }[] = [];
     let nextBeatIdx = 0;
     while (nextBeatIdx < beatFrames.length - 1) {
@@ -107,30 +110,25 @@ export const beatSync: ToolDef = {
 
     let poolIdx = 0;
     let cursorFrames = 0; // consumed source frames (project-fps) of the current pool asset
-    let lastAddedId: string | null = null;
+    let lastAdd: { id: string; startFrame: number; durationFrames: number } | null = null;
     for (const slot of slots) {
       const slotLen = Math.max(1, slot.end - slot.start);
+      // move on to the next asset while the current one has nothing left to give this slot
+      while (pool[poolIdx] && Math.round((pool[poolIdx]!.durationMs / 1000) * fps) - cursorFrames < 1) {
+        poolIdx++;
+        cursorFrames = 0;
+      }
       const asset = pool[poolIdx];
       if (!asset) {
-        if (input.holdLastShot && lastAddedId) {
-          // stretch the last placed clip to the timeline end
-          const last = ops[ops.length - 1] as { type: string; item?: { id: string; startFrame: number } } | undefined;
-          void last;
-          break;
+        if (input.holdLastShot && lastAdd) {
+          // out of footage: hold the last clip's final frame through the remaining slots
+          lastAdd.durationFrames = Math.max(lastAdd.durationFrames, slots[slots.length - 1]!.end - lastAdd.startFrame);
         }
         break;
       }
       const assetDurationFrames = Math.round((asset.durationMs / 1000) * fps);
       const remaining = assetDurationFrames - cursorFrames;
       const take = Math.min(slotLen, remaining);
-      if (take < 1) {
-        poolIdx++;
-        cursorFrames = 0;
-        // retry this slot with the next asset
-        poolIdx--;
-        poolIdx++;
-        continue;
-      }
       const id = newId('itm');
       ops.push({
         type: 'item.add',
@@ -146,7 +144,7 @@ export const beatSync: ToolDef = {
           labels: { name: asset.originalName ?? 'clip' },
         } as never,
       });
-      lastAddedId = id;
+      lastAdd = (ops[ops.length - 1] as { item: { id: string; startFrame: number; durationFrames: number } }).item;
       cursorFrames += take;
       if (cursorFrames >= assetDurationFrames) {
         poolIdx++;

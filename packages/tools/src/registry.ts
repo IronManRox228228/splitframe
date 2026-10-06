@@ -72,7 +72,7 @@ export class ToolRegistry {
   async call(name: string, rawInput: unknown, ctx: ToolContext): Promise<unknown> {
     const tool = this.tools.get(name);
     if (!tool) {
-      throw new Error(`Unknown tool ${name}. Use listTools to see the catalog.`);
+      throw new Error(`Unknown tool ${name}. Available tools: ${[...this.tools.keys()].join(', ')}.`);
     }
     const input = tool.input.parse(rawInput);
     return tool.handler(input, ctx);
