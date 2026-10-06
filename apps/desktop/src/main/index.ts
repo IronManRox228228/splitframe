@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Menu, protocol, session, shell } from 'electron';
 import { join } from 'node:path';
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { getDb, closeDb } from './db.ts';
 import { getPaths } from './paths.ts';
@@ -9,7 +9,7 @@ import { registerIpc, wireEvents } from './ipc.ts';
 import { projectService } from './project-service.ts';
 import { setBroadcast } from './events.ts';
 import { buildCsp, MOTION_SANDBOX_CSP } from './csp.ts';
-import { canServeMediaPath } from './media-access.ts';
+import { canServeMediaPath, parseByteRange } from './media-access.ts';
 import { buildMotionSandboxHtml } from './motion-sandbox.ts';
 import { isKnownAssetPath } from './asset-service.ts';
 
@@ -319,9 +319,15 @@ function registerMediaProtocol(): void {
       }
       const fileUrl = pathToFileURL(filePath).href;
       const { net } = await import('electron');
-      // forward Range so media elements can seek without re-reading the whole file
-      const range = request.headers.get('range');
-      const res = await net.fetch(fileUrl, range ? { headers: { range } } : undefined);
+      // Media elements seek with Range requests. net.fetch(file://) returns the requested slice
+      // but with status 200 and no Content-Range, which the element decodes as the start of
+      // the file, so the 206 status and headers are set here.
+      const size = (await stat(real)).size;
+      const range = parseByteRange(request.headers.get('range'), size);
+      if (range === 'unsatisfiable') {
+        return new Response(null, { status: 416, headers: { 'content-range': `bytes */${size}`, 'access-control-allow-origin': '*' } });
+      }
+      const res = await net.fetch(fileUrl, range ? { headers: { range: `bytes=${range.start}-${range.end}` } } : undefined);
       // explicit content-type + CORS so crossOrigin=anonymous media elements (and canvas
       // readback in the compositor) work from any window
       const headers = new Headers(res.headers);
@@ -342,6 +348,13 @@ function registerMediaProtocol(): void {
         headers.set('content-type', mime);
       }
       headers.set('access-control-allow-origin', '*');
+      headers.set('accept-ranges', 'bytes');
+      if (range) {
+        headers.set('content-range', `bytes ${range.start}-${range.end}/${size}`);
+        headers.set('content-length', String(range.end - range.start + 1));
+        return new Response(res.body, { status: 206, headers });
+      }
+      headers.set('content-length', String(size));
       return new Response(res.body, { status: res.status, headers });
     } catch (err) {
       return new Response(`cbmedia error: ${err instanceof Error ? err.message : String(err)}`, { status: 500 });
