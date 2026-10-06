@@ -46,7 +46,7 @@ export interface CutboardApi {
   searchQuery(query: string): Promise<{ words: unknown[]; scenes: unknown[]; vectorSearch: boolean }>;
   aiGetConfig(): Promise<unknown>;
   aiSetConfig(patch: Record<string, unknown>): Promise<boolean>;
-  sendChat(chatId: string, message: string): void;
+  sendChat(chatId: string, message: string, history?: { role: 'user' | 'assistant'; content: string }[]): void;
   abortChat(chatId: string): void;
   // hidden export-window helpers
   exportBundle(exportId: string): Promise<{ doc: unknown; mediaUrls: Record<string, string> }>;
@@ -94,7 +94,7 @@ const api: CutboardApi = {
   searchQuery: (query) => ipcRenderer.invoke('search:query', query),
   aiGetConfig: () => ipcRenderer.invoke('ai:getConfig'),
   aiSetConfig: (patch) => ipcRenderer.invoke('ai:setConfig', patch),
-  sendChat: (chatId, message) => ipcRenderer.send('chat:send', { chatId, message }),
+  sendChat: (chatId, message, history) => ipcRenderer.send('chat:send', { chatId, message, history }),
   abortChat: (chatId) => ipcRenderer.send('chat:abort', chatId),
   exportBundle: (exportId) => ipcRenderer.invoke('export:bundle', exportId),
   sendExportFrame: (exportId, index, buffer, width, height) => {

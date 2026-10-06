@@ -27,7 +27,10 @@ export function LeftPanel() {
           per project, analyzed for cut rhythm, caption style, and grade.
         </div>
       )}
-      {tab === 'chat' && <ChatTab />}
+      {/* stays mounted (hidden) so switching tabs doesn't lose the conversation or orphan a running reply */}
+      <div className={tab === 'chat' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
+        <ChatTab />
+      </div>
     </div>
   );
 }
@@ -37,7 +40,6 @@ function FootageTab() {
   const importMedia = useEditor((s) => s.importMedia);
   const jobs = useEditor((s) => s.jobs);
   const addAssetToTimeline = useEditor((s) => s.addAssetToTimeline);
-  const openProject = useEditor((s) => s.openProject);
   const [query, setQuery] = useState('');
 
   const filtered = assets.filter((a) => a.originalName.toLowerCase().includes(query.toLowerCase()));

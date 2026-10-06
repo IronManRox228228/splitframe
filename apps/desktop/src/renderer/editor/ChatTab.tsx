@@ -3,6 +3,8 @@ import { useEditor } from '../store.ts';
 
 interface ToolCard {
   tool: string;
+  /** pairs a result with its call when the same tool runs several times in one turn */
+  callId?: string;
   phase: 'call' | 'result';
   args?: unknown;
   result?: unknown;
@@ -14,6 +16,17 @@ interface ChatTurn {
   text: string;
   tools: ToolCard[];
   error?: string;
+  note?: string;
+}
+
+/** Earlier turns as plain text, so the agent remembers the conversation (it only ever sees text). */
+function historyOf(turns: ChatTurn[]): { role: 'user' | 'assistant'; content: string }[] {
+  return turns
+    .map((t) => ({
+      role: t.role,
+      content: t.text || (t.tools.length > 0 ? `[used tools: ${[...new Set(t.tools.map((c) => c.tool))].join(', ')}]` : ''),
+    }))
+    .filter((t) => t.content.length > 0);
 }
 
 let chatCounter = 0;
@@ -25,7 +38,8 @@ export function ChatTab() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [config, setConfig] = useState<{ agentProvider: string; agentModel: string; asrModel: string; vlmProvider: string; llamacppUrl: string } | null>(null);
+  const [config, setConfig] = useState<{ agentProvider: string; agentModel: string; asrModel: string; vlmProvider: string; llamacppUrl: string; ollamaUrl: string } | null>(null);
+  const undoKey = useEditor((s) => (s.appInfo?.platform === 'darwin' ? '⌘Z' : 'Ctrl+Z'));
   const [apiKey, setApiKey] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatIdRef = useRef(newChatId());
@@ -54,18 +68,18 @@ export function ChatTab() {
           const t = next[turnIdxRef.current];
           if (!t) return prev;
           const tools = [...t.tools];
-          const lastIdx = tools.map((x) => x.tool).lastIndexOf(p.tool);
+          const lastIdx = p.callId ? tools.findIndex((x) => x.callId === p.callId) : tools.map((x) => x.tool).lastIndexOf(p.tool);
           if (p.phase === 'call' || lastIdx === -1) tools.push(p);
           else tools[lastIdx] = p;
           next[turnIdxRef.current] = { ...t, tools };
           return next;
         });
       } else if (envelope.type === 'chat:done') {
-        const p = envelope.payload as { chatId: string; error?: string; finishReason?: string };
+        const p = envelope.payload as { chatId: string; error?: string; note?: string; finishReason?: string };
         setTurns((prev) => {
           const next = [...prev];
           const t = next[turnIdxRef.current];
-          if (t && p.error) next[turnIdxRef.current] = { ...t, error: p.error };
+          if (t && (p.error || p.note)) next[turnIdxRef.current] = { ...t, error: p.error, note: p.note };
           return next;
         });
         setStreaming(false);
@@ -87,7 +101,7 @@ export function ChatTab() {
     turnIdxRef.current = turns.length + 1;
     setTurns((prev) => [...prev, { role: 'user', text: message, tools: [] }, { role: 'assistant', text: '', tools: [] }]);
     setStreaming(true);
-    window.cutboard.sendChat(chatIdRef.current, message);
+    window.cutboard.sendChat(chatIdRef.current, message, historyOf(turns));
   };
 
   if (!doc) return null;
@@ -118,6 +132,7 @@ export function ChatTab() {
                 <ToolCallCard key={j} card={tc} />
               ))}
               {turn.error && <p className="mt-2 text-red-400">{turn.error}</p>}
+              {turn.note && <p className="mt-2 text-neutral-500">{turn.note}</p>}
             </div>
           </div>
         ))}
@@ -152,7 +167,7 @@ export function ChatTab() {
           <button className="hover:text-neutral-400" onClick={() => setShowConfig(!showConfig)}>
             ⚙ AI settings {config ? `· ${config.agentProvider}${config.agentModel ? `/${config.agentModel}` : ''}` : ''}
           </button>
-          <span>Every edit is a real op — undo works on the agent too (⌘Z).</span>
+          <span>Every edit is a real op — undo works on the agent too ({undoKey}).</span>
         </div>
         {showConfig && config && (
           <div className="panel p-3 space-y-2 text-xs">
@@ -179,6 +194,17 @@ export function ChatTab() {
                 className="w-full mt-1 bg-surface-800 border border-line rounded px-2 py-1.5 outline-none"
               />
             </label>
+            {config.agentProvider === 'ollama' && (
+              <label className="block">
+                <span className="text-neutral-500">Server URL</span>
+                <input
+                  value={config.ollamaUrl}
+                  onChange={(e) => setConfig({ ...config, ollamaUrl: e.target.value })}
+                  placeholder="http://127.0.0.1:11434"
+                  className="w-full mt-1 bg-surface-800 border border-line rounded px-2 py-1.5 outline-none"
+                />
+              </label>
+            )}
             {config.agentProvider === 'llamacpp' && (
               <label className="block">
                 <span className="text-neutral-500">Server URL</span>
@@ -214,6 +240,7 @@ export function ChatTab() {
                   .aiSetConfig({
                     agentProvider: config.agentProvider,
                     agentModel: config.agentModel,
+                    ...(config.agentProvider === 'ollama' && config.ollamaUrl.trim() ? { ollamaUrl: config.ollamaUrl.trim() } : {}),
                     ...(config.agentProvider === 'llamacpp' && config.llamacppUrl.trim() ? { llamacppUrl: config.llamacppUrl.trim() } : {}),
                     ...(apiKey && config.agentProvider === 'llamacpp' ? { llamacppKey: apiKey } : {}),
                     ...(apiKey && config.agentProvider !== 'llamacpp' && config.agentProvider !== 'ollama' ? { agentKey: apiKey } : {}),

@@ -26,6 +26,16 @@ const opsInput = z.object({
   groupLabel: z.string().max(120).optional(),
 });
 
+const chatSendInput = z.object({
+  chatId: z.string().min(4).max(80),
+  message: z.string().min(1).max(8000),
+  history: z
+    .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(8000) }))
+    .max(200)
+    .optional()
+    .default([]),
+});
+
 const actorFor = (event: Electron.IpcMainInvokeEvent): Actor => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const isExportWindow = win?.webContents.getURL().includes('export.html') ?? false;
@@ -236,11 +246,16 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   });
 
   // ---------- built-in agent chat (Milestone 3) ----------
-  ipcMain.on('chat:send', (_e, input: { chatId: string; message: string }) => {
-    const parsed = z.object({ chatId: z.string().min(4), message: z.string().min(1).max(8000) }).parse(input);
-    void sendChatMessage(parsed.chatId, parsed.message);
+  // `.on` handlers must not throw (that becomes an uncaught main-process exception), so bad
+  // input is dropped instead of parsed with .parse()
+  ipcMain.on('chat:send', (_e, input: unknown) => {
+    const parsed = chatSendInput.safeParse(input);
+    if (!parsed.success) return;
+    void sendChatMessage(parsed.data.chatId, parsed.data.message, parsed.data.history);
   });
-  ipcMain.on('chat:abort', (_e, chatId: string) => abortChat(chatId));
+  ipcMain.on('chat:abort', (_e, chatId: unknown) => {
+    if (typeof chatId === 'string') abortChat(chatId);
+  });
 
   // ---------- models / analysis / search (Milestone 2) ----------
   ipcMain.handle('models:list', () => listModels());
