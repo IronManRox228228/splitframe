@@ -116,7 +116,11 @@ export const useEditor = create<EditorState>((set, get) => ({
     window.cutboard.onEvent((envelope) => get().handleEvent(envelope));
     window.cutboard.onMenuAction(({ action }) => {
       const s = get();
-      if (action === 'undo') void s.undo();
+      // the Edit menu owns Ctrl/Cmd+Z; inside a text field it must undo the text, not the timeline
+      const el = document.activeElement as HTMLElement | null;
+      const typing = Boolean(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable));
+      if ((action === 'undo' || action === 'redo') && typing) document.execCommand(action);
+      else if (action === 'undo') void s.undo();
       else if (action === 'redo') void s.redo();
       else if (action === 'import') void s.importMedia();
       else if (action === 'split') void s.splitAtPlayhead();

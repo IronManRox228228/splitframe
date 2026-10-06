@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useEditor, ExportRowInfo } from '../store.ts';
+import { useEditor } from '../store.ts';
+import { revealLabel } from '../lib/platform-labels.ts';
 
 export function ExportDialog() {
   const open = useEditor((s) => s.exportDialogOpen);
   const setExportDialog = useEditor((s) => s.setExportDialog);
   const doc = useEditor((s) => s.doc);
+  const platform = useEditor((s) => s.appInfo?.platform);
   const exportsList = useEditor((s) => s.exportsList);
   const [presets, setPresets] = useState<{ name: string; width: number; height: number; format: string }[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -21,6 +23,8 @@ export function ExportDialog() {
 
   if (!open || !doc) return null;
   const active = exportsList.find((e) => e.status === 'rendering' || e.status === 'encoding' || e.status === 'queued');
+  // newest first: the outcome of the export that just ended (done / failed / cancelled)
+  const latest = !active ? exportsList[0] : undefined;
 
   const start = async () => {
     if (!selected) return;
@@ -31,13 +35,6 @@ export function ExportDialog() {
       useEditor.getState().showToast(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
-    }
-  };
-
-  const reveal = async (row: ExportRowInfo) => {
-    if (row.outputPath) {
-      // main reveals the exports folder
-      await window.cutboard.revealProjectDir();
     }
   };
 
@@ -69,6 +66,20 @@ export function ExportDialog() {
           ))}
         </div>
 
+        {latest?.status === 'done' && (
+          <div className="mb-3 flex items-center justify-between rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+            <span className="text-[11px] text-emerald-400">Export finished ✓</span>
+            <button className="btn-outline" onClick={() => void window.cutboard.revealExportPath(latest.outputPath ?? '')}>
+              {revealLabel(platform)}
+            </button>
+          </div>
+        )}
+        {latest?.status === 'failed' && (
+          <p className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">
+            Export failed: {latest.error ?? 'unknown error'}
+          </p>
+        )}
+
         {active ? (
           <div className="mb-2">
             <div className="flex justify-between text-[11px] text-neutral-400 mb-1.5">
@@ -78,20 +89,9 @@ export function ExportDialog() {
             <div className="h-1.5 bg-surface-700 rounded-full overflow-hidden">
               <div className="h-full bg-accent transition-all" style={{ width: `${active.progress * 100}%` }} />
             </div>
-            {active.status === 'done' && (
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-[11px] text-emerald-400">Done ✓</span>
-                <button className="btn-outline" onClick={() => void reveal(active)}>
-                  Show in Finder
-                </button>
-              </div>
-            )}
-            {active.status === 'failed' && <p className="mt-2 text-[11px] text-red-400">{active.error}</p>}
-            {active.status !== 'done' && active.status !== 'failed' && (
-              <button className="btn-outline mt-3" onClick={() => void window.cutboard.cancelExport(active.id)}>
-                Cancel export
-              </button>
-            )}
+            <button className="btn-outline mt-3" onClick={() => void window.cutboard.cancelExport(active.id)}>
+              Cancel export
+            </button>
           </div>
         ) : (
           <div className="flex items-center justify-between">

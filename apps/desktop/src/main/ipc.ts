@@ -66,7 +66,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       ffmpeg = null;
     }
     return {
-      version: '0.1.0',
+      version: app.getVersion(),
       platform: process.platform,
       projectsRoot: getPaths().projectsRoot,
       ffmpeg,

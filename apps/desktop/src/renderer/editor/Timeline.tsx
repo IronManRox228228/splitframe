@@ -4,6 +4,7 @@ import { Item, Track, formatTimecode } from '@cutboard/schema';
 import { docDurationFrames, itemEnd, trackAllowsItem, getSnapCandidates, snapFrame } from '@cutboard/editor-core';
 import { mediaUrl } from '../lib/url.ts';
 import { HEADER_W, dragCommit, frameFromPointer, type DragState } from '../lib/timeline-math.ts';
+import { deleteKeyLabel, shortcutLabel } from '../lib/platform-labels.ts';
 
 const ROW_H = 56;
 
@@ -23,6 +24,7 @@ export function Timeline() {
   const setPxPerFrame = useEditor((s) => s.setPxPerFrame);
   const zoomFit = useEditor((s) => s.zoomFit);
   const addAssetToTimeline = useEditor((s) => s.addAssetToTimeline);
+  const platform = useEditor((s) => s.appInfo?.platform);
 
   const lanesRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -121,9 +123,9 @@ export function Timeline() {
     <div className="h-[300px] shrink-0 flex flex-col border-t border-line bg-surface-950">
       {/* toolbar */}
       <div className="h-9 shrink-0 flex items-center gap-1 px-3 border-b border-line bg-surface-900">
-        <ToolButton label="Delete" onClick={() => void useEditor.getState().deleteSelection()} disabled={selection.length === 0} title="Delete (⌫)" />
+        <ToolButton label="Delete" onClick={() => void useEditor.getState().deleteSelection()} disabled={selection.length === 0} title={`Delete (${deleteKeyLabel(platform)})`} />
         <ToolButton label="Split" onClick={() => void useEditor.getState().splitAtPlayhead()} title="Split at playhead (S)" />
-        <ToolButton label="Clone" onClick={() => void useEditor.getState().cloneSelection()} disabled={selection.length === 0} title="Clone (⌘D)" />
+        <ToolButton label="Clone" onClick={() => void useEditor.getState().cloneSelection()} disabled={selection.length === 0} title={`Clone (${shortcutLabel('D', platform)})`} />
         <div className="w-px h-4 bg-line mx-1" />
         <ToggleChip active={rippleEnabled} label="Ripple" onClick={toggleRipple} title="Ripple delete & trims" />
         <ToggleChip active={snapEnabled} label="Snap" onClick={toggleSnap} title="Snap to edges & markers" />
@@ -133,7 +135,7 @@ export function Timeline() {
         </span>
         <ToolButton label="−" onClick={() => setPxPerFrame(pxPerFrame / 1.25)} title="Zoom out" />
         <ToolButton label="+" onClick={() => setPxPerFrame(pxPerFrame * 1.25)} title="Zoom in" />
-        <ToolButton label="Fit" onClick={() => zoomFit(Math.max(1, total))} title="Zoom to fit (⇧Z)" />
+        <ToolButton label="Fit" onClick={() => zoomFit(Math.max(1, total))} title="Zoom to fit (Shift+Z)" />
       </div>
 
       {/* scrollable timeline */}

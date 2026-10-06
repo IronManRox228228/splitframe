@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useEditor } from '../store.ts';
 import { mediaUrl } from '../lib/url.ts';
+import { shortcutLabel } from '../lib/platform-labels.ts';
 import { ChatTab } from './ChatTab.tsx';
 
 export function LeftPanel() {
@@ -38,6 +39,7 @@ export function LeftPanel() {
 function FootageTab() {
   const assets = useEditor((s) => s.assets);
   const importMedia = useEditor((s) => s.importMedia);
+  const platform = useEditor((s) => s.appInfo?.platform);
   const jobs = useEditor((s) => s.jobs);
   const addAssetToTimeline = useEditor((s) => s.addAssetToTimeline);
   const [query, setQuery] = useState('');
@@ -53,7 +55,7 @@ function FootageTab() {
           placeholder="Search footage…"
           className="flex-1 bg-surface-800 border border-line rounded px-2.5 h-7 text-xs outline-none focus:border-accent-dim"
         />
-        <button className="btn-primary" onClick={() => void importMedia()} title="Import media (⌘I)">
+        <button className="btn-primary" onClick={() => void importMedia()} title={`Import media (${shortcutLabel('I', platform)})`}>
           Import
         </button>
       </div>

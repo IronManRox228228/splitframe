@@ -5,6 +5,7 @@ import { LeftPanel } from '../editor/LeftPanel.tsx';
 import { PreviewPane } from '../editor/PreviewPane.tsx';
 import { Timeline } from '../editor/Timeline.tsx';
 import { ExportDialog } from '../editor/ExportDialog.tsx';
+import { shortcutFor } from '../lib/shortcuts.ts';
 
 export function EditorScreen() {
   const doc = useEditor((s) => s.doc);
@@ -28,48 +29,41 @@ export function EditorScreen() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
-      const meta = e.metaKey || e.ctrlKey;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        togglePlay();
-      } else if (meta && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) void redo();
-        else void undo();
-      } else if (meta && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        void cloneSelection();
-      } else if (meta && e.key.toLowerCase() === 'i') {
-        e.preventDefault();
-        void importMedia();
-      } else if (e.key === 'Backspace' || e.key === 'Delete') {
-        e.preventDefault();
-        void deleteSelection();
-      } else if (e.key.toLowerCase() === 's' && !meta) {
-        e.preventDefault();
-        void splitAtPlayhead();
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        stepFrames(e.shiftKey ? -30 : -1);
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        stepFrames(e.shiftKey ? 30 : 1);
-      } else if (e.key === '+' || e.key === '=') {
-        setPxPerFrame(pxPerFrame * 1.25);
-      } else if (e.key === '-') {
-        setPxPerFrame(pxPerFrame / 1.25);
-      } else if (e.key.toLowerCase() === 'j') {
-        stepFrames(-30);
-      } else if (e.key.toLowerCase() === 'k') {
-        if (playing) togglePlay();
-      } else if (e.key.toLowerCase() === 'l') {
-        if (!playing) togglePlay();
-      } else if (e.key.toLowerCase() === 'z' && e.shiftKey) {
-        const doc = useEditor.getState().doc;
-        if (doc) zoomFit(Math.max(1, docDuration(doc)));
-      } else if (e.key === 'Escape') {
-        select(null);
+      const action = shortcutFor(
+        {
+          key: e.key,
+          code: e.code,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          shiftKey: e.shiftKey,
+          targetTag: target.tagName,
+          isContentEditable: target.isContentEditable,
+        },
+        { playing },
+      );
+      if (!action) return;
+      e.preventDefault();
+      switch (action) {
+        case 'togglePlay': togglePlay(); break;
+        case 'play': if (!playing) togglePlay(); break;
+        case 'pause': if (playing) togglePlay(); break;
+        case 'undo': void undo(); break;
+        case 'redo': void redo(); break;
+        case 'clone': void cloneSelection(); break;
+        case 'import': void importMedia(); break;
+        case 'delete': void deleteSelection(); break;
+        case 'split': void splitAtPlayhead(); break;
+        case 'stepBack': stepFrames(e.shiftKey ? -30 : -1); break;
+        case 'stepForward': stepFrames(e.shiftKey ? 30 : 1); break;
+        case 'jumpBack': stepFrames(-30); break;
+        case 'zoomIn': setPxPerFrame(pxPerFrame * 1.25); break;
+        case 'zoomOut': setPxPerFrame(pxPerFrame / 1.25); break;
+        case 'zoomFit': {
+          const current = useEditor.getState().doc;
+          if (current) zoomFit(Math.max(1, docDuration(current)));
+          break;
+        }
+        case 'deselect': select(null); break;
       }
     };
     window.addEventListener('keydown', onKeyDown);
