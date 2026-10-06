@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor } from '../store.ts';
-import { CanvasCompositor, activeItemsByDrawOrder, itemVolumeAt } from '@cutboard/renderer';
-import { isAudioBearing, itemEnd, sourceFrameAt, docDurationFrames } from '@cutboard/editor-core';
+import { CanvasCompositor, itemVolumeAt } from '@cutboard/renderer';
+import { itemEnd, sourceFrameAt, docDurationFrames } from '@cutboard/editor-core';
 import { formatTimecode } from '@cutboard/schema';
 import type { MediaPool } from '../lib/media.ts';
+import { latestOnly, needsResync, planAudio, planVideo } from '../lib/playback-plan.ts';
 
 /**
  * Preview: paused scrubbing renders via seeked media (exact frames); playback advances
@@ -23,27 +24,30 @@ export function PreviewPane() {
   const rafRef = useRef<number>(0);
   const lastTickRef = useRef<number>(0);
 
-  const renderFrame = useCallback(
-    async (frame: number, live: boolean) => {
-      const canvas = canvasRef.current;
-      const state = useEditor.getState();
-      const pool = state.mediaPool;
-      if (!canvas || !state.doc || !pool) return;
-      canvas.width = 960;
-      canvas.height = Math.max(1, Math.round((960 * state.doc.project.height) / state.doc.project.width));
-      await compositorRef.current.draw(canvas, state.doc, frame, pool, {
-        selectedIds: live ? [] : state.selection,
-        showSafeZones,
-      });
-    },
-    [showSafeZones],
-  );
+  const drawNow = async ({ frame, live }: { frame: number; live: boolean }) => {
+    const canvas = canvasRef.current;
+    const state = useEditor.getState();
+    const pool = state.mediaPool;
+    if (!canvas || !state.doc || !pool) return;
+    canvas.width = 960;
+    canvas.height = Math.max(1, Math.round((960 * state.doc.project.height) / state.doc.project.width));
+    await compositorRef.current.draw(canvas, state.doc, frame, pool, {
+      selectedIds: live ? [] : state.selection,
+      showSafeZones,
+    });
+  };
+  // draws reset and repaint one shared canvas, so they run one at a time and a burst of
+  // requests (scrubbing, playback ticks) collapses to the newest frame
+  const drawNowRef = useRef(drawNow);
+  drawNowRef.current = drawNow;
+  const runDraw = useMemo(() => latestOnly((arg: { frame: number; live: boolean }) => drawNowRef.current(arg)), []);
+  const renderFrame = useCallback((frame: number, live: boolean) => runDraw({ frame, live }), [runDraw]);
 
   // paused / scrub rendering (exact frames via seeks)
   useEffect(() => {
     if (playing) return;
     void renderFrame(playhead, false);
-  }, [doc, playhead, selection, playing, renderFrame]);
+  }, [doc, playhead, selection, playing, showSafeZones, renderFrame]);
 
   // playback loop
   useEffect(() => {
@@ -52,23 +56,17 @@ export function PreviewPane() {
     const pool = useEditor.getState().mediaPool;
     if (!startDoc || !pool) return;
     const fps = startDoc.project.fps;
+    // pressing play at the very end restarts from the beginning
+    if (useEditor.getState().playhead >= docDurationFrames(startDoc)) useEditor.getState().setPlayhead(0);
     let playheadFrames = useEditor.getState().playhead;
     let cancelled = false;
 
     const start = async () => {
       const state = useEditor.getState();
-      const active = activeItemsByDrawOrder(startDoc, state.playhead);
       pool.liveMode = true;
       // position every active video at the playhead, then let them play
-      for (const item of active) {
-        if (item.type !== 'video' || !item.assetId) continue;
-        const el = pool.videoElements.get(item.assetId);
-        if (!el) continue;
-        el.playbackRate = Math.min(4, Math.max(0.25, item.speed));
-        el.currentTime = sourceFrameAt(item, state.playhead) / fps;
-      }
-      startAudio(startDoc, pool, state.playhead, fps);
-      await Promise.all(active.filter((i) => i.type === 'video').map((i) => pool.videoElements.get(i.assetId ?? '')?.play().catch(() => undefined)));
+      await Promise.all(syncVideo(startDoc, pool, state.playhead, fps));
+      syncAudio(startDoc, pool, state.playhead, fps);
       lastTickRef.current = performance.now();
       const tick = (now: number) => {
         if (cancelled) return;
@@ -84,6 +82,8 @@ export function PreviewPane() {
           return;
         }
         s.setPlayhead(playheadFrames);
+        // clips entering view mid-playback start playing instead of being re-seeked every frame
+        syncVideo(s.doc, pool, playheadFrames, fps);
         syncAudio(s.doc, pool, playheadFrames, fps);
         void renderFrame(playheadFrames, true);
         rafRef.current = requestAnimationFrame(tick);
@@ -166,38 +166,50 @@ export function PreviewPane() {
   );
 }
 
-function startAudio(doc: NonNullable<ReturnType<typeof useEditor.getState>['doc']>, pool: MediaPool, frame: number, fps: number): void {
-  for (const item of doc.items) {
-    if (!isAudioBearing(item) || item.muted) continue;
-    const track = doc.tracks.find((t) => t.id === item.trackId);
-    if (track?.muted) continue;
-    const el = pool.getAudioElement(item.assetId ?? '');
-    if (!el) continue;
-    const startWithin = Math.max(item.startFrame, Math.floor(frame));
-    el.currentTime = Math.max(0, sourceFrameAt(item, startWithin) / fps);
-    el.volume = Math.min(1, Math.max(0, itemVolumeAt(item, frame)));
-    if (frame >= item.startFrame && frame < itemEnd(item)) {
-      void el.play().catch(() => undefined);
+type EditorDoc = NonNullable<ReturnType<typeof useEditor.getState>['doc']>;
+
+/** Start/stop video elements so each follows the single item currently using its asset. */
+function syncVideo(doc: EditorDoc, pool: MediaPool, frame: number, fps: number): Promise<unknown>[] {
+  const plays: Promise<unknown>[] = [];
+  for (const [assetId, item] of planVideo(doc, frame)) {
+    const el = pool.videoElements.get(assetId);
+    if (!el) continue; // not drawn yet; the paused-path draw creates it and the next tick starts it
+    if (!item) {
+      if (!el.paused) el.pause();
+      continue;
+    }
+    const expected = sourceFrameAt(item, Math.floor(frame)) / fps;
+    el.playbackRate = Math.min(4, Math.max(0.25, item.speed));
+    if (el.paused) {
+      el.currentTime = expected;
+      plays.push(el.play().catch(() => undefined));
+    } else if (needsResync(el.currentTime, expected)) {
+      el.currentTime = expected; // e.g. a cut that jumps within the same source file
     }
   }
+  return plays;
 }
 
-function syncAudio(doc: NonNullable<ReturnType<typeof useEditor.getState>['doc']>, pool: MediaPool, frame: number, fps: number): void {
-  for (const item of doc.items) {
-    if (!isAudioBearing(item) || item.muted) continue;
-    const track = doc.tracks.find((t) => t.id === item.trackId);
-    const el = pool.getAudioElement(item.assetId ?? '');
+/**
+ * Audio elements are shared per asset (a split clip's halves use the same one), so the
+ * plan picks one item per asset and the element is paused only when none is active.
+ */
+function syncAudio(doc: EditorDoc, pool: MediaPool, frame: number, fps: number): void {
+  for (const [assetId, item] of planAudio(doc, frame)) {
+    const el = pool.getAudioElement(assetId);
     if (!el) continue;
-    const active = frame >= item.startFrame && frame < itemEnd(item);
-    if (active && !track?.muted) {
-      el.playbackRate = Math.min(4, Math.max(0.25, item.speed));
-      el.volume = Math.min(1, Math.max(0, itemVolumeAt(item, frame)));
-      if (el.paused) {
-        el.currentTime = sourceFrameAt(item, Math.floor(frame)) / fps;
-        void el.play().catch(() => undefined);
-      }
-    } else if (!el.paused) {
-      el.pause();
+    if (!item) {
+      if (!el.paused) el.pause();
+      continue;
+    }
+    const expected = sourceFrameAt(item, Math.floor(frame)) / fps;
+    el.playbackRate = Math.min(4, Math.max(0.25, item.speed));
+    el.volume = Math.min(1, Math.max(0, itemVolumeAt(item, frame)));
+    if (el.paused) {
+      el.currentTime = expected;
+      void el.play().catch(() => undefined);
+    } else if (needsResync(el.currentTime, expected)) {
+      el.currentTime = expected;
     }
   }
 }
