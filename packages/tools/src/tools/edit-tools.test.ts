@@ -3,7 +3,7 @@ import { newId, type Op } from '@cutboard/schema';
 import { applyOps, createEmptyDoc } from '@cutboard/editor-core';
 import type { ToolContext } from '../registry.ts';
 import { createToolRegistry } from '../index.ts';
-import { addAudio, addClip } from './edit.ts';
+import { addAudio, addClip, updateItem } from './edit.ts';
 import { beatSync } from './beat.ts';
 
 interface FakeAsset {
@@ -130,5 +130,16 @@ describe('beatSync', () => {
     const clips = state.doc.items.filter((i) => i.type === 'video').sort((a, b) => a.startFrame - b.startFrame);
     const last = clips[clips.length - 1]!;
     expect(last.startFrame + last.durationFrames).toBeGreaterThanOrEqual(300);
+  });
+});
+
+describe('edit tool results', () => {
+  it('report the item they changed, so the agent does not think the edit failed', async () => {
+    const { ctx, state } = makeCtx([{ id: 'ast_a', kind: 'audio', durationMs: 3000 }]);
+    const added = (await addAudio.handler(addAudio.input.parse({ assetId: 'ast_a', startFrame: 60 }), ctx)) as { items: { id: string }[]; itemCount: number };
+    expect(added.itemCount).toBe(1);
+    expect(added.items.map((i) => i.id)).toEqual([state.doc.items[0]!.id]);
+    const updated = (await updateItem.handler(updateItem.input.parse({ itemId: state.doc.items[0]!.id, patch: { muted: true } }), ctx)) as { items: { muted?: boolean }[] };
+    expect(updated.items[0]!.muted).toBe(true);
   });
 });

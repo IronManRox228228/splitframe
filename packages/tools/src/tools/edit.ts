@@ -21,8 +21,9 @@ const textStyleInput = z.object({
   uppercase: z.boolean().default(false),
 });
 
-function summarize(doc: unknown, itemIds: string[]): unknown {
-  const d = doc as { items?: { id: string }[] } | undefined;
+function summarize(snapshot: unknown, itemIds: string[]): unknown {
+  // callers pass ctx.getSnapshot(), i.e. { doc, assets, ... }; the items live on .doc
+  const d = (snapshot as { doc?: { items?: { id: string }[] } } | undefined)?.doc;
   const items = (d?.items ?? []).filter((i) => itemIds.includes(i.id));
   return { applied: true, items, itemCount: d?.items?.length ?? 0 };
 }
