@@ -1,10 +1,11 @@
-import type { MotionNode } from '@cutboard/renderer';
 
 /**
  * Sandbox host for generated motion-graphic code (main prompt §7): the code runs inside
  * a sandboxed iframe (`sandbox="allow-scripts"`, NO allow-same-origin — an opaque origin
  * with no DOM access to us) that evaluates one frame at a time and posts back scene
- * trees. The renderer window and the hidden export/still windows each get their own host.
+ * trees. The iframe loads cbsandbox://motion/index.html from the main process, whose own
+ * Content-Security-Policy gives it no network access at all. The renderer window and the
+ * hidden export/still windows each get their own host.
  */
 export class MotionHost {
   private iframe: HTMLIFrameElement | null = null;
@@ -18,27 +19,13 @@ export class MotionHost {
       const iframe = document.createElement('iframe');
       iframe.setAttribute('sandbox', 'allow-scripts');
       iframe.style.display = 'none';
-      const runtime = window.__cutboardMotionRuntime as string | undefined;
-      if (!runtime) {
-        reject(new Error('motion runtime not provisioned'));
-        return;
-      }
-      iframe.srcdoc = `<!doctype html><html><body><script>${runtime}<\/script><script>
-        window.addEventListener('message', (ev) => {
-          const { seq, code, props, frame, videoConfig } = ev.data;
-          try {
-            const tree = evaluateFrame(code, props, frame, videoConfig);
-            parent.postMessage({ seq, ok: true, tree }, '*');
-          } catch (err) {
-            parent.postMessage({ seq, ok: false, error: String(err && err.message || err) }, '*');
-          }
-        });
-      <\/script></body></html>`;
+      iframe.src = 'cbsandbox://motion/index.html';
       iframe.onload = () => resolve();
       iframe.onerror = () => reject(new Error('sandbox failed to load'));
       document.body.appendChild(iframe);
       this.iframe = iframe;
       window.addEventListener('message', (ev: MessageEvent) => {
+        if (ev.source !== iframe.contentWindow) return; // only the sandbox may answer
         const data = ev.data as { seq: number; ok: boolean; tree?: unknown; error?: string };
         if (!data || typeof data.seq !== 'number' || !this.pending.has(data.seq)) return;
         const waiter = this.pending.get(data.seq)!;

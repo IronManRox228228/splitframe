@@ -286,6 +286,15 @@ export function getAssets(projectId: string): Asset[] {
   return rows.map(rowToAsset);
 }
 
+/** True when `path` is the original, proxy, thumbnail or waveform of any imported asset. */
+export function isKnownAssetPath(path: string): boolean {
+  const db = getDb();
+  const row = db
+    .prepare(`SELECT 1 FROM assets WHERE path=?1 OR proxy_path=?1 OR thumb_path=?1 OR waveform_path=?1 LIMIT 1`)
+    .get(path);
+  return row !== undefined;
+}
+
 export function getAsset(assetId: string): Asset | null {
   const db = getDb();
   const row = db.prepare(`SELECT * FROM assets WHERE id=?`).get(assetId) as Record<string, unknown> | undefined;
