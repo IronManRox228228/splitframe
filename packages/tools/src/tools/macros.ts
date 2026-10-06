@@ -57,25 +57,40 @@ function speechItems(snapshot: Snapshot, itemIds?: string[]): Item[] {
   return items.filter((i) => snapshot.transcripts.some((t) => t.assetId === i.assetId && t.words.length > 0));
 }
 
+/** Sort spans and merge any that overlap or touch, so cuts never double-cover frames. */
+function mergeSpans(spans: { startFrame: number; endFrame: number }[]): { startFrame: number; endFrame: number }[] {
+  const sorted = spans.filter((s) => s.endFrame > s.startFrame).sort((a, b) => a.startFrame - b.startFrame);
+  const merged: { startFrame: number; endFrame: number }[] = [];
+  for (const span of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && span.startFrame <= last.endFrame) last.endFrame = Math.max(last.endFrame, span.endFrame);
+    else merged.push({ ...span });
+  }
+  return merged;
+}
+
 /** Cut [startFrame, endFrame) spans out of one item via split+remove, right-to-left. */
 function cutSpansOps(item: Item, spans: { startFrame: number; endFrame: number }[]): Op[] {
   const ops: Op[] = [];
-  const sorted = [...spans]
-    .filter((s) => s.endFrame > s.startFrame)
-    .sort((a, b) => b.startFrame - a.startFrame); // right-to-left: earlier coords stay valid
-  const originalEnd = itemEnd(item);
+  const sorted = mergeSpans(spans).reverse(); // right-to-left: earlier coords stay valid
   let currentId = item.id; // the left part accumulates every cut
+  let currentEnd = itemEnd(item); // end of that left part (cuts only ever remove from its right)
   for (const span of sorted) {
-    const atStart = Math.max(item.startFrame + 1, span.startFrame);
-    if (atStart >= originalEnd) continue;
-    const mid = newId('itm');
-    ops.push({ type: 'item.split', itemId: currentId, atFrame: atStart, newItemId: mid });
-    if (span.endFrame < originalEnd) {
-      const right = newId('itm');
-      ops.push({ type: 'item.split', itemId: mid, atFrame: span.endFrame, newItemId: right });
+    const spanStart = Math.max(item.startFrame, span.startFrame);
+    const spanEnd = Math.min(currentEnd, span.endFrame);
+    if (spanEnd <= spanStart) continue;
+    // a span that starts at the item's first frame consumes the whole remaining left part
+    let mid = currentId;
+    if (spanStart > item.startFrame) {
+      mid = newId('itm');
+      ops.push({ type: 'item.split', itemId: currentId, atFrame: spanStart, newItemId: mid });
     }
-    // mid now covers exactly [span.start, span.end) (or to the end) — drop it, ripple closes
+    if (spanEnd < currentEnd) {
+      ops.push({ type: 'item.split', itemId: mid, atFrame: spanEnd, newItemId: newId('itm') });
+    }
+    // mid now covers exactly [spanStart, spanEnd) — drop it, ripple closes the gap
     ops.push({ type: 'item.remove', itemIds: [mid], ripple: true });
+    currentEnd = spanStart;
   }
   return ops;
 }
@@ -186,7 +201,7 @@ export const removeSilences: ToolDef = {
       const spans: { startFrame: number; endFrame: number }[] = [];
       const thresholdFrames = Math.round(input.thresholdSec * fps);
       if (!input.keepLeading && words[0]!.startFrame - item.startFrame > thresholdFrames) {
-        spans.push({ startFrame: item.startFrame + 1, endFrame: words[0]!.startFrame });
+        spans.push({ startFrame: item.startFrame, endFrame: words[0]!.startFrame });
       }
       for (let i = 0; i < words.length - 1; i++) {
         const gap = words[i + 1]!.startFrame - words[i]!.endFrame;
@@ -277,6 +292,7 @@ export const buildRoughCut: ToolDef = {
       }
       ops.push(...cutSpansOps(item, spans));
     }
+    if (ops.length === 0) throw new Error('Nothing to cut: no pauses over the threshold and no repeated takes found.');
     await ctx.applyOps(ops, ctx.actor, `buildRoughCut (${retakes} retakes)`);
     const after = await ctx.getSnapshot();
     return { applied: true, retakesRemoved: retakes, duration: timelineDuration(after) };
