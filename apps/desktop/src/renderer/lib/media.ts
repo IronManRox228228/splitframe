@@ -11,7 +11,9 @@ import { mediaUrl } from './url.ts';
 export function seekTo(el: HTMLVideoElement | HTMLAudioElement, seconds: number): Promise<void> {
   if (!Number.isFinite(seconds)) return Promise.resolve();
   const target = Math.max(0, seconds);
-  if (Math.abs(el.currentTime - target) < 0.004) return Promise.resolve();
+  // a frame is drawable once the element isn't mid-seek and has data for the current position
+  const ready = () => !el.seeking && el.readyState >= 2;
+  if (Math.abs(el.currentTime - target) < 0.004 && ready()) return Promise.resolve();
   return new Promise((resolve) => {
     let settled = false;
     const done = () => {
@@ -22,12 +24,14 @@ export function seekTo(el: HTMLVideoElement | HTMLAudioElement, seconds: number)
       el.removeEventListener('seeked', done);
       resolve();
     };
-    // Events (seeked/loadeddata) are unreliable in hidden windows, so poll currentTime
-    // and cap the wait; drawing happens after whichever comes first.
+    // Events (seeked/loadeddata) are unreliable in hidden windows, so also poll. currentTime
+    // reports the target as soon as it is assigned, before the frame is decoded, so poll the
+    // seeking flag instead; drawing earlier shows the previous frame (frame 0 when cold).
+    // The cap only guards against a seek that never finishes.
     const poll = setInterval(() => {
-      if (Math.abs(el.currentTime - target) < 0.002) done();
+      if (ready()) done();
     }, 16);
-    const cap = setTimeout(done, 400);
+    const cap = setTimeout(done, 3000);
     el.addEventListener('seeked', done);
     el.currentTime = target;
   });
