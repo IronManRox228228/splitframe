@@ -186,7 +186,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   async importMedia() {
     const imported = (await window.cutboard.pickMediaFiles()) as Asset[];
     if (imported.length > 0) {
-      set({ assets: [...get().assets, ...imported] });
+      // asset events for these files can arrive before this call returns; merge by id so
+      // the panel doesn't show a second, never-updated copy
+      const byId = new Map(get().assets.map((a) => [a.id, a]));
+      for (const a of imported) if (!byId.has(a.id)) byId.set(a.id, a);
+      set({ assets: [...byId.values()] });
       get().showToast(`Importing ${imported.length} file${imported.length > 1 ? 's' : ''}…`);
     }
   },
