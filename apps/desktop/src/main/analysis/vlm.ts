@@ -17,11 +17,15 @@ export async function getVlmConfig(): Promise<{ provider: VlmProvider; model: st
   };
 }
 
-export async function setVlmConfig(patch: { vlmProvider?: VlmProvider; vlmModel?: string; ollamaUrl?: string; anthropicKey?: string; openaiKey?: string }): Promise<void> {
+export async function setVlmConfig(patch: { vlmProvider?: VlmProvider; vlmModel?: string; ollamaUrl?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }): Promise<void> {
   const settings = await getSettings();
+  // keys never go into settings.json; also scrub any plaintext agentKey an older build wrote
+  delete (settings.ai as Record<string, unknown> | undefined)?.agentKey;
   const ai = { ...settings.ai, ...patch };
+  delete ai.agentKey;
   delete ai.anthropicKey;
   delete ai.openaiKey;
+  if (patch.agentKey) await saveSecret('agentKey', patch.agentKey);
   if (patch.anthropicKey) await saveSecret('anthropicKey', patch.anthropicKey);
   if (patch.openaiKey) await saveSecret('openaiKey', patch.openaiKey);
   await saveSettings({ ai });

@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { AGENT_SYSTEM_PROMPT } from '@cutboard/agent';
-import { getSettings, getSecret } from '../settings.ts';
+import { getSettings, getSecret, type AiSettings } from '../settings.ts';
 import { callTool, registry } from '../tools-bridge.ts';
 import { broadcast } from '../events.ts';
 
@@ -20,7 +20,7 @@ export interface ChatMessage {
   content: string;
 }
 
-function providerModel(provider: string, model: string, key: string): LanguageModel {
+function providerModel(provider: string, model: string, key: string, ai: AiSettings): LanguageModel {
   switch (provider) {
     case 'openai': {
       const openai = createOpenAI({ apiKey: key });
@@ -31,9 +31,10 @@ function providerModel(provider: string, model: string, key: string): LanguageMo
       return google(model || 'gemini-2.0-flash');
     }
     case 'ollama': {
-      // OpenAI-compatible endpoint served by Ollama (local, keyless)
-      const ollama = createOpenAI({ baseURL: 'http://127.0.0.1:11434/v1', apiKey: 'ollama' });
-      return ollama(model || 'qwen2.5:7b');
+      // OpenAI-compatible endpoint served by Ollama (local, keyless). Local servers speak
+      // Chat Completions, not the Responses API createOpenAI defaults to, hence .chat().
+      const ollama = createOpenAI({ baseURL: `${trimSlash(ai.ollamaUrl ?? 'http://127.0.0.1:11434')}/v1`, apiKey: 'ollama' });
+      return ollama.chat(model || 'qwen2.5:7b');
     }
     case 'anthropic':
     default: {
@@ -57,7 +58,7 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
     return;
   }
 
-  const languageModel = providerModel(provider, model, key);
+  const languageModel = providerModel(provider, model, key, settings.ai ?? {});
 
   // map the shared registry onto AI SDK tools
   // (typed loosely: the zod schema is the real contract and is validated by the registry)
@@ -88,6 +89,9 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
   aborts.set(chatId, controller);
 
   try {
+    // streamText reports failures (e.g. a local server that isn't running) via onError
+    // instead of throwing, which would otherwise end the reply silently
+    let streamError: unknown;
     const result = streamText({
       model: languageModel,
       system: AGENT_SYSTEM_PROMPT,
@@ -95,10 +99,14 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
       tools,
       maxOutputTokens: 4000,
       abortSignal: controller.signal,
+      onError: ({ error }) => {
+        streamError = error;
+      },
     });
     for await (const chunk of result.textStream) {
       broadcastChat(chatId, 'chat:delta', { text: chunk });
     }
+    if (streamError) throw streamError;
     const finish = await result.finishReason;
     broadcastChat(chatId, 'chat:done', { finishReason: finish });
   } catch (err) {
@@ -111,6 +119,10 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
 
 export function abortChat(chatId: string): void {
   aborts.get(chatId)?.abort();
+}
+
+function trimSlash(url: string): string {
+  return url.replace(/\/+$/, '');
 }
 
 function broadcastChat(chatId: string, type: string, payload: unknown): void {
