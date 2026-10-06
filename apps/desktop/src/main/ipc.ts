@@ -1,4 +1,5 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { Op, opSchema, Actor } from '@cutboard/schema';
 import { projectService } from './project-service.ts';
@@ -11,6 +12,7 @@ import { editorContextCache } from './editor-context.ts';
 import { callTool } from './tools-bridge.ts';
 import { getSettings, saveSettings, rotateMcpToken } from './settings.ts';
 import { startMcpServer, stopMcpServer, revokeMcpSessions, getMcpActivity } from './mcp-server.ts';
+import { buildMcpSnippets } from './mcp-auth.ts';
 import { listModels, downloadModel, deleteModel, cancelModelDownload, onModelProgress } from './models.ts';
 import { searchWords, groupWordHits, searchScenes, isVectorSearchEnabled } from './analysis/search.ts';
 import { getVlmConfig, setVlmConfig } from './analysis/vlm.ts';
@@ -219,7 +221,9 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       z.boolean().parse(enabled);
       await saveSettings({ mcp: { ...(await getSettings()).mcp, enabled } });
       const result = enabled ? await startMcpServer() : (stopMcpServer(), { port: (await getSettings()).mcp.port });
-      broadcast('event', { type: 'mcp:status', payload: { enabled } });
+      // a server that could not start (port in use) must not stay "enabled" in settings
+      if ('error' in result) await saveSettings({ mcp: { ...(await getSettings()).mcp, enabled: false } });
+      broadcast('event', { type: 'mcp:status', payload: { enabled: enabled && !('error' in result) } });
       return result;
     },
   );
@@ -230,19 +234,11 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   });
   ipcMain.handle('mcp:snippets', async () => {
     const { mcp } = await getSettings();
-    const url = `http://127.0.0.1:${mcp.port}/mcp`;
-    const token = mcp.token;
-    return {
-      url,
-      claudeCode: `claude mcp add --transport http cutboard ${url} --header "Authorization: Bearer ${token}"`,
-      claudeDesktop: JSON.stringify(
-        { mcpServers: { cutboard: { command: 'npx', args: ['cutboard-mcp'], env: { CUTBOARD_MCP_URL: url, CUTBOARD_MCP_TOKEN: token } } } },
-        null,
-        2,
-      ),
-      codex: `[mcp_servers.cutboard]\ncommand = "npx"\nargs = ["cutboard-mcp"]\nenv = { CUTBOARD_MCP_URL = "${url}", CUTBOARD_MCP_TOKEN = "${token}" }`,
-      cursor: JSON.stringify({ mcpServers: { cutboard: { url, headers: { Authorization: `Bearer ${token}` } } } }, null, 2),
-    };
+    // the stdio shim ships with the app (extraResources when packaged, the workspace build in dev)
+    const shimPath = app.isPackaged
+      ? join(process.resourcesPath, 'mcp-shim', 'index.js')
+      : resolve(app.getAppPath(), '../mcp-shim/dist/index.js');
+    return buildMcpSnippets({ url: `http://127.0.0.1:${mcp.port}/mcp`, token: mcp.token, shimPath });
   });
 
   // ---------- built-in agent chat (Milestone 3) ----------

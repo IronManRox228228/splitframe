@@ -13,6 +13,11 @@ extraResources:
     to: bin
     filter:
       - "**/*"
+  # stdio shim for MCP clients that launch a command (built by `pnpm --filter @cutboard/mcp-shim build`)
+  - from: ../mcp-shim/dist
+    to: mcp-shim
+    filter:
+      - "**/*.js"
 asar: true
 compression: normal
 # shared libraries that are dlopen'ed at runtime cannot be read from inside the asar archive
