@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from '../store.ts';
+import { ModelsSection } from './ModelsSection.tsx';
 
 interface ToolCard {
   tool: string;
@@ -205,6 +206,7 @@ export function ChatTab() {
             >
               Save
             </button>
+            <ModelsSection />
           </div>
         )}
       </div>

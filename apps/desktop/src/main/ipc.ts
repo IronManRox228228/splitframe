@@ -13,6 +13,7 @@ import { getSettings, saveSettings, rotateMcpToken } from './settings.ts';
 import { startMcpServer, stopMcpServer, revokeMcpSessions, getMcpActivity } from './mcp-server.ts';
 import { listModels, downloadModel, deleteModel, cancelModelDownload, onModelProgress } from './models.ts';
 import { searchWords, groupWordHits, searchScenes, isVectorSearchEnabled } from './analysis/search.ts';
+import { groupHasAllTerms } from './analysis/search-query.ts';
 import { getVlmConfig, setVlmConfig } from './analysis/vlm.ts';
 import { sendChatMessage, abortChat } from './agent/chat.ts';
 
@@ -257,7 +258,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     'search:query',
     async (_e, query: string) => {
       z.string().min(1).parse(query);
-      const words = groupWordHits(searchWords(query));
+      const words = groupWordHits(searchWords(query)).filter((group) => groupHasAllTerms(group.text, query));
       const scenes = await searchScenes(query);
       return { words, scenes, vectorSearch: isVectorSearchEnabled() };
     },

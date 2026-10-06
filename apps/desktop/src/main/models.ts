@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -6,6 +6,7 @@ import { app } from 'electron';
 import { getPaths } from './paths.ts';
 import { WHISPER_MODELS, hasModel, locateWhisperCli } from './analysis/whisper.ts';
 import { getSettings } from './settings.ts';
+import { EMBEDDING_MODEL_ID, downloadEmbeddingModel, isEmbeddingModelDownloaded } from './analysis/search.ts';
 
 /**
  * Model manager (addendum §5.1): downloads whisper.cpp ggml models with progress and
@@ -33,11 +34,11 @@ export async function listModels(): Promise<ModelStatus[]> {
     out.push({ id: m.id, kind: 'asr', downloaded: hasModel(m.id), sizeMB: m.sizeMB, note: m.note });
   }
   out.push({
-    id: 'bge-small-en-v1.5 (embeddings)',
+    id: EMBEDDING_MODEL_ID,
     kind: 'embeddings',
-    downloaded: existsSync(join(app.getPath('userData'), 'models', 'transformers-cache')),
+    downloaded: await isEmbeddingModelDownloaded(),
     sizeMB: 33,
-    note: 'local semantic search; downloads on first search',
+    note: 'local semantic search; fetched from huggingface.co only when you press Download',
   });
   return out;
 }
@@ -57,6 +58,13 @@ function emitModelProgress(payload: { id: string; received: number; total: numbe
 const active = new Map<string, AbortController>();
 
 export async function downloadModel(id: string): Promise<{ ok: boolean; error?: string }> {
+  if (id === EMBEDDING_MODEL_ID) {
+    if (await isEmbeddingModelDownloaded()) return { ok: true };
+    emitModelProgress({ id, received: 0, total: 0, done: false });
+    const result = await downloadEmbeddingModel();
+    emitModelProgress({ id, received: 0, total: 0, done: result.ok, ...(result.ok ? {} : { error: result.error }) });
+    return result;
+  }
   const model = WHISPER_MODELS.find((m) => m.id === id);
   if (!model) return { ok: false, error: `Unknown model ${id}` };
   if (hasModel(id)) return { ok: true };
@@ -64,6 +72,9 @@ export async function downloadModel(id: string): Promise<{ ok: boolean; error?: 
 
   const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${id}.bin`;
   const dest = join(modelsDir(), `ggml-${id}.bin`);
+  // download beside the final name: a crash or kill mid-download must not leave a truncated
+  // file that hasModel() would later accept as an installed model
+  const partial = `${dest}.part`;
   const controller = new AbortController();
   active.set(id, controller);
   try {
@@ -81,12 +92,14 @@ export async function downloadModel(id: string): Promise<{ ok: boolean; error?: 
         emitModelProgress({ id, received, total, done: false });
       }
     });
-    await pipeline(reader, createWriteStream(dest));
+    await pipeline(reader, createWriteStream(partial));
+    if (total > 0 && received !== total) throw new Error(`Incomplete download (${received} of ${total} bytes)`);
+    renameSync(partial, dest);
     emitModelProgress({ id, received: total, total, done: true });
     return { ok: true };
   } catch (err) {
     try {
-      if (existsSync(dest)) unlinkSync(dest);
+      if (existsSync(partial)) unlinkSync(partial);
     } catch { /* ignore */ }
     const error = controller.signal.aborted ? 'cancelled' : err instanceof Error ? err.message : String(err);
     emitModelProgress({ id, received: 0, total: 0, done: false, error });

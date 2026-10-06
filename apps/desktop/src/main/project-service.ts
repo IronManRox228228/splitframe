@@ -1,5 +1,5 @@
 import { getDb } from './db.ts';
-import { applyOp, applyOps, createEmptyDoc, parseDoc, History, OpError } from '@cutboard/editor-core';
+import { applyOps, createEmptyDoc, parseDoc, History, OpError } from '@cutboard/editor-core';
 import type { UndoGroup } from '@cutboard/editor-core';
 import { Actor, Op, TimelineDoc, assetSchema, beatMapSchema, sceneSchema, transcriptSchema, newId } from '@cutboard/schema';
 import type { ProjectBundle } from '@cutboard/schema';
@@ -15,6 +15,13 @@ export interface ProjectRow {
   id: string;
   name: string;
   updatedAt: string;
+}
+
+/** Folder of any project (not only the open one), e.g. for background jobs of another project. */
+export function resolveProjectDir(projectId: string): string {
+  const row = getDb().prepare(`SELECT id, name FROM projects WHERE id=?`).get(projectId) as { id: string; name: string } | undefined;
+  if (!row) throw new Error(`Project ${projectId} not found`);
+  return projectDir(getPaths().projectsRoot, row.id, row.name);
 }
 
 export class ProjectService {

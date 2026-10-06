@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 import { getPaths } from '../paths.ts';
@@ -72,29 +72,48 @@ function isSpecialToken(text: string): boolean {
 }
 
 /** Decode a 16kHz mono wav, run whisper-cli with full JSON output, parse words. */
-export async function transcribe(
+export async function transcribe(mediaPath: string, opts: TranscribeOptions): Promise<{ words: WhisperWord[]; language: string }> {
+  const stamp = Date.now();
+  try {
+    return await transcribeFiles(mediaPath, opts, stamp);
+  } finally {
+    // the 16 kHz wav and whisper's json are scratch files; don't leave them in the project cache
+    for (const ext of ['wav', 'json']) {
+      try {
+        unlinkSync(join(opts.workDir, `asr-${stamp}.${ext}`));
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+}
+
+type TranscribeOptions = {
+  modelId: string;
+  workDir: string;
+  language?: string;
+  signal?: AbortSignal;
+  progress?: (p: number) => void;
+};
+
+async function transcribeFiles(
   mediaPath: string,
-  opts: {
-    modelId: string;
-    workDir: string;
-    language?: string;
-    signal?: AbortSignal;
-    progress?: (p: number) => void;
-  },
+  opts: TranscribeOptions,
+  stamp: number,
 ): Promise<{ words: WhisperWord[]; language: string }> {
   const cli = locateWhisperCli();
   if (!cli) throw new Error('whisper-cli not found. Install it (brew install whisper-cpp) or run pnpm fetch:whisper.');
   const model = modelPath(opts.modelId);
   if (!existsSync(model)) throw new Error(`Whisper model ${opts.modelId} not downloaded yet.`);
 
-  const wavPath = join(opts.workDir, `asr-${Date.now()}.wav`);
+  const wavPath = join(opts.workDir, `asr-${stamp}.wav`);
   await new Promise<void>((resolve, reject) => {
     runFfmpeg(['-i', mediaPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-vn', wavPath])
       .then((r) => (r.code === 0 ? resolve() : reject(new Error(`audio decode failed: ${r.stderr.split('\n').slice(-2).join(' ')}`))))
       .catch(reject);
   });
 
-  const outBase = join(opts.workDir, `asr-${Date.now()}`);
+  const outBase = join(opts.workDir, `asr-${stamp}`);
   const args = [
     '-m', model,
     '-f', wavPath,
@@ -106,6 +125,7 @@ export async function transcribe(
   if (opts.language) args.push('-l', opts.language);
 
   const jsonPath = `${outBase}.json`;
+  let detectedLanguage: string | undefined;
   const words = await new Promise<WhisperWord[]>((resolve, reject) => {
     const child = spawn(cli, args, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     let stderr = '';
@@ -126,6 +146,7 @@ export async function transcribe(
           transcription?: { offsets: { from: number; to: number }; tokens?: WhisperToken[] }[];
           result?: { language?: string };
         };
+        detectedLanguage = data.result?.language;
         const words: WhisperWord[] = [];
         for (const segment of data.transcription ?? []) {
           const tokens = (segment.tokens ?? []).filter((t) => !isSpecialToken(t.text));
@@ -157,6 +178,6 @@ export async function transcribe(
     });
   });
 
-  const language = opts.language ?? 'en';
+  const language = opts.language ?? detectedLanguage ?? 'en';
   return { words, language };
 }

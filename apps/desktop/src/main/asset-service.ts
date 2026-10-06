@@ -1,14 +1,15 @@
 import { stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { unlinkSync } from 'node:fs';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import { getDb } from './db.ts';
-import { getPaths, projectDir } from './paths.ts';
+import { getPaths } from './paths.ts';
 import { ffprobe, makeProxy, makeThumbnail, makeWaveform } from './ffmpeg.ts';
 import { jobs, JobRow } from './jobs.ts';
-import { projectService } from './project-service.ts';
+import { projectService, resolveProjectDir } from './project-service.ts';
 import { transcribe } from './analysis/whisper.ts';
 import { detectScenes, extractKeyframe, keyframePath } from './analysis/scenes.ts';
 import { describeKeyframe, getVlmConfig } from './analysis/vlm.ts';
-import { indexTranscriptWords, indexScene } from './analysis/search.ts';
+import { indexTranscriptWords, indexScene, removeAssetIndex, removeSceneVectors } from './analysis/search.ts';
 import { getSettings } from './settings.ts';
 import { Asset, AssetKind, assetSchema, newId } from '@cutboard/schema';
 
@@ -96,7 +97,6 @@ export function isMediaFile(path: string): boolean {
 async function importFile(filePath: string): Promise<Asset> {
   if (!projectService.isOpen) throw new Error('Open a project first');
   const projectId = projectService.projectId;
-  const dir = projectService.dir;
 
   const st = await stat(filePath);
   const db = getDb();
@@ -167,8 +167,9 @@ function registerIngestHandler(): void {
     const row = db.prepare(`SELECT * FROM assets WHERE id=?`).get(assetId) as Record<string, unknown> | undefined;
     if (!row) throw new Error(`Asset ${assetId} missing`);
     const asset = rowToAsset(row);
-    const dir = projectService.isOpen ? projectService.dir : projectDir(getPaths().projectsRoot, asset.projectId, 'assets');
-    const cache = join(dir, 'cache');
+    asset.error = undefined; // a re-run starts clean; ASR sets it again if transcription is unavailable
+    // the asset's own project folder, whichever project happens to be open (or none, on resume)
+    const cache = join(resolveProjectDir(asset.projectId), 'cache');
 
     ctx.progress(0.03, 'proxy');
     const proxyPath = join(cache, `${asset.id}-proxy.mp4`);
@@ -227,8 +228,11 @@ function registerIngestHandler(): void {
           asset.hasSpeech = speechMs > 2000;
         }
       } catch (err) {
-        // ASR unavailable (no model) or failed: degrade gracefully, keep analyzing
-        process.stderr.write(`[ingest] ASR skipped for ${assetId}: ${err instanceof Error ? err.message : String(err)}\n`);
+        // ASR unavailable (no whisper-cli/model) or failed: degrade gracefully, keep analyzing,
+        // but tell the user why there is no transcript (shown on the footage card)
+        const reason = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[ingest] ASR skipped for ${assetId}: ${reason}\n`);
+        asset.error = `Transcription unavailable: ${reason}`;
       }
     }
     saveAsset(asset);
@@ -245,6 +249,10 @@ function registerIngestHandler(): void {
       }
       if (scenes.length === 0) scenes = [{ startMs: 0, endMs: asset.durationMs }];
       const { provider } = await getVlmConfig();
+      // a re-run (resumed job, re-import) must replace the previous scenes, not add to them
+      const oldScenes = db.prepare(`SELECT id FROM scenes WHERE asset_id=?`).all(assetId) as { id: string }[];
+      db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
+      removeSceneVectors(oldScenes.map((s) => s.id));
       for (let i = 0; i < scenes.length; i++) {
         if (ctx.signal.aborted) return;
         const scene = scenes[i]!;
@@ -324,12 +332,38 @@ export async function relinkAsset(assetId: string, newPath: string): Promise<Ass
   return updated;
 }
 
+/** True when `file` lies inside `root` (path.relative is case-insensitive on Windows). */
+function isUnder(root: string, file: string): boolean {
+  const rel = relative(root, file);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
 export function removeAsset(assetId: string): void {
+  if (projectService.isOpen) {
+    const uses = projectService.doc.items.filter((i) => i.assetId === assetId).length;
+    if (uses > 0) {
+      throw new Error(`This asset is used by ${uses} timeline item${uses === 1 ? '' : 's'}. Remove them from the timeline first.`);
+    }
+  }
   const db = getDb();
+  const asset = getAsset(assetId);
+  const scenes = db.prepare(`SELECT id, keyframe_paths FROM scenes WHERE asset_id=?`).all(assetId) as { id: string; keyframe_paths: string }[];
   db.prepare(`DELETE FROM assets WHERE id=?`).run(assetId);
   db.prepare(`DELETE FROM transcripts WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM beat_maps WHERE asset_id=?`).run(assetId);
+  removeAssetIndex(assetId, scenes.map((s) => s.id));
+  if (!asset) return;
+  // best-effort cleanup of generated files; never touches the original or anything outside the project folders
+  const generated = [asset.proxyPath, asset.thumbPath, asset.waveformPath, ...scenes.flatMap((s) => JSON.parse(s.keyframe_paths || '[]') as string[])];
+  for (const file of generated) {
+    if (!file || file === asset.path || !isUnder(getPaths().projectsRoot, file)) continue;
+    try {
+      unlinkSync(file);
+    } catch {
+      /* already gone */
+    }
+  }
 }
 
 /** Word-level transcripts for every asset in a project (empty until ASR runs). */

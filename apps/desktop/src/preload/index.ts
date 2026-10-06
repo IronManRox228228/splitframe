@@ -23,6 +23,7 @@ export interface CutboardApi {
   redo(): Promise<{ ok: boolean; doc?: unknown }>;
   historyLabels(): Promise<{ canUndo: boolean; canRedo: boolean; undoLabel: string | null }>;
   getAsset(assetId: string): Promise<unknown>;
+  checkAssetAvailability(assetId: string): Promise<'ok' | 'missing'>;
   relinkAsset(assetId: string, newPath: string): Promise<unknown>;
   removeAsset(assetId: string): Promise<boolean>;
   listJobs(projectId?: string): Promise<unknown[]>;
@@ -71,6 +72,7 @@ const api: CutboardApi = {
   redo: () => ipcRenderer.invoke('history:redo'),
   historyLabels: () => ipcRenderer.invoke('history:labels'),
   getAsset: (assetId) => ipcRenderer.invoke('assets:get', assetId),
+  checkAssetAvailability: (assetId) => ipcRenderer.invoke('assets:checkAvailability', assetId),
   relinkAsset: (assetId, newPath) => ipcRenderer.invoke('assets:relink', { assetId, newPath }),
   removeAsset: (assetId) => ipcRenderer.invoke('assets:remove', assetId),
   listJobs: (projectId) => ipcRenderer.invoke('jobs:list', projectId),

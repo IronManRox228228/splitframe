@@ -37,7 +37,6 @@ function FootageTab() {
   const importMedia = useEditor((s) => s.importMedia);
   const jobs = useEditor((s) => s.jobs);
   const addAssetToTimeline = useEditor((s) => s.addAssetToTimeline);
-  const openProject = useEditor((s) => s.openProject);
   const [query, setQuery] = useState('');
 
   const filtered = assets.filter((a) => a.originalName.toLowerCase().includes(query.toLowerCase()));
@@ -100,7 +99,11 @@ function FootageTab() {
               <div className="p-1.5">
                 <p className="text-[11px] text-neutral-300 truncate">{asset.originalName}</p>
                 <div className="mt-1 flex items-center gap-1">
-                  {status === 'analyzed' ? (
+                  {status === 'analyzed' && asset.error?.startsWith('Transcription') ? (
+                    <span className="chip bg-amber-500/15 text-amber-400" title={asset.error}>
+                      ✓ analyzed · no transcript
+                    </span>
+                  ) : status === 'analyzed' ? (
                     <span className="chip bg-accent/15 text-accent">✓ analyzed</span>
                   ) : status === 'missing' ? (
                     <MissingBadge assetId={asset.id} />

@@ -7,7 +7,7 @@ import {
   TimelineDoc,
   newId,
 } from '@cutboard/schema';
-import { createItem, snapFrame, getSnapCandidates, docDurationFrames, TRACK_KIND_ALLOWED } from '@cutboard/editor-core';
+import { createItem, snapFrame, getSnapCandidates, docDurationFrames } from '@cutboard/editor-core';
 import type { MediaPool } from './lib/media.ts';
 import { assetsToMap } from './lib/media.ts';
 
@@ -161,6 +161,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     });
     const jobsList = (await window.cutboard.listJobs(id)) as JobInfo[];
     set({ jobs: Object.fromEntries(jobsList.map((j) => [j.id, j])) });
+    // flag originals that moved or were deleted since last time (main emits an asset event for each change)
+    for (const asset of bundle.assets) {
+      if (asset.status === 'analyzed' || asset.status === 'missing') void window.cutboard.checkAssetAvailability(asset.id);
+    }
   },
 
   async closeProject() {
@@ -194,6 +198,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
       case 'asset': {
         const asset = envelope.payload as Asset;
+        // background jobs of another project can still be finishing; keep them out of this editor
+        if (s.doc && asset.projectId !== s.doc.project.id) break;
         const assets = [...s.assets];
         const idx = assets.findIndex((a) => a.id === asset.id);
         if (idx === -1) assets.push(asset);
@@ -204,6 +210,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
       case 'job': {
         const job = envelope.payload as JobInfo;
+        if (s.doc && job.projectId && job.projectId !== s.doc.project.id) break;
         set({ jobs: { ...s.jobs, [job.id]: job } });
         break;
       }
