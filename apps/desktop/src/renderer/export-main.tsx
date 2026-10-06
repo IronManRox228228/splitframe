@@ -40,13 +40,13 @@ async function main(): Promise<void> {
     const totalFrames = docDurationFrames(doc);
     if (totalFrames === 0) throw new Error('Nothing to render');
 
+    // main already chose the best file per asset (the original when Chromium can decode it)
     const assets = Object.entries(bundle.mediaUrls).map(([id, path]) => ({
       id,
       path,
       kind: doc.items.find((i) => i.assetId === id)?.type === 'image' ? 'image' : 'video',
-      proxyPath: path,
     }));
-    const pool = new MediaPool(new Map(assets.map((a) => [a.id, { proxyPath: a.proxyPath, path: a.path, kind: a.kind }])), fps);
+    const pool = new MediaPool(new Map(assets.map((a) => [a.id, { path: a.path, kind: a.kind }])), fps);
     const compositor = new CanvasCompositor();
     const canvas = new OffscreenCanvas(settings.width, settings.height);
     const ctx = canvas.getContext('2d')!;

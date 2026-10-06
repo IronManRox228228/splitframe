@@ -4,8 +4,9 @@ import { getDb } from './db.ts';
 import { runFfmpeg, getFfmpeg } from './ffmpeg.ts';
 import { projectService } from './project-service.ts';
 import { getAsset } from './asset-service.ts';
-import { Item, TimelineDoc, newId } from '@cutboard/schema';
-import { docDurationFrames, isAudioBearing } from '@cutboard/editor-core';
+import { exportMediaPath, selectAudioSources, buildAudioGraph } from './export-plan.ts';
+import { TimelineDoc, newId } from '@cutboard/schema';
+import { docDurationFrames } from '@cutboard/editor-core';
 
 /**
  * Export pipeline (addendum §3 "Render/export"): a hidden Chromium window renders each
@@ -227,32 +228,9 @@ class ExportService {
       '-i', 'pipe:0',
     ];
 
-    // audio mix: one input per audible audio-bearing item
-    const audioItems = doc.items.filter((item) => {
-      const track = doc.tracks.find((t) => t.id === item.trackId);
-      return isAudioBearing(item) && !item.muted && !track?.muted;
-    });
-    const filterParts: string[] = [];
-    audioItems.forEach((item, i) => {
-      const asset = item.assetId ? getAsset(item.assetId) : null;
-      if (!asset) return;
-      args.push('-i', asset.path);
-      const inputIdx = i + 1;
-      const startSec = (item.sourceInFrame ?? 0) / fps;
-      const endSec = ((item.sourceInFrame ?? 0) + item.durationFrames * item.speed) / fps;
-      const parts = [`[${inputIdx}:a]atrim=start=${startSec.toFixed(3)}:end=${endSec.toFixed(3)}`, 'asetpts=PTS-STARTPTS'];
-      if (item.speed !== 1) {
-        const tempo = Math.min(2, Math.max(0.5, item.speed));
-        parts.push(`atempo=${tempo.toFixed(4)}`);
-      }
-      const startMs = Math.round((item.startFrame / fps) * 1000);
-      parts.push(`adelay=${startMs}:all=1`);
-      parts.push(volumeFilterExpr(item, fps));
-      filterParts.push(`${parts.join(',')}[a${i}]`);
-    });
-    if (audioItems.length > 0) {
-      filterParts.push(`[a0]${audioItems.slice(1).map((_, i) => `[a${i + 1}]`).join('')}amix=inputs=${audioItems.length}:normalize=0:duration=longest[mixed]`);
-    }
+    // audio mix: one input per audible item whose file actually has an audio stream
+    const audio = buildAudioGraph(selectAudioSources(doc, getAsset), fps);
+    if (audio) for (const path of audio.inputs) args.push('-i', path);
 
     if (preset.format === 'webm') {
       args.push('-c:v', 'libvpx-vp9', '-b:v', `${preset.videoBitrateK}k`, '-row-mt', '1');
@@ -261,12 +239,15 @@ class ExportService {
       args.push('-c:v', h264Encoder, ...bitrateArgs);
     }
     args.push('-pix_fmt', 'yuv420p');
-    if (audioItems.length > 0) {
-      args.push('-filter_complex', filterParts.join(';'), '-map', '[mixed]');
+    if (audio) {
+      args.push('-filter_complex', audio.filterComplex, '-map', audio.outLabel);
     } else {
       args.push('-an');
     }
-    args.push('-map', '0:v', '-shortest', outputPath);
+    // bound the output to the timeline length; -shortest would cut the video to the audio
+    // whenever the audio ends first
+    const totalSec = (this.active.get(exportId)?.totalFrames ?? 0) / fps;
+    args.push('-map', '0:v', ...(totalSec > 0 ? ['-t', totalSec.toFixed(3)] : []), outputPath);
 
     const result = await runFfmpeg(args, {
       signal: controller.signal,
@@ -287,40 +268,18 @@ class ExportService {
       throw new Error(`ffmpeg exited with ${result.code}: ${result.stderr.split('\n').slice(-4).join(' | ')}`);
     }
     if (!controller.signal.aborted) {
-      this.active.delete(exportId);
-      this.update(exportId, { status: 'done', progress: 1, outputPath });
+      // grab the state first: the render window must be destroyed or it outlives the export
+      // and keeps the app from quitting once the main window is closed
       const state = this.active.get(exportId);
+      this.active.delete(exportId);
       state?.window?.destroy();
+      this.update(exportId, { status: 'done', progress: 1, outputPath });
     }
   }
 }
 
 function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'export';
-}
-
-/** Piecewise volume envelope (ducking keyframes + fades) as an ffmpeg volume expression. */
-function volumeFilterExpr(item: Item, fps: number): string {
-  const base = Math.min(1, Math.max(0, item.volume));
-  const kfs = [...(item.keyframes['volume'] ?? [])].sort((a, b) => a.frame - b.frame);
-  if (kfs.length === 0) {
-    // simple fades without keyframes
-    const fadeIn = ((item.props as { fadeInFrames?: number }).fadeInFrames ?? 0) / fps;
-    const fadeOut = ((item.props as { fadeOutFrames?: number }).fadeOutFrames ?? 0) / fps;
-    const durSec = item.durationFrames / fps;
-    if (fadeIn > 0 && fadeOut > 0) {
-      return `volume='if(lt(t,${fadeIn.toFixed(3)}),t/${fadeIn.toFixed(3)}*${base},if(gt(t,${(durSec - fadeOut).toFixed(3)}),max(0,(${durSec.toFixed(3)}-t)/${fadeOut.toFixed(3)})*${base},${base}))':eval=frame`;
-    }
-    return `volume=${base.toFixed(4)}`;
-  }
-  // keyframed envelope (ducking): nested if chain, sampled linearly between keyframes
-  const val = (v: number) => (Math.min(1, Math.max(0, v * base))).toFixed(4);
-  let expr = val(kfs[kfs.length - 1]!.value);
-  for (let i = kfs.length - 1; i >= 0; i--) {
-    const t = (kfs[i]!.frame / fps).toFixed(3);
-    expr = `if(lt(t,${t}),${val(kfs[i]!.value)},${expr})`;
-  }
-  return `volume='${expr}':eval=frame`;
 }
 
 export const exportService = new ExportService();
@@ -398,7 +357,7 @@ export function registerExportWindowIpc(): void {
     for (const item of doc.items) {
       if (item.assetId && !mediaUrls.has(item.assetId)) {
         const asset = getAsset(item.assetId);
-        if (asset) mediaUrls.set(item.assetId, asset.proxyPath ?? asset.path);
+        if (asset) mediaUrls.set(item.assetId, exportMediaPath(asset));
       }
     }
     return { doc, mediaUrls: Object.fromEntries(mediaUrls) };
