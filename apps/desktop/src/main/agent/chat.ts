@@ -4,7 +4,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { AGENT_SYSTEM_PROMPT } from '@cutboard/agent';
-import { getSettings, getSecret, type AiSettings } from '../settings.ts';
+import { getSettings, getAgentKey, type AiSettings } from '../settings.ts';
 import { callTool, registry } from '../tools-bridge.ts';
 import { broadcast } from '../events.ts';
 
@@ -50,7 +50,7 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
   const settings = await getSettings();
   const provider = settings.ai?.agentProvider ?? 'anthropic';
   const model = settings.ai?.agentModel ?? '';
-  const key = (await getSecret('agentKey')) ?? '';
+  const key = (await getAgentKey(provider)) ?? '';
   if (provider !== 'ollama' && !key) {
     broadcastChat(chatId, 'chat:done', {
       error: `No API key configured for ${provider}. Open Settings → AI and add one (or switch to Ollama for a local model).`,

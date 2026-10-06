@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { getSettings, saveSettings, saveSecret, getSecret, type VlmProvider } from '../settings.ts';
+import { getSettings, saveSettings, saveSecret, getSecret, agentKeySlot, migrateLegacyAgentKey, type AiSettings, type VlmProvider } from '../settings.ts';
 
 /**
  * Pluggable VLM scene descriptions (main prompt §5, addendum §3): local Ollama
@@ -17,7 +17,8 @@ export async function getVlmConfig(): Promise<{ provider: VlmProvider; model: st
   };
 }
 
-export async function setVlmConfig(patch: { vlmProvider?: VlmProvider; vlmModel?: string; ollamaUrl?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }): Promise<void> {
+export async function setVlmConfig(patch: { agentProvider?: AiSettings['agentProvider']; vlmProvider?: VlmProvider; vlmModel?: string; ollamaUrl?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }): Promise<void> {
+  await migrateLegacyAgentKey();
   const settings = await getSettings();
   // keys never go into settings.json; also scrub any plaintext agentKey an older build wrote
   delete (settings.ai as Record<string, unknown> | undefined)?.agentKey;
@@ -25,7 +26,10 @@ export async function setVlmConfig(patch: { vlmProvider?: VlmProvider; vlmModel?
   delete ai.agentKey;
   delete ai.anthropicKey;
   delete ai.openaiKey;
-  if (patch.agentKey) await saveSecret('agentKey', patch.agentKey);
+  if (patch.agentKey) {
+    const provider = patch.agentProvider ?? settings.ai?.agentProvider ?? 'anthropic';
+    await saveSecret(agentKeySlot(provider), patch.agentKey);
+  }
   if (patch.anthropicKey) await saveSecret('anthropicKey', patch.anthropicKey);
   if (patch.openaiKey) await saveSecret('openaiKey', patch.openaiKey);
   await saveSettings({ ai });
