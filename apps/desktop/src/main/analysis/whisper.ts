@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { app } from 'electron';
 import { getPaths } from '../paths.ts';
 import { runFfmpeg } from '../ffmpeg.ts';
+import { timestampAccuracyFlags } from './whisper-flags.ts';
 
 /**
  * ASR via whisper.cpp (addendum §3): word-level timestamps. Prefers a bundled whisper-cli
@@ -56,6 +57,18 @@ export function locateWhisperCli(): string | null {
     if (isExecutable(candidate)) return candidate;
   }
   return null;
+}
+
+const cliFlags = new Map<string, string[]>();
+/** Extra flags for this whisper-cli build, probed once per binary from its --help text. */
+function cliTimestampFlags(cli: string): string[] {
+  let flags = cliFlags.get(cli);
+  if (!flags) {
+    const help = spawnSync(cli, ['--help'], { encoding: 'utf8', windowsHide: true });
+    flags = timestampAccuracyFlags(`${help.stdout ?? ''}${help.stderr ?? ''}`);
+    cliFlags.set(cli, flags);
+  }
+  return flags;
 }
 
 export function modelPath(modelId: string): string {
@@ -121,6 +134,7 @@ async function transcribeFiles(
     '--max-len', '1', // forces token-level timestamps suitable for word timing
     '-ml', '1',
     '-sow',
+    ...cliTimestampFlags(cli),
   ];
   if (opts.language) args.push('-l', opts.language);
 
