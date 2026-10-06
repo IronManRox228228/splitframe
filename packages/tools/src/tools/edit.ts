@@ -113,7 +113,7 @@ export const addText: ToolDef = {
       durationFrames: input.durationFrames,
       transform: { x: input.x ?? 0, y: input.y ?? 0 } as never,
       labels: { name: input.text.slice(0, 24) },
-      props: { text: input.text, style: input.style ?? {} } as never,
+      props: { text: input.text, style: input.style ?? textStyleInput.parse({}) } as never,
     } as never);
     await ctx.applyOps([{ type: 'item.add', item: item as never }], ctx.actor, 'addText');
     return summarize(await ctx.getSnapshot(), [item.id]);
