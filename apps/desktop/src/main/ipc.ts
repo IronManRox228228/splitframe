@@ -182,7 +182,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     const doc = projectService.doc;
     const media = new Map<string, string>();
     for (const asset of getAssets(projectService.projectId)) {
-      media.set(asset.id, asset.proxyPath ?? asset.path);
+      media.set(asset.id, asset.path); // link the original footage, never the 540p proxy in the cache
     }
     const json = buildOtio(doc, (assetId) => media.get(assetId) ?? null);
     const slug = doc.project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'timeline';

@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
@@ -61,11 +61,31 @@ export async function getSettings(): Promise<Settings> {
       ai: { ...DEFAULTS.ai, ...parsed.ai },
       asr: { ...DEFAULTS.asr, ...parsed.asr },
     };
-  } catch {
+  } catch (err) {
     loaded = structuredClone(DEFAULTS);
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      // first run: store the generated MCP token now, otherwise every restart would invent a new one
+      await persistSettings(loaded).catch(() => undefined);
+    } else {
+      // unreadable or corrupt: keep a copy before the next save replaces it with defaults
+      await copyFile(settingsPath(), `${settingsPath()}.bak`).catch(() => undefined);
+    }
   }
   cache = loaded;
   return loaded;
+}
+
+// saves are queued and written via a temp file, so overlapping saves cannot interleave
+// and a crash mid-write cannot leave a truncated settings.json
+let writeQueue: Promise<void> = Promise.resolve();
+function persistSettings(settings: Settings): Promise<void> {
+  const job = writeQueue.then(async () => {
+    const tmp = `${settingsPath()}.tmp`;
+    await writeFile(tmp, JSON.stringify(settings, null, 2), 'utf8');
+    await rename(tmp, settingsPath());
+  });
+  writeQueue = job.catch(() => undefined);
+  return job;
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
@@ -75,7 +95,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
     ai: { ...current.ai, ...patch.ai ?? {} },
     asr: { ...current.asr ?? DEFAULTS.asr, ...patch.asr ?? {} },
   };
-  await writeFile(settingsPath(), JSON.stringify(cache, null, 2), 'utf8');
+  await persistSettings(cache);
   return cache;
 }
 

@@ -36,7 +36,8 @@ export class History {
     if (ops.length === 0) return;
     if (this.openGroup) {
       this.openGroup.ops.push(...ops);
-      this.openGroup.inverses.push(...inverses);
+      // undo applies a group's inverses in order, so later pushes must come first
+      this.openGroup.inverses.unshift(...inverses);
     } else {
       this.commit({ ops: [...ops], inverses: [...inverses], label, actor });
     }
@@ -70,6 +71,33 @@ export class History {
     if (this.index === 0) return null;
     this.index -= 1;
     return this.stack[this.index]!;
+  }
+
+  /**
+   * Undo one group by running `apply` on it. If `apply` throws (e.g. the doc changed under
+   * the history) the position is put back, so the stack and the doc never drift apart.
+   */
+  undoWith<T>(apply: (group: UndoGroup) => T): T | null {
+    const group = this.undo();
+    if (!group) return null;
+    try {
+      return apply(group);
+    } catch (err) {
+      this.index += 1;
+      throw err;
+    }
+  }
+
+  /** Counterpart of undoWith for redo. */
+  redoWith<T>(apply: (group: UndoGroup) => T): T | null {
+    const group = this.redo();
+    if (!group) return null;
+    try {
+      return apply(group);
+    } catch (err) {
+      this.index -= 1;
+      throw err;
+    }
   }
 
   redo(): UndoGroup | null {
