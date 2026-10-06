@@ -3,7 +3,7 @@ import { newId, type Op } from '@cutboard/schema';
 import { applyOps, createEmptyDoc } from '@cutboard/editor-core';
 import type { ToolContext } from '../registry.ts';
 import { createToolRegistry } from '../index.ts';
-import { addAudio, addClip, updateItem } from './edit.ts';
+import { addAudio, addClip, addText, updateItem } from './edit.ts';
 import { beatSync } from './beat.ts';
 
 interface FakeAsset {
@@ -32,6 +32,14 @@ function makeCtx(assets: FakeAsset[], beatsMs: number[] = []) {
   } as unknown as ToolContext;
   return { ctx, state };
 }
+
+describe('addText', () => {
+  it('fills in the default style when none is given', async () => {
+    const { ctx, state } = makeCtx([]);
+    await addText.handler(addText.input.parse({ text: 'Hello', startFrame: 0, durationFrames: 60 }), ctx);
+    expect(state.doc.items[0]).toMatchObject({ type: 'text', props: { text: 'Hello', style: { fontFamily: 'Montserrat', fontSize: 72 } } });
+  });
+});
 
 describe('addClip', () => {
   it('defaults to the whole asset instead of one second', async () => {
