@@ -271,19 +271,22 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       vlmProvider: vlm.provider,
       vlmModel: vlm.model,
       ollamaUrl: vlm.ollamaUrl,
+      llamacppUrl: settings.ai?.llamacppUrl ?? 'http://127.0.0.1:8080',
       asrModel: settings.asr?.model ?? 'base.en',
     };
   });
   ipcMain.handle(
     'ai:setConfig',
-    (_e, patch: { agentProvider?: string; agentModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
+    (_e, patch: { agentProvider?: string; agentModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
       z.object({
-        agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama']).optional(),
+        agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'llamacpp']).optional(),
         agentModel: z.string().max(120).optional(),
         vlmProvider: z.enum(['none', 'ollama', 'anthropic', 'openai']).optional(),
         vlmModel: z.string().max(120).optional(),
         ollamaUrl: z.string().url().optional(),
+        llamacppUrl: z.string().url().optional(),
         agentKey: z.string().max(400).optional(),
+        llamacppKey: z.string().max(400).optional(),
         anthropicKey: z.string().max(400).optional(),
         openaiKey: z.string().max(400).optional(),
       }).parse(patch);

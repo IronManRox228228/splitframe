@@ -4,14 +4,14 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { AGENT_SYSTEM_PROMPT } from '@cutboard/agent';
-import { getSettings, getAgentKey, type AiSettings } from '../settings.ts';
+import { getSettings, getSecret, getAgentKey, type AiSettings } from '../settings.ts';
 import { callTool, registry } from '../tools-bridge.ts';
 import { broadcast } from '../events.ts';
 
 /**
  * Built-in agent (addendum §2, main prompt §6): Vercel AI SDK streaming with the shared
- * tool registry as its hands. Provider adapters: Anthropic / OpenAI / Google / Ollama
- * (OpenAI-compatible). Keys live in the OS-encrypted secret store. Streams narration,
+ * tool registry as its hands. Provider adapters: Anthropic / OpenAI / Google, plus local
+ * Ollama and llama.cpp `llama-server` (both via their OpenAI-compatible /v1 endpoints). Keys live in the OS-encrypted secret store. Streams narration,
  * tool calls, and tool results to the chat UI over the event bus.
  */
 
@@ -19,6 +19,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+const LOCAL_PROVIDERS = new Set(['ollama', 'llamacpp']);
 
 function providerModel(provider: string, model: string, key: string, ai: AiSettings): LanguageModel {
   switch (provider) {
@@ -30,11 +32,17 @@ function providerModel(provider: string, model: string, key: string, ai: AiSetti
       const google = createGoogleGenerativeAI({ apiKey: key });
       return google(model || 'gemini-2.0-flash');
     }
+    // Local servers speak Chat Completions, not the Responses API createOpenAI defaults to,
+    // hence .chat().
     case 'ollama': {
-      // OpenAI-compatible endpoint served by Ollama (local, keyless). Local servers speak
-      // Chat Completions, not the Responses API createOpenAI defaults to, hence .chat().
       const ollama = createOpenAI({ baseURL: `${trimSlash(ai.ollamaUrl ?? 'http://127.0.0.1:11434')}/v1`, apiKey: 'ollama' });
       return ollama.chat(model || 'qwen2.5:7b');
+    }
+    case 'llamacpp': {
+      // llama-server serves whatever model it was launched with and ignores the name
+      // (router mode uses it to pick a model). Key only matters if started with --api-key.
+      const llamacpp = createOpenAI({ baseURL: `${trimSlash(ai.llamacppUrl ?? 'http://127.0.0.1:8080')}/v1`, apiKey: key || 'llamacpp' });
+      return llamacpp.chat(model || 'default');
     }
     case 'anthropic':
     default: {
@@ -50,10 +58,11 @@ export async function sendChatMessage(chatId: string, userMessage: string): Prom
   const settings = await getSettings();
   const provider = settings.ai?.agentProvider ?? 'anthropic';
   const model = settings.ai?.agentModel ?? '';
-  const key = (await getAgentKey(provider)) ?? '';
-  if (provider !== 'ollama' && !key) {
+  // llama.cpp gets its own key slot so a cloud key is never sent to a self-hosted URL
+  const key = (provider === 'llamacpp' ? await getSecret('llamacppKey') : await getAgentKey(provider)) ?? '';
+  if (!LOCAL_PROVIDERS.has(provider) && !key) {
     broadcastChat(chatId, 'chat:done', {
-      error: `No API key configured for ${provider}. Open Settings → AI and add one (or switch to Ollama for a local model).`,
+      error: `No API key configured for ${provider}. Open Settings → AI and add one (or switch to Ollama / llama.cpp for a local model).`,
     });
     return;
   }
