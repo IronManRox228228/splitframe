@@ -11,8 +11,8 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "dist": "electron-vite build && electron-builder --config electron-builder.yml",
-    "dist:dir": "electron-vite build && electron-builder --config electron-builder.yml --dir"
+    "dist": "pnpm --filter @cutboard/mcp-shim build && electron-vite build && electron-builder --config electron-builder.yml",
+    "dist:dir": "pnpm --filter @cutboard/mcp-shim build && electron-vite build && electron-builder --config electron-builder.yml --dir"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.71",

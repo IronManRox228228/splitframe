@@ -2,10 +2,15 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { AGENT_SYSTEM_PROMPT } from '@cutboard/agent';
 import { registry, callTool } from './tools-bridge.ts';
 import { getSettings } from './settings.ts';
 import { broadcast } from './events.ts';
+import { hostAllowed, originAllowed, tokenMatches } from './mcp-auth.ts';
+
+/** Largest JSON-RPC body accepted (tool arguments are small; this only guards runaway clients). */
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 /**
  * Local MCP server (addendum §4): Streamable HTTP on 127.0.0.1 only, per-install bearer
@@ -64,20 +69,44 @@ export async function startMcpServer(): Promise<{ port: number } | { error: stri
   const { mcp } = await getSettings();
   if (!mcp.enabled) return { error: 'MCP server is disabled in settings' };
   if (listening) return { port: mcp.port };
+  if (starting) return starting; // concurrent callers share one listen attempt
 
-  const server = createServer((req, res) => {
-    void handle(req, res);
+  starting = (async () => {
+    const server = createServer((req, res) => {
+      handle(req, res).catch((err) => {
+        process.stderr.write(`[mcp] request failed: ${err instanceof Error ? err.message : String(err)}\n`);
+        if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain' });
+        res.end('Internal error');
+      });
+    });
+    try {
+      // an unavailable port (EADDRINUSE, EACCES) must reject instead of leaving the promise pending
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(mcp.port, '127.0.0.1', () => {
+          server.off('error', reject);
+          resolve();
+        });
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[mcp] could not listen on 127.0.0.1:${mcp.port}: ${message}\n`);
+      return { error: `Could not start the MCP server on port ${mcp.port}: ${message}` };
+    }
+    server.on('error', (err) => {
+      process.stderr.write(`[mcp] server error: ${err.message}\n`);
+    });
+    listening = true;
+    httpServer = server;
+    process.stderr.write(`[mcp] listening on 127.0.0.1:${mcp.port}\n`);
+    return { port: mcp.port };
+  })().finally(() => {
+    starting = null;
   });
-  server.on('error', (err) => {
-    process.stderr.write(`[mcp] server error: ${err.message}\n`);
-    listening = false;
-  });
-  await new Promise<void>((resolve) => server.listen(mcp.port, '127.0.0.1', resolve));
-  listening = true;
-  httpServer = server;
-  process.stderr.write(`[mcp] listening on 127.0.0.1:${mcp.port}\n`);
-  return { port: mcp.port };
+  return starting;
 }
+
+let starting: Promise<{ port: number } | { error: string }> | null = null;
 
 let listening = false;
 let httpServer: ReturnType<typeof createServer> | null = null;
@@ -108,20 +137,17 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const { mcp } = await getSettings();
 
   // loopback-only + DNS-rebinding protection (addendum §4)
-  const host = req.headers.host ?? '';
-  if (!host.startsWith(`127.0.0.1:${mcp.port}`) && !host.startsWith(`localhost:${mcp.port}`)) {
+  if (!hostAllowed(req.headers.host, mcp.port)) {
     res.writeHead(403).end('Forbidden host');
     return;
   }
-  const origin = req.headers.origin;
-  if (origin && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin)) {
+  if (!originAllowed(req.headers.origin)) {
     res.writeHead(403).end('Forbidden origin');
     return;
   }
 
-  // bearer token
-  const auth = req.headers.authorization ?? '';
-  if (auth !== `Bearer ${mcp.token}`) {
+  // bearer token (constant-time compare)
+  if (!tokenMatches(req.headers.authorization, mcp.token)) {
     res.writeHead(401, { 'www-authenticate': 'Bearer realm="cutboard-mcp"' }).end('Unauthorized');
     return;
   }
@@ -130,11 +156,20 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const sessionId = req.headers['mcp-session-id'];
 
   if (req.method === 'POST') {
-    let body = '';
-    for await (const chunk of req) body += String(chunk);
+    // collect raw bytes and decode once: decoding per chunk splits multi-byte characters
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of req) {
+      size += (chunk as Buffer).length;
+      if (size > MAX_BODY_BYTES) {
+        res.writeHead(413).end('Request too large');
+        return;
+      }
+      chunks.push(chunk as Buffer);
+    }
     let parsed: unknown;
     try {
-      parsed = JSON.parse(body);
+      parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     } catch {
       res.writeHead(400).end('Invalid JSON');
       return;
@@ -147,6 +182,15 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return;
     }
 
+    // only `initialize` may open a session; any other request without a live session id used
+    // to spin up a fresh, never-initialised server per request
+    if (!isInitializeRequest(parsed)) {
+      res
+        .writeHead(404, { 'content-type': 'application/json' })
+        .end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Unknown or missing MCP session. Send initialize first.' }, id: null }));
+      return;
+    }
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       enableJsonResponse: true,
@@ -155,11 +199,11 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         broadcast('event', { type: 'mcp:connected', payload: { sessionId: id, client: clientId } });
       },
     });
+    const mcpServer = await buildServer(clientId);
     transport.onclose = () => {
       const id = transport.sessionId;
       if (id) transports.delete(id);
     };
-    const mcpServer = await buildServer(clientId);
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res, parsed);
     return;
