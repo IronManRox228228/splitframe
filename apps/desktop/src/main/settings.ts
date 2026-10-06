@@ -19,13 +19,15 @@ export type VlmProvider = 'none' | 'ollama' | 'anthropic' | 'openai';
 
 export interface AiSettings {
   /** chat model provider for the built-in agent */
-  agentProvider?: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama';
+  agentProvider?: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'llamacpp';
   agentModel?: string;
   agentKeyEnc?: string;
   /** scene-description VLM */
   vlmProvider?: VlmProvider;
   vlmModel?: string;
   ollamaUrl?: string;
+  /** llama.cpp `llama-server` base URL (OpenAI-compatible) */
+  llamacppUrl?: string;
   anthropicKeyEnc?: string;
   openaiKeyEnc?: string;
 }

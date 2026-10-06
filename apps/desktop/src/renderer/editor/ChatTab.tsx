@@ -25,7 +25,7 @@ export function ChatTab() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [config, setConfig] = useState<{ agentProvider: string; agentModel: string; asrModel: string; vlmProvider: string } | null>(null);
+  const [config, setConfig] = useState<{ agentProvider: string; agentModel: string; asrModel: string; vlmProvider: string; llamacppUrl: string } | null>(null);
   const [apiKey, setApiKey] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatIdRef = useRef(newChatId());
@@ -164,6 +164,7 @@ export function ChatTab() {
                 <option value="openai">OpenAI (cloud)</option>
                 <option value="google">Google (cloud)</option>
                 <option value="ollama">Ollama (local)</option>
+                <option value="llamacpp">llama.cpp server (local)</option>
               </select>
             </label>
             <label className="block">
@@ -171,13 +172,29 @@ export function ChatTab() {
               <input
                 value={config.agentModel}
                 onChange={(e) => setConfig({ ...config, agentModel: e.target.value })}
-                placeholder="e.g. claude-sonnet-4-5"
+                placeholder={config.agentProvider === 'llamacpp' ? 'blank = whatever llama-server loaded' : 'e.g. claude-sonnet-4-5'}
                 className="w-full mt-1 bg-surface-800 border border-line rounded px-2 py-1.5 outline-none"
               />
             </label>
+            {config.agentProvider === 'llamacpp' && (
+              <label className="block">
+                <span className="text-neutral-500">Server URL</span>
+                <input
+                  value={config.llamacppUrl}
+                  onChange={(e) => setConfig({ ...config, llamacppUrl: e.target.value })}
+                  placeholder="http://127.0.0.1:8080"
+                  className="w-full mt-1 bg-surface-800 border border-line rounded px-2 py-1.5 outline-none"
+                />
+                <span className="block mt-1 text-[10px] text-neutral-600">
+                  Start llama-server with <code>--jinja</code> or the agent can't call editing tools.
+                </span>
+              </label>
+            )}
             {config.agentProvider !== 'ollama' && (
               <label className="block">
-                <span className="text-neutral-500">API key (stored encrypted)</span>
+                <span className="text-neutral-500">
+                  {config.agentProvider === 'llamacpp' ? 'API key (only if started with --api-key)' : 'API key (stored encrypted)'}
+                </span>
                 <input
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
@@ -194,13 +211,16 @@ export function ChatTab() {
                   .aiSetConfig({
                     agentProvider: config.agentProvider,
                     agentModel: config.agentModel,
-                    ...(config.agentProvider !== 'ollama' && apiKey ? { agentKey: apiKey } : {}),
+                    ...(config.agentProvider === 'llamacpp' && config.llamacppUrl.trim() ? { llamacppUrl: config.llamacppUrl.trim() } : {}),
+                    ...(apiKey && config.agentProvider === 'llamacpp' ? { llamacppKey: apiKey } : {}),
+                    ...(apiKey && config.agentProvider !== 'llamacpp' && config.agentProvider !== 'ollama' ? { agentKey: apiKey } : {}),
                   })
                   .then(() => {
                     setApiKey('');
                     setShowConfig(false);
                     useEditor.getState().showToast('AI settings saved.');
-                  });
+                  })
+                  .catch(() => useEditor.getState().showToast('Could not save AI settings — check the server URL.'));
               }}
             >
               Save
