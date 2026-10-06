@@ -37,6 +37,8 @@ export function ChatTab() {
 
   useEffect(() => {
     const off = window.cutboard.onEvent((envelope) => {
+      // ignore stragglers from an earlier (e.g. aborted) chat
+      if ((envelope.payload as { chatId?: string } | undefined)?.chatId !== chatIdRef.current) return;
       if (envelope.type === 'chat:delta') {
         const { text } = envelope.payload as { chatId: string; text: string };
         setTurns((prev) => {
@@ -81,7 +83,8 @@ export function ChatTab() {
     if (!message || streaming) return;
     setInput('');
     chatIdRef.current = newChatId();
-    turnIdxRef.current = turns.length;
+    // the assistant bubble sits after the user bubble appended below
+    turnIdxRef.current = turns.length + 1;
     setTurns((prev) => [...prev, { role: 'user', text: message, tools: [] }, { role: 'assistant', text: '', tools: [] }]);
     setStreaming(true);
     window.cutboard.sendChat(chatIdRef.current, message);
