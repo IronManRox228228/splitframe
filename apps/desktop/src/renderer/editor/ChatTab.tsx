@@ -294,7 +294,7 @@ function ToolCallCard({ card }: { card: ToolCard }) {
   return (
     <div className="mt-2 rounded border border-line bg-surface-900 overflow-hidden">
       <button className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-left hover:bg-surface-800" onClick={() => setOpen(!open)}>
-        <span className={card.phase === 'call' ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}>{card.phase === 'call' ? '◌' : '✓'}</span>
+        <span className={card.phase === 'call' ? 'text-amber-400 animate-pulse' : card.error ? 'text-red-400' : 'text-emerald-400'}>{card.phase === 'call' ? '◌' : card.error ? '✗' : '✓'}</span>
         <span className="text-neutral-300 font-medium">{label}</span>
         {card.error && <span className="text-red-400">failed</span>}
         <span className="flex-1" />
