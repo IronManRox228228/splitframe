@@ -5,6 +5,7 @@ import { Actor, Op, TimelineDoc, assetSchema, beatMapSchema, sceneSchema, transc
 import type { ProjectBundle } from '@cutboard/schema';
 import { broadcast } from './events.ts';
 import { projectDir, getPaths } from './paths.ts';
+import { commitProjectDoc, type SqlDb } from './project-store.ts';
 
 /**
  * The main process is the source of truth (addendum §2). Every timeline change goes
@@ -142,44 +143,38 @@ export class ProjectService {
   apply(ops: Op[], actor: Actor, groupLabel?: string): { inverses: Op[]; seq: number } {
     if (!this.current) throw new Error('No project open');
     const result = applyOps(this.current.doc, ops);
-    const db = getDb();
-    const now = new Date().toISOString();
-    const info = db
-      .prepare(`INSERT INTO op_log (project_id, actor, op, created_at) VALUES (?, ?, ?, ?)`)
-      .run(this.current.id, actor, JSON.stringify(ops.length === 1 ? ops[0] : { type: 'batch', ops }), now);
-    db.prepare(`UPDATE projects SET doc=?, updated_at=? WHERE id=?`).run(
-      JSON.stringify(result.doc),
-      now,
-      this.current.id,
-    );
+    const seq = this.persist(result.doc, { actor, ops });
     this.current.doc = result.doc;
     this.history.push(ops, result.inverse, groupLabel, actor);
     // single source of doc-change events: UI, agent, and MCP edits all flow through here
     broadcast('event', {
       type: 'doc:changed',
-      payload: { doc: this.current.doc, seq: Number(info.lastInsertRowid), actor, label: groupLabel ?? null },
+      payload: { doc: this.current.doc, seq, actor, label: groupLabel ?? null },
     });
-    return { inverses: result.inverse, seq: Number(info.lastInsertRowid) };
+    return { inverses: result.inverse, seq };
   }
 
   undo(): { applied: Op[]; label: string | null } | null {
     if (!this.current) return null;
-    const group = this.history.undo();
-    if (!group) return null;
-    const result = applyOps(this.current.doc, group.inverses, { enforceLocks: false });
-    this.persistDoc(result.doc);
-    this.current.doc = result.doc;
-    return { applied: group.inverses, label: group.label ?? null };
+    const current = this.current;
+    // undoWith puts the history position back if applying throws, so history and doc stay in step
+    return this.history.undoWith((group) => {
+      const result = applyOps(current.doc, group.inverses, { enforceLocks: false });
+      this.persist(result.doc, { actor: 'user', ops: group.inverses });
+      current.doc = result.doc;
+      return { applied: group.inverses, label: group.label ?? null };
+    });
   }
 
   redo(): { applied: Op[]; label: string | null } | null {
     if (!this.current) return null;
-    const group = this.history.redo();
-    if (!group) return null;
-    const result = applyOps(this.current.doc, group.ops, { enforceLocks: false });
-    this.persistDoc(result.doc);
-    this.current.doc = result.doc;
-    return { applied: group.ops, label: group.label ?? null };
+    const current = this.current;
+    return this.history.redoWith((group) => {
+      const result = applyOps(current.doc, group.ops, { enforceLocks: false });
+      this.persist(result.doc, { actor: 'user', ops: group.ops });
+      current.doc = result.doc;
+      return { applied: group.ops, label: group.label ?? null };
+    });
   }
 
   get historyLabels(): { canUndo: boolean; canRedo: boolean; undoLabel: string | null } {
@@ -190,13 +185,14 @@ export class ProjectService {
     };
   }
 
-  private persistDoc(doc: TimelineDoc): void {
-    const db = getDb();
-    db.prepare(`UPDATE projects SET doc=?, updated_at=? WHERE id=?`).run(
-      JSON.stringify(doc),
-      new Date().toISOString(),
-      this.current!.id,
-    );
+  /** Op-log row + doc snapshot in one transaction; undo/redo log the ops they applied, so the log replays to the current doc. */
+  private persist(doc: TimelineDoc, log: { actor: string; ops: Op[] }): number {
+    return commitProjectDoc(getDb() as unknown as SqlDb, {
+      projectId: this.current!.id,
+      doc,
+      log,
+      now: new Date().toISOString(),
+    });
   }
 }
 

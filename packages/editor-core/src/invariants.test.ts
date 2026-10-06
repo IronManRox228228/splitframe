@@ -146,3 +146,33 @@ describe('undo groups', () => {
     expect(undone.project.name).toBe(doc.project.name);
   });
 });
+
+describe('History.undoWith / redoWith', () => {
+  const entry = (h: History, name: string) => h.push([{ type: 'project.rename', name }], [{ type: 'project.rename', name: `before-${name}` }]);
+
+  it('keeps the entry undoable when applying its inverses throws', () => {
+    const h = new History();
+    entry(h, 'a');
+    expect(() => h.undoWith(() => { throw new Error('doc changed'); })).toThrow('doc changed');
+    expect(h.canUndo).toBe(true);
+    expect(h.canRedo).toBe(false);
+    expect(h.undoWith((g) => g.ops.length)).toBe(1);
+    expect(h.canRedo).toBe(true);
+  });
+
+  it('keeps the entry redoable when redo throws', () => {
+    const h = new History();
+    entry(h, 'a');
+    h.undoWith(() => undefined);
+    expect(() => h.redoWith(() => { throw new Error('nope'); })).toThrow('nope');
+    expect(h.canRedo).toBe(true);
+    expect(h.redoWith(() => 'ok')).toBe('ok');
+    expect(h.canRedo).toBe(false);
+  });
+
+  it('returns null when there is nothing to undo or redo', () => {
+    const h = new History();
+    expect(h.undoWith(() => 1)).toBeNull();
+    expect(h.redoWith(() => 1)).toBeNull();
+  });
+});

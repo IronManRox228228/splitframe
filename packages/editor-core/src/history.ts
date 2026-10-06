@@ -73,6 +73,33 @@ export class History {
     return this.stack[this.index]!;
   }
 
+  /**
+   * Undo one group by running `apply` on it. If `apply` throws (e.g. the doc changed under
+   * the history) the position is put back, so the stack and the doc never drift apart.
+   */
+  undoWith<T>(apply: (group: UndoGroup) => T): T | null {
+    const group = this.undo();
+    if (!group) return null;
+    try {
+      return apply(group);
+    } catch (err) {
+      this.index += 1;
+      throw err;
+    }
+  }
+
+  /** Counterpart of undoWith for redo. */
+  redoWith<T>(apply: (group: UndoGroup) => T): T | null {
+    const group = this.redo();
+    if (!group) return null;
+    try {
+      return apply(group);
+    } catch (err) {
+      this.index -= 1;
+      throw err;
+    }
+  }
+
   redo(): UndoGroup | null {
     if (this.index >= this.stack.length) return null;
     const group = this.stack[this.index]!;
