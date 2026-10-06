@@ -3,7 +3,7 @@
  * Download static ffmpeg/ffprobe builds per OS/arch into apps/desktop/bin/<plat>-<arch>/.
  * Sources (LGPL builds, no GPL components — docs/DECISIONS.md #5):
  *   macOS:  evermeet.cx (LGPL build)
- *   win:    gyan.dev release-lgpl
+ *   win:    BtbN/FFmpeg-Builds win64-lgpl
  *   linux:  johnvansickle.com release-lgpl (or a distro build placed manually)
  * Checksums: pinned per release — update the URLs + shas when bumping versions.
  */
@@ -32,9 +32,14 @@ const SOURCES = {
     extract: 'unzip -o {out} -d {dir}',
   },
   'win32-x64': {
-    ffmpeg: 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-lgpl.zip',
-    ffprobe: null, // included in the gyan zip
-    extract: 'unzip -o {out} -d {dir} && find {dir} -name ffmpeg.exe -exec cp {{}} ' + outDir + ' \\;',
+    // gyan.dev only ships GPL builds; BtbN publishes static LGPL ones.
+    ffmpeg:
+      'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-8.1.zip',
+    ffprobe: null, // included in the zip
+    extract:
+      `powershell -NoProfile -Command "$ErrorActionPreference = 'Stop'; Expand-Archive -Force -LiteralPath '{out}' -DestinationPath '{dir}\\x'; ` +
+      `Get-ChildItem -Recurse -LiteralPath '{dir}\\x' | Where-Object { $_.Name -in 'ffmpeg.exe','ffprobe.exe' } | Copy-Item -Destination '{dir}'; ` +
+      `Remove-Item -Recurse -Force -LiteralPath '{dir}\\x'"`,
   },
   'linux-x64': {
     ffmpeg: 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz',
@@ -64,7 +69,8 @@ async function main() {
     return;
   }
   const { default: tmp } = await import('node:fs');
-  const archive = join(outDir, 'download.bin');
+  // Expand-Archive (win) refuses anything without a .zip extension.
+  const archive = join(outDir, plat === 'win32' ? 'download.zip' : 'download.bin');
   try {
     await download(source.ffmpeg, archive);
     const cmd = source.extract.replaceAll('{out}', archive).replaceAll('{dir}', outDir);
