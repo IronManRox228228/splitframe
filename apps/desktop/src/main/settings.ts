@@ -102,8 +102,41 @@ export async function getSecret(name: string): Promise<string | null> {
   return safeStorage.decryptString(Buffer.from(enc, 'base64'));
 }
 
+export async function deleteSecret(name: string): Promise<void> {
+  const store = await readSecretStore();
+  if (!(name in store)) return;
+  delete store[name];
+  await writeFile(encPath(), JSON.stringify(store), 'utf8');
+}
+
 export async function getDecryptedKey(name: string): Promise<string | null> {
   return getSecret(name);
+}
+
+/**
+ * Cloud agent keys are stored per provider so a key typed for one vendor is never sent
+ * to another when the user switches providers (finding M8).
+ */
+export function agentKeySlot(provider: string): string {
+  return `agentKey:${provider}`;
+}
+
+/**
+ * Older builds kept a single shared `agentKey`. Adopt it for the provider that is
+ * currently selected (the one it was entered for) and drop the shared slot. Runs before
+ * a provider switch is applied, so the key can never follow the user to another vendor.
+ */
+export async function migrateLegacyAgentKey(): Promise<void> {
+  const legacy = await getSecret('agentKey');
+  if (!legacy) return;
+  const selected = (await getSettings()).ai?.agentProvider ?? 'anthropic';
+  if (!(await getSecret(agentKeySlot(selected)))) await saveSecret(agentKeySlot(selected), legacy);
+  await deleteSecret('agentKey');
+}
+
+export async function getAgentKey(provider: string): Promise<string | null> {
+  await migrateLegacyAgentKey();
+  return getSecret(agentKeySlot(provider));
 }
 
 async function readSecretStore(): Promise<Record<string, string>> {
