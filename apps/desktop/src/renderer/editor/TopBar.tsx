@@ -48,14 +48,14 @@ export function TopBar() {
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         }}
-        className="bg-transparent border border-transparent hover:border-line focus:border-accent-dim rounded px-2 py-1 text-sm font-medium text-neutral-100 outline-none w-56"
+        className="bg-transparent border border-transparent hover:border-line focus:border-accent-dim rounded px-2 py-1 text-sm font-medium text-fg outline-none w-56"
       />
-      <span className="chip bg-surface-700 text-neutral-400">
+      <span className="chip bg-surface-700 text-fg-muted">
         {doc.project.width}×{doc.project.height} · {doc.project.fps} fps
       </span>
       <div className="flex-1" />
-      <span className={`flex items-center gap-1.5 text-[11px] ${mcpOn ? 'text-emerald-400' : 'text-neutral-600'}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${mcpOn ? 'bg-emerald-400' : 'bg-neutral-700'}`} />
+      <span className={`flex items-center gap-1.5 text-[11px] ${mcpOn ? 'text-emerald-400' : 'text-fg-faint'}`}>
+        <span className={`w-1.5 h-1.5 rounded-full ${mcpOn ? 'bg-emerald-400' : 'bg-surface-800'}`} />
         {mcpOn ? 'MCP on' : 'MCP off'}
       </span>
       <button className="btn-ghost" title="Reveal project folder" onClick={() => void revealProjectDir()}>

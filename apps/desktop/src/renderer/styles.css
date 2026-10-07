@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Geist ships inside the app (assets/fonts, SIL OFL 1.1) so the UI never depends on the network. */
+@font-face {
+  font-family: 'Geist';
+  src: url('./assets/fonts/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./assets/fonts/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   color-scheme: dark;
 }
@@ -11,11 +27,12 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #0b0b0d;
-  color: #e5e5e8;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  background: #0a0a0b;
+  color: #ededef;
+  font-family: Geist, system-ui, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'ss01' on;
   overflow: hidden;
   user-select: none;
 }
@@ -29,9 +46,13 @@ body,
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26262e;
+  background: #26262b;
   border-radius: 6px;
-  border: 2px solid #0b0b0d;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #33333a;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -42,23 +63,75 @@ textarea {
   user-select: text;
 }
 
+/* one visible focus ring for keyboard users, nothing for mouse clicks */
+:focus-visible {
+  outline: 2px solid #8b93ff;
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded px-3 h-7 text-xs font-medium transition-colors duration-150;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 h-9 text-sm font-medium transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap;
+  }
+  .btn-sm {
+    @apply h-8 px-3 text-xs rounded;
   }
   .btn-primary {
-    @apply btn bg-accent text-black hover:bg-accent-hover;
+    @apply btn bg-primary text-surface-950 font-semibold hover:bg-primary-hover;
+  }
+  .btn-accent {
+    @apply btn bg-accent text-surface-950 font-semibold hover:bg-accent-hover;
+  }
+  .btn-secondary {
+    @apply btn bg-surface-800 text-fg hover:bg-surface-700;
   }
   .btn-ghost {
-    @apply btn text-neutral-300 hover:bg-surface-700 hover:text-white;
+    @apply btn text-fg-2 hover:bg-surface-800 hover:text-fg;
   }
   .btn-outline {
-    @apply btn border border-line text-neutral-200 hover:border-neutral-500 hover:text-white;
+    @apply btn border border-surface-700 text-fg-2 hover:border-surface-600 hover:text-fg;
+  }
+  .btn-danger {
+    @apply btn bg-danger/15 text-danger hover:bg-danger/25;
+  }
+  .icon-btn {
+    @apply inline-flex items-center justify-center w-9 h-9 rounded text-fg-muted hover:bg-surface-800 hover:text-fg transition-colors duration-150 disabled:opacity-30 disabled:pointer-events-none;
+  }
+  .icon-btn-sm {
+    @apply icon-btn w-8 h-8;
+  }
+  .input {
+    @apply h-9 w-full rounded-[10px] bg-surface-850 border border-surface-800 px-3 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-surface-600 transition-colors;
+  }
+  .label {
+    @apply text-xs text-fg-muted;
   }
   .panel {
     @apply bg-surface-900 border border-line rounded-lg;
   }
+  .card {
+    @apply bg-surface-850 border border-surface-800 rounded-xl;
+  }
   .chip {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 h-6 text-xs font-medium bg-surface-800 text-fg-2;
+  }
+  .pill {
+    @apply inline-flex items-center rounded-full px-3 h-7 text-xs bg-surface-800 text-fg-2 hover:bg-surface-700 hover:text-fg transition-colors;
+  }
+  .pill-active {
+    @apply pill bg-fg text-surface-950 hover:bg-white hover:text-surface-950 font-medium;
+  }
+  .heading {
+    @apply text-[15px] font-semibold text-fg;
+  }
+  .kbd {
+    @apply inline-flex items-center rounded-md bg-surface-800 px-1.5 h-5 font-mono text-[11px] text-fg-muted;
   }
 }

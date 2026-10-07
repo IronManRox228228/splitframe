@@ -19,14 +19,14 @@ export function ProjectListScreen() {
           <Logo />
           <div>
             <h1 className="text-xl font-semibold text-white tracking-tight">Cutboard</h1>
-            <p className="text-xs text-neutral-500">
+            <p className="text-xs text-fg-faint">
               Local-first AI video editor — your footage never leaves this machine.
             </p>
           </div>
         </div>
 
         <div className="panel p-5">
-          <h2 className="text-sm font-medium text-neutral-200 mb-3">New project</h2>
+          <h2 className="text-sm font-medium text-fg-2 mb-3">New project</h2>
           <div className="flex gap-2">
             <input
               value={name}
@@ -35,7 +35,7 @@ export function ProjectListScreen() {
                 if (e.key === 'Enter' && name.trim()) void createProject(name.trim());
               }}
               placeholder="Project name"
-              className="flex-1 bg-surface-800 border border-line rounded px-3 h-8 text-sm text-neutral-100 outline-none focus:border-accent-dim"
+              className="flex-1 bg-surface-800 border border-line rounded px-3 h-8 text-sm text-fg outline-none focus:border-accent-dim"
             />
             <button className="btn-primary" onClick={() => void createProject(name.trim() || 'Untitled project')}>
               Create
@@ -44,9 +44,9 @@ export function ProjectListScreen() {
         </div>
 
         <div className="mt-5">
-          <h2 className="text-sm font-medium text-neutral-400 mb-2">Recent projects</h2>
+          <h2 className="text-sm font-medium text-fg-muted mb-2">Recent projects</h2>
           {recents.length === 0 ? (
-            <p className="text-xs text-neutral-600 px-1 py-4">
+            <p className="text-xs text-fg-faint px-1 py-4">
               No projects yet — create one above, then import footage.
             </p>
           ) : (
@@ -57,8 +57,8 @@ export function ProjectListScreen() {
                     onClick={() => void openProject(p.id)}
                     className="w-full flex items-center justify-between px-3 py-2.5 rounded hover:bg-surface-800 text-left transition-colors"
                   >
-                    <span className="text-sm text-neutral-200">{p.name}</span>
-                    <span className="text-xs text-neutral-600">
+                    <span className="text-sm text-fg-2">{p.name}</span>
+                    <span className="text-xs text-fg-faint">
                       {new Date(p.updatedAt).toLocaleString()}
                     </span>
                   </button>
@@ -68,7 +68,7 @@ export function ProjectListScreen() {
           )}
         </div>
 
-        <p className="mt-8 text-[11px] text-neutral-700">
+        <p className="mt-8 text-[11px] text-fg-faint">
           Cutboard v{appInfo?.version ?? '0.1.0'} · {appInfo?.platform ?? ''} · ffmpeg:{' '}
           {appInfo?.ffmpeg ? `${appInfo.ffmpeg.version} (${appInfo.ffmpeg.source}, ${appInfo.ffmpeg.h264Encoder})` : 'not found — run pnpm fetch:ffmpeg'}
         </p>

@@ -48,8 +48,8 @@ function createMainWindow(): void {
     height: 1000,
     minWidth: 1100,
     minHeight: 700,
-    title: 'Cutboard',
-    backgroundColor: '#0b0b0d',
+    title: 'SplitFrame',
+    backgroundColor: '#0a0a0b',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 14 },
     webPreferences: {

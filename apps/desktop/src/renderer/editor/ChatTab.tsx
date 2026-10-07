@@ -111,8 +111,8 @@ export function ChatTab() {
     <div className="flex-1 flex flex-col min-h-0">
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {turns.length === 0 && (
-          <div className="text-xs text-neutral-500 space-y-2 pt-4">
-            <p className="text-neutral-300 font-medium">Ask the agent to edit your timeline.</p>
+          <div className="text-xs text-fg-faint space-y-2 pt-4">
+            <p className="text-fg-2 font-medium">Ask the agent to edit your timeline.</p>
             <p>It sees your footage (transcripts, scenes), the selection, and the playhead.</p>
             <div className="space-y-1.5 pt-2">
               <Suggestion label="Build a rough cut and remove silences" onClick={() => setInput('Build a rough cut of my clips: remove pauses over half a second and any repeated takes.')} />
@@ -125,7 +125,7 @@ export function ChatTab() {
           <div key={i} className={turn.role === 'user' ? 'flex justify-end' : ''}>
             <div
               className={`max-w-[92%] rounded-lg px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${
-                turn.role === 'user' ? 'bg-accent/15 text-accent' : 'bg-surface-800 text-neutral-200'
+                turn.role === 'user' ? 'bg-accent/15 text-accent' : 'bg-surface-800 text-fg-2'
               }`}
             >
               {turn.text || (turn.tools.length === 0 ? (streaming && i === turnIdxRef.current ? '…' : '') : '')}
@@ -133,7 +133,7 @@ export function ChatTab() {
                 <ToolCallCard key={j} card={tc} />
               ))}
               {turn.error && <p className="mt-2 text-red-400">{turn.error}</p>}
-              {turn.note && <p className="mt-2 text-neutral-500">{turn.note}</p>}
+              {turn.note && <p className="mt-2 text-fg-faint">{turn.note}</p>}
             </div>
           </div>
         ))}
@@ -164,8 +164,8 @@ export function ChatTab() {
             </button>
           )}
         </div>
-        <div className="flex items-center justify-between text-[10px] text-neutral-600">
-          <button className="hover:text-neutral-400" onClick={() => setShowConfig(!showConfig)}>
+        <div className="flex items-center justify-between text-[11px] text-fg-faint">
+          <button className="hover:text-fg-muted" onClick={() => setShowConfig(!showConfig)}>
             ⚙ AI settings {config ? `· ${config.agentProvider}${config.agentModel ? `/${config.agentModel}` : ''}` : ''}
           </button>
           <span>Every edit is a real op — undo works on the agent too ({undoKey}).</span>
@@ -173,7 +173,7 @@ export function ChatTab() {
         {showConfig && config && (
           <div className="panel p-3 space-y-2 text-xs">
             <label className="block">
-              <span className="text-neutral-500">Provider</span>
+              <span className="text-fg-faint">Provider</span>
               <select
                 value={config.agentProvider}
                 onChange={(e) => setConfig({ ...config, agentProvider: e.target.value })}
@@ -187,7 +187,7 @@ export function ChatTab() {
               </select>
             </label>
             <label className="block">
-              <span className="text-neutral-500">Model (optional override)</span>
+              <span className="text-fg-faint">Model (optional override)</span>
               <input
                 value={config.agentModel}
                 onChange={(e) => setConfig({ ...config, agentModel: e.target.value })}
@@ -197,7 +197,7 @@ export function ChatTab() {
             </label>
             {config.agentProvider === 'ollama' && (
               <label className="block">
-                <span className="text-neutral-500">Server URL</span>
+                <span className="text-fg-faint">Server URL</span>
                 <input
                   value={config.ollamaUrl}
                   onChange={(e) => setConfig({ ...config, ollamaUrl: e.target.value })}
@@ -208,21 +208,21 @@ export function ChatTab() {
             )}
             {config.agentProvider === 'llamacpp' && (
               <label className="block">
-                <span className="text-neutral-500">Server URL</span>
+                <span className="text-fg-faint">Server URL</span>
                 <input
                   value={config.llamacppUrl}
                   onChange={(e) => setConfig({ ...config, llamacppUrl: e.target.value })}
                   placeholder="http://127.0.0.1:8080"
                   className="w-full mt-1 bg-surface-800 border border-line rounded px-2 py-1.5 outline-none"
                 />
-                <span className="block mt-1 text-[10px] text-neutral-600">
+                <span className="block mt-1 text-[11px] text-fg-faint">
                   Start llama-server with <code>--jinja</code> or the agent can't call editing tools.
                 </span>
               </label>
             )}
             {config.agentProvider !== 'ollama' && (
               <label className="block">
-                <span className="text-neutral-500">
+                <span className="text-fg-faint">
                   {config.agentProvider === 'llamacpp' ? 'API key (only if started with --api-key)' : 'API key (stored encrypted)'}
                 </span>
                 <input
@@ -266,7 +266,7 @@ export function ChatTab() {
 
 function Suggestion({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="block w-full text-left rounded border border-line px-2 py-1.5 hover:border-accent-dim hover:text-neutral-300 transition-colors">
+    <button onClick={onClick} className="block w-full text-left rounded border border-line px-2 py-1.5 hover:border-accent-dim hover:text-fg-2 transition-colors">
       {label}
     </button>
   );
@@ -293,15 +293,15 @@ function ToolCallCard({ card }: { card: ToolCard }) {
   const label = TOOL_LABELS[card.tool] ?? card.tool;
   return (
     <div className="mt-2 rounded border border-line bg-surface-900 overflow-hidden">
-      <button className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-left hover:bg-surface-800" onClick={() => setOpen(!open)}>
+      <button className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] text-left hover:bg-surface-800" onClick={() => setOpen(!open)}>
         <span className={card.phase === 'call' ? 'text-amber-400 animate-pulse' : card.error ? 'text-red-400' : 'text-emerald-400'}>{card.phase === 'call' ? '◌' : card.error ? '✗' : '✓'}</span>
-        <span className="text-neutral-300 font-medium">{label}</span>
+        <span className="text-fg-2 font-medium">{label}</span>
         {card.error && <span className="text-red-400">failed</span>}
         <span className="flex-1" />
-        <span className="text-neutral-600">{open ? '−' : '+'}</span>
+        <span className="text-fg-faint">{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <pre className="px-2 py-1.5 text-[10px] text-neutral-500 overflow-x-auto max-h-40 whitespace-pre-wrap">
+        <pre className="px-2 py-1.5 text-[11px] text-fg-faint overflow-x-auto max-h-40 whitespace-pre-wrap">
           {JSON.stringify(card.phase === 'result' ? (card.result ?? card.error) : card.args, null, 1)}
         </pre>
       )}

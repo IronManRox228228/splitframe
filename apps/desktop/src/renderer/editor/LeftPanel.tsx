@@ -14,7 +14,7 @@ export function LeftPanel() {
             key={t}
             onClick={() => setTab(t)}
             className={`flex-1 h-9 text-xs font-medium capitalize transition-colors ${
-              tab === t ? 'text-accent border-b-2 border-accent -mb-px' : 'text-neutral-500 hover:text-neutral-300'
+              tab === t ? 'text-accent border-b-2 border-accent -mb-px' : 'text-fg-faint hover:text-fg-2'
             }`}
           >
             {t === 'chat' ? 'AI chat' : t}
@@ -23,7 +23,7 @@ export function LeftPanel() {
       </div>
       {tab === 'footage' && <FootageTab />}
       {tab === 'references' && (
-        <div className="flex-1 flex items-center justify-center text-xs text-neutral-600 p-6 text-center">
+        <div className="flex-1 flex items-center justify-center text-xs text-fg-faint p-6 text-center">
           Reference style matching arrives with the References milestone. One reference video
           per project, analyzed for cut rhythm, caption style, and grade.
         </div>
@@ -91,18 +91,18 @@ function FootageTab() {
                     draggable={false}
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-neutral-700 text-lg">
+                  <div className="w-full h-full flex items-center justify-center text-fg-faint text-lg">
                     {asset.kind === 'audio' ? '♪' : asset.kind === 'image' ? '🖼' : '🎬'}
                   </div>
                 )}
                 {asset.kind !== 'image' && (
-                  <span className="absolute bottom-1 right-1 chip bg-black/70 text-neutral-300">
+                  <span className="absolute bottom-1 right-1 chip bg-black/70 text-fg-2">
                     {formatDuration(asset.durationMs)}
                   </span>
                 )}
               </div>
               <div className="p-1.5">
-                <p className="text-[11px] text-neutral-300 truncate">{asset.originalName}</p>
+                <p className="text-[11px] text-fg-2 truncate">{asset.originalName}</p>
                 <div className="mt-1 flex items-center gap-1">
                   {status === 'analyzed' && asset.error?.startsWith('Transcription') ? (
                     <span className="chip bg-amber-500/15 text-amber-400" title={asset.error}>
@@ -117,7 +117,7 @@ function FootageTab() {
                       failed
                     </span>
                   ) : (
-                    <span className="chip bg-surface-700 text-neutral-400 capitalize">{status}</span>
+                    <span className="chip bg-surface-700 text-fg-muted capitalize">{status}</span>
                   )}
                 </div>
               </div>
@@ -125,7 +125,7 @@ function FootageTab() {
           );
         })}
         {filtered.length === 0 && (
-          <div className="col-span-2 text-center text-xs text-neutral-600 py-10">
+          <div className="col-span-2 text-center text-xs text-fg-faint py-10">
             <p className="mb-3">No footage yet.</p>
             <button className="btn-outline mx-auto" onClick={() => void importMedia()}>
               Import media

@@ -130,7 +130,7 @@ export function Timeline() {
         <ToggleChip active={rippleEnabled} label="Ripple" onClick={toggleRipple} title="Ripple delete & trims" />
         <ToggleChip active={snapEnabled} label="Snap" onClick={toggleSnap} title="Snap to edges & markers" />
         <div className="flex-1" />
-        <span className="text-[11px] text-neutral-600 font-mono mr-2">
+        <span className="text-[11px] text-fg-faint font-mono mr-2">
           {formatTimecode(Math.round(playhead), doc.project.fps)}
         </span>
         <ToolButton label="−" onClick={() => setPxPerFrame(pxPerFrame / 1.25)} title="Zoom out" />
@@ -144,7 +144,7 @@ export function Timeline() {
           {/* ruler */}
           <div className="sticky top-0 z-20 flex h-7 bg-surface-900/95 backdrop-blur border-b border-line">
             <div
-              className="sticky left-0 z-30 shrink-0 bg-surface-900 border-r border-line flex items-center px-2 text-[10px] text-neutral-600"
+              className="sticky left-0 z-30 shrink-0 bg-surface-900 border-r border-line flex items-center px-2 text-[11px] text-fg-faint"
               style={{ width: HEADER_W }}
             >
               {doc.project.width}×{doc.project.height}
@@ -241,7 +241,7 @@ function RulerTicks({ contentFrames, pxPerFrame, fps }: { contentFrames: number;
     <div className="absolute inset-0">
       {ticks.map((f) => (
         <div key={f} className="absolute top-0 bottom-0 border-l border-line/80" style={{ left: f * pxPerFrame }}>
-          <span className="absolute top-0.5 left-1 text-[9px] text-neutral-500 font-mono">
+          <span className="absolute top-0.5 left-1 text-[11px] text-fg-faint font-mono">
             {formatTimecode(f, fps)}
           </span>
         </div>
@@ -262,23 +262,23 @@ function TrackHeader({ track }: { track: Track }) {
           track.kind === 'video' ? 'bg-sky-500' : track.kind === 'audio' ? 'bg-emerald-500' : track.kind === 'text' ? 'bg-fuchsia-500' : 'bg-orange-400'
         }`}
       />
-      <span className="text-[11px] text-neutral-300 truncate flex-1">{track.name}</span>
+      <span className="text-[11px] text-fg-2 truncate flex-1">{track.name}</span>
       <button
-        className={`w-5 h-5 rounded text-[10px] ${track.muted ? 'bg-red-500/20 text-red-400' : 'text-neutral-600 hover:text-neutral-300'}`}
+        className={`w-5 h-5 rounded text-[11px] ${track.muted ? 'bg-red-500/20 text-red-400' : 'text-fg-faint hover:text-fg-2'}`}
         title={track.muted ? 'Unmute' : 'Mute'}
         onClick={() => void applyOps([{ type: 'track.update', trackId: track.id, patch: { muted: !track.muted } }], 'Toggle mute')}
       >
         M
       </button>
       <button
-        className={`w-5 h-5 rounded text-[10px] ${track.hidden ? 'bg-amber-500/20 text-amber-400' : 'text-neutral-600 hover:text-neutral-300'}`}
+        className={`w-5 h-5 rounded text-[11px] ${track.hidden ? 'bg-amber-500/20 text-amber-400' : 'text-fg-faint hover:text-fg-2'}`}
         title={track.hidden ? 'Show' : 'Hide'}
         onClick={() => void applyOps([{ type: 'track.update', trackId: track.id, patch: { hidden: !track.hidden } }], 'Toggle visibility')}
       >
         👁
       </button>
       <button
-        className={`w-5 h-5 rounded text-[10px] ${track.locked ? 'bg-neutral-500/25 text-neutral-300' : 'text-neutral-600 hover:text-neutral-300'}`}
+        className={`w-5 h-5 rounded text-[11px] ${track.locked ? 'bg-neutral-500/25 text-fg-2' : 'text-fg-faint hover:text-fg-2'}`}
         title={track.locked ? 'Unlock' : 'Lock'}
         onClick={() => void applyOps([{ type: 'track.update', trackId: track.id, patch: { locked: !track.locked } }], 'Toggle lock')}
       >
@@ -341,12 +341,12 @@ function ItemBlock({
         <div className="absolute inset-0 opacity-50 bg-contain bg-center bg-no-repeat" style={{ backgroundImage: `url(${mediaUrl(asset.waveformPath)})` }} />
       )}
       <div className="absolute inset-x-0 top-0 px-1.5 py-0.5 flex items-center gap-1">
-        <span className="text-[9px] uppercase tracking-wide text-white/80 truncate">
+        <span className="text-[11px] uppercase tracking-wide text-white/80 truncate">
           {item.labels?.name ?? item.type}
         </span>
       </div>
       {item.keyframes && Object.keys(item.keyframes).length > 0 && (
-        <span className="absolute bottom-0.5 right-1 text-[8px] text-white/70">◆ {Object.keys(item.keyframes).length}</span>
+        <span className="absolute bottom-0.5 right-1 text-[11px] text-white/70">◆ {Object.keys(item.keyframes).length}</span>
       )}
       {/* trim handles */}
       <div
@@ -381,7 +381,7 @@ function ToggleChip({ active, label, onClick, title }: { active: boolean; label:
       onClick={onClick}
       title={title}
       className={`chip h-6 px-2 border ${
-        active ? 'bg-accent/15 text-accent border-accent/40' : 'text-neutral-500 border-line hover:text-neutral-300'
+        active ? 'bg-accent/15 text-accent border-accent/40' : 'text-fg-faint border-line hover:text-fg-2'
       }`}
     >
       {label}

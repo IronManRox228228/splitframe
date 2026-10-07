@@ -42,7 +42,7 @@ export function ExportDialog() {
     <div className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center" onClick={() => !active && setExportDialog(false)}>
       <div className="panel w-[480px] p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-neutral-100">Export</h2>
+          <h2 className="text-sm font-semibold text-fg">Export</h2>
           <button className="btn-ghost w-7 px-0 justify-center" onClick={() => !active && setExportDialog(false)}>
             ✕
           </button>
@@ -55,11 +55,11 @@ export function ExportDialog() {
               disabled={Boolean(active)}
               onClick={() => setSelected(p.name)}
               className={`text-left rounded-lg border px-3 py-2.5 transition-colors ${
-                selected === p.name ? 'border-accent bg-accent/10' : 'border-line hover:border-neutral-600'
+                selected === p.name ? 'border-accent bg-accent/10' : 'border-line hover:border-surface-600'
               } disabled:opacity-50`}
             >
-              <p className="text-xs font-medium text-neutral-100">{p.name}</p>
-              <p className="text-[10px] text-neutral-500">
+              <p className="text-xs font-medium text-fg">{p.name}</p>
+              <p className="text-[11px] text-fg-faint">
                 {p.width}×{p.height} · {p.format.toUpperCase()}
               </p>
             </button>
@@ -82,7 +82,7 @@ export function ExportDialog() {
 
         {active ? (
           <div className="mb-2">
-            <div className="flex justify-between text-[11px] text-neutral-400 mb-1.5">
+            <div className="flex justify-between text-[11px] text-fg-muted mb-1.5">
               <span className="capitalize">{active.status}…</span>
               <span>{Math.round(active.progress * 100)}%</span>
             </div>
@@ -95,7 +95,7 @@ export function ExportDialog() {
           </div>
         ) : (
           <div className="flex items-center justify-between">
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-fg-faint">
               Frame-accurate render via the preview compositor, encoded with your OS hardware encoder.
             </p>
             <button className="btn-primary" disabled={!selected || starting} onClick={() => void start()}>
@@ -106,14 +106,14 @@ export function ExportDialog() {
 
         {exportsList.length > 0 && !active && (
           <div className="mt-4 border-t border-line pt-3">
-            <p className="text-[10px] uppercase tracking-wide text-neutral-600 mb-1.5">Recent exports</p>
+            <p className="text-[11px] uppercase tracking-wide text-fg-faint mb-1.5">Recent exports</p>
             <ul className="space-y-1">
               {exportsList.slice(0, 4).map((e) => (
                 <li key={e.id} className="flex items-center justify-between text-[11px]">
-                  <button className="text-neutral-400 truncate hover:text-neutral-200" onClick={() => void window.cutboard.revealExportPath(e.outputPath ?? '')}>
+                  <button className="text-fg-muted truncate hover:text-fg-2" onClick={() => void window.cutboard.revealExportPath(e.outputPath ?? '')}>
                     {e.preset.name}
                   </button>
-                  <span className={e.status === 'done' ? 'text-emerald-400' : e.status === 'failed' ? 'text-red-400' : 'text-neutral-600'}>
+                  <span className={e.status === 'done' ? 'text-emerald-400' : e.status === 'failed' ? 'text-red-400' : 'text-fg-faint'}>
                     {e.status}
                   </span>
                 </li>

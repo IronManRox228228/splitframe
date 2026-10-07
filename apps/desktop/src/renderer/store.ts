@@ -59,7 +59,7 @@ export interface EditorState {
   snapEnabled: boolean;
   rippleEnabled: boolean;
   exportDialogOpen: boolean;
-  toast: string | null;
+  toasts: Toast[];
 
   bootstrap(): Promise<void>;
   refreshRecents(): Promise<void>;
@@ -86,8 +86,27 @@ export interface EditorState {
   cloneSelection(): Promise<void>;
   addAssetToTimeline(assetId: string, atFrame?: number, trackId?: string): Promise<void>;
   setExportDialog(open: boolean): void;
-  showToast(message: string): void;
+  showToast(message: string, opts?: ToastOptions): void;
+  dismissToast(id: number): void;
 }
+
+export type ToastKind = 'info' | 'success' | 'error';
+export interface ToastAction {
+  label: string;
+  run(): void;
+}
+export interface Toast {
+  id: number;
+  kind: ToastKind;
+  message: string;
+  action?: ToastAction;
+}
+export interface ToastOptions {
+  kind?: ToastKind;
+  action?: ToastAction;
+  durationMs?: number;
+}
+let toastSeq = 0;
 
 const DEFAULT_PX_PER_FRAME = 3;
 
@@ -107,7 +126,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   snapEnabled: true,
   rippleEnabled: false,
   exportDialogOpen: false,
-  toast: null,
+  toasts: [],
 
   async bootstrap() {
     const appInfo = await window.cutboard.appInfo();
@@ -248,7 +267,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      get().showToast(message.slice(0, 200));
+      get().showToast(message.slice(0, 300), { kind: 'error' });
     }
   },
 
@@ -395,11 +414,19 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ exportDialogOpen: open });
   },
 
-  showToast(message) {
-    set({ toast: message });
-    setTimeout(() => {
-      if (get().toast === message) set({ toast: null });
-    }, 3500);
+  showToast(message, opts = {}) {
+    const id = ++toastSeq;
+    const kind = opts.kind ?? 'info';
+    // replace an identical message instead of stacking duplicates; keep at most 3 on screen
+    const rest = get().toasts.filter((t) => t.message !== message).slice(-2);
+    set({ toasts: [...rest, { id, kind, message, action: opts.action }] });
+    // errors and actionable toasts stay longer; long messages get time to be read
+    const ms = opts.durationMs ?? Math.max(kind === 'error' || opts.action ? 7000 : 3500, message.length * 45);
+    setTimeout(() => get().dismissToast(id), ms);
+  },
+
+  dismissToast(id) {
+    set({ toasts: get().toasts.filter((t) => t.id !== id) });
   },
 }));
 

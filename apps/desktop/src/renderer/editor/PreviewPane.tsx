@@ -137,12 +137,12 @@ export function PreviewPane() {
         >
           {playing ? '⏸' : '▶'}
         </button>
-        <span className="text-xs text-neutral-300 font-mono tabular-nums w-24">
+        <span className="text-xs text-fg-2 font-mono tabular-nums w-24">
           {formatTimecode(Math.round(playhead), doc.project.fps)}
         </span>
-        <span className="text-[11px] text-neutral-600 font-mono">/ {formatTimecode(total, doc.project.fps)}</span>
+        <span className="text-[11px] text-fg-faint font-mono">/ {formatTimecode(total, doc.project.fps)}</span>
         <div className="flex-1" />
-        <label className="flex items-center gap-1.5 text-[11px] text-neutral-500 cursor-pointer">
+        <label className="flex items-center gap-1.5 text-[11px] text-fg-faint cursor-pointer">
           <input
             type="checkbox"
             checked={showSafeZones}

@@ -55,22 +55,22 @@ export function ModelsSection() {
 
   return (
     <div className="border-t border-line pt-2 space-y-1.5">
-      <p className="text-neutral-500">Local models (downloaded only when you ask)</p>
+      <p className="text-fg-faint">Local models (downloaded only when you ask)</p>
       {models.map((m) => {
         const progress = busy[m.id];
         return (
           <div key={m.id} className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <p className="text-neutral-300 truncate">{m.id}</p>
-              <p className="text-[10px] text-neutral-600 truncate">
+              <p className="text-fg-2 truncate">{m.id}</p>
+              <p className="text-[11px] text-fg-faint truncate">
                 {m.kind === 'asr' ? 'transcription' : 'semantic search'}
                 {m.sizeMB ? ` · ${m.sizeMB} MB` : ''}
               </p>
             </div>
             {m.downloaded ? (
-              <span className="text-emerald-400 text-[10px]">installed</span>
+              <span className="text-emerald-400 text-[11px]">installed</span>
             ) : progress ? (
-              <span className="text-neutral-400 text-[10px]">
+              <span className="text-fg-muted text-[11px]">
                 {progress.total > 0 ? `${Math.round((progress.received / progress.total) * 100)}%` : '…'}
               </span>
             ) : (
