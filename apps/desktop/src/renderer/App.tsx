@@ -3,6 +3,7 @@ import { useEditor } from './store.ts';
 import { ProjectListScreen } from './screens/ProjectListScreen.tsx';
 import { EditorScreen } from './screens/EditorScreen.tsx';
 import { Toaster } from './ui/Toaster.tsx';
+import { DropImport } from './ui/DropImport.tsx';
 
 export default function App() {
   const screen = useEditor((s) => s.screen);
@@ -20,6 +21,7 @@ export default function App() {
   return (
     <div className="h-full w-full flex flex-col bg-surface-950 text-fg">
       {screen === 'projects' ? <ProjectListScreen /> : <EditorScreen />}
+      <DropImport />
       <Toaster />
     </div>
   );

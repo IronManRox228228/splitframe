@@ -1,8 +1,8 @@
 import { stat } from 'node:fs/promises';
 import { existsSync, unlinkSync } from 'node:fs';
-import { basename, isAbsolute, join, relative } from 'node:path';
+import { basename, join } from 'node:path';
+import { classifyImportPaths, isMediaFile, removableGeneratedFiles, ImportSummary } from './import-paths.ts';
 import { getDb } from './db.ts';
-import { getPaths } from './paths.ts';
 import { ffprobe, makeProxy, makeThumbnail, makeWaveform } from './ffmpeg.ts';
 import { jobs, JobRow } from './jobs.ts';
 import { projectService, resolveProjectDir } from './project-service.ts';
@@ -77,17 +77,7 @@ function kindFromProbe(probe: { hasVideo: boolean; hasAudio: boolean }): AssetKi
   return 'image';
 }
 
-/** Supported media extensions (browser-playable + common camera formats via proxies). */
-const MEDIA_EXTENSIONS = new Set([
-  'mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'gif',
-  'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'aiff',
-  'png', 'jpg', 'jpeg', 'webp', 'bmp',
-]);
-
-export function isMediaFile(path: string): boolean {
-  const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  return MEDIA_EXTENSIONS.has(ext);
-}
+export { isMediaFile };
 
 /**
  * Import = reference the original where it is (addendum §2), then generate proxies +
@@ -160,6 +150,26 @@ export async function importFiles(paths: string[]): Promise<Asset[]> {
     out.push(await importFile(p));
   }
   return out;
+}
+
+/** Import with a per-file outcome: unsupported/missing paths are skipped, failures are reported by name. */
+export async function importPaths(paths: string[]): Promise<ImportSummary> {
+  if (!projectService.isOpen) throw new Error('Open a project first');
+  const { accepted, skipped } = classifyImportPaths(paths);
+  const assets: Asset[] = [];
+  const failed: { name: string; error: string }[] = [];
+  let imported = 0;
+  for (const p of accepted) {
+    try {
+      const asset = await importFile(p);
+      assets.push(asset);
+      if (asset.status === 'failed') failed.push({ name: asset.originalName, error: asset.error ?? 'Import failed' });
+      else imported++;
+    } catch (err) {
+      failed.push({ name: basename(p), error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { assets, imported, skipped, failed };
 }
 
 function registerIngestHandler(): void {
@@ -356,38 +366,77 @@ export async function relinkAsset(assetId: string, newPath: string): Promise<Ass
   return updated;
 }
 
-/** True when `file` lies inside `root` (path.relative is case-insensitive on Windows). */
-function isUnder(root: string, file: string): boolean {
-  const rel = relative(root, file);
-  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+/** The asset, but only when it belongs to the currently open project. */
+function ownedAsset(assetId: string): Asset {
+  if (!projectService.isOpen) throw new Error('Open a project first');
+  const asset = getAsset(assetId);
+  if (!asset || asset.projectId !== projectService.projectId) throw new Error('Asset not found in this project.');
+  return asset;
 }
 
 export function removeAsset(assetId: string): void {
-  if (projectService.isOpen) {
-    const uses = projectService.doc.items.filter((i) => i.assetId === assetId).length;
-    if (uses > 0) {
-      throw new Error(`This asset is used by ${uses} timeline item${uses === 1 ? '' : 's'}. Remove them from the timeline first.`);
-    }
+  const asset = ownedAsset(assetId);
+  const uses = projectService.doc.items.filter((i) => i.assetId === assetId).length;
+  if (uses > 0) {
+    throw new Error(`This asset is used by ${uses} timeline item${uses === 1 ? '' : 's'}. Remove them from the timeline first.`);
   }
   const db = getDb();
-  const asset = getAsset(assetId);
+  for (const job of jobs.list(asset.projectId)) {
+    if ((job.status === 'pending' || job.status === 'running') && job.payload?.assetId === assetId) jobs.cancel(job.id);
+  }
   const scenes = db.prepare(`SELECT id, keyframe_paths FROM scenes WHERE asset_id=?`).all(assetId) as { id: string; keyframe_paths: string }[];
-  db.prepare(`DELETE FROM assets WHERE id=?`).run(assetId);
+  db.prepare(`DELETE FROM assets WHERE id=? AND project_id=?`).run(assetId, asset.projectId);
   db.prepare(`DELETE FROM transcripts WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM beat_maps WHERE asset_id=?`).run(assetId);
   removeAssetIndex(assetId, scenes.map((s) => s.id));
-  if (!asset) return;
-  // best-effort cleanup of generated files; never touches the original or anything outside the project folders
-  const generated = [asset.proxyPath, asset.thumbPath, asset.waveformPath, ...scenes.flatMap((s) => JSON.parse(s.keyframe_paths || '[]') as string[])];
-  for (const file of generated) {
-    if (!file || file === asset.path || !isUnder(getPaths().projectsRoot, file)) continue;
+  // best-effort cleanup of generated files; never touches the original or anything outside this project's folder
+  const keyframes = scenes.flatMap((s) => {
+    try {
+      return JSON.parse(s.keyframe_paths || '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
+  for (const file of removableGeneratedFiles(asset, keyframes, resolveProjectDir(asset.projectId))) {
     try {
       unlinkSync(file);
     } catch {
       /* already gone */
     }
   }
+}
+
+/** Re-run probing and analysis for an asset of the open project (the "Retry" / "Re-analyze" actions). */
+export async function reanalyzeAsset(assetId: string): Promise<Asset> {
+  const asset = ownedAsset(assetId);
+  const busy = jobs.list(asset.projectId).some((j) => (j.status === 'pending' || j.status === 'running') && j.payload?.assetId === assetId);
+  if (busy) return asset;
+  const st = await stat(asset.path).catch(() => null);
+  if (!st || !st.isFile()) {
+    const missing = { ...asset, status: 'missing' as const };
+    saveAsset(missing);
+    throw new Error('The original file is missing. Relink it first.');
+  }
+  const probe = await ffprobe(asset.path);
+  const next: Asset = {
+    ...asset,
+    kind: kindFromProbe(probe),
+    durationMs: probe.durationMs,
+    width: probe.width,
+    height: probe.height,
+    fps: probe.fps,
+    hasAudio: probe.hasAudio,
+    status: 'processing',
+    stage: 'queued',
+    error: undefined,
+  };
+  getDb()
+    .prepare(`UPDATE assets SET kind=?, duration_ms=?, width=?, height=?, fps=?, has_audio=? WHERE id=?`)
+    .run(next.kind, next.durationMs, next.width, next.height, next.fps ?? null, next.hasAudio ? 1 : 0, assetId);
+  saveAsset(next);
+  jobs.enqueue('ingest-asset', asset.projectId, { assetId });
+  return next;
 }
 
 /** Word-level transcripts for every asset in a project (empty until ASR runs). */

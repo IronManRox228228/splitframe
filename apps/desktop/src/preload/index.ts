@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 /**
  * Typed, allowlisted bridge. The renderer never touches Node — every capability is an
@@ -28,6 +28,13 @@ export interface ExportFolder {
   label: string;
 }
 
+export interface ImportSummary {
+  assets: unknown[];
+  imported: number;
+  skipped: string[];
+  failed: { name: string; error: string }[];
+}
+
 export interface CutboardApi {
   appInfo(): Promise<{
     version: string;
@@ -35,7 +42,11 @@ export interface CutboardApi {
     projectsRoot: string;
     ffmpeg: { ffmpegPath: string; ffprobePath: string; source: string; h264Encoder: string; version: string } | null;
   }>;
-  pickMediaFiles(): Promise<unknown[]>;
+  /** null when the dialog was cancelled */
+  pickMediaFiles(): Promise<ImportSummary | null>;
+  /** OS paths of dropped File objects (empty string entries are dropped); main re-validates them */
+  getPathsForFiles(files: File[]): string[];
+  importPaths(paths: string[]): Promise<ImportSummary>;
   pickFilePath(): Promise<string | null>;
   listRecentProjects(): Promise<ProjectSummary[]>;
   renameProject(projectId: string, name: string): Promise<boolean>;
@@ -54,6 +65,8 @@ export interface CutboardApi {
   checkAssetAvailability(assetId: string): Promise<'ok' | 'missing'>;
   relinkAsset(assetId: string, newPath: string): Promise<unknown>;
   removeAsset(assetId: string): Promise<boolean>;
+  reanalyzeAsset(assetId: string): Promise<unknown>;
+  revealAsset(assetId: string): Promise<boolean>;
   listJobs(projectId?: string): Promise<unknown[]>;
   cancelJob(jobId: string): Promise<boolean>;
   exportPresets(): Promise<{ name: string; width: number; height: number; format: string; videoBitrateK: number }[]>;
@@ -93,6 +106,15 @@ const api: CutboardApi = {
   appInfo: () => ipcRenderer.invoke('app:info'),
   pickMediaFiles: () => ipcRenderer.invoke('dialog:pickMedia'),
   pickFilePath: () => ipcRenderer.invoke('dialog:pickFile'),
+  getPathsForFiles: (files) =>
+    files.map((f) => {
+      try {
+        return webUtils.getPathForFile(f);
+      } catch {
+        return '';
+      }
+    }).filter((p) => p.length > 0),
+  importPaths: (paths) => ipcRenderer.invoke('assets:importPaths', paths),
   listRecentProjects: () => ipcRenderer.invoke('projects:listRecent'),
   renameProject: (projectId, name) => ipcRenderer.invoke('projects:rename', { projectId, name }),
   duplicateProject: (projectId) => ipcRenderer.invoke('projects:duplicate', projectId),
@@ -110,6 +132,8 @@ const api: CutboardApi = {
   checkAssetAvailability: (assetId) => ipcRenderer.invoke('assets:checkAvailability', assetId),
   relinkAsset: (assetId, newPath) => ipcRenderer.invoke('assets:relink', { assetId, newPath }),
   removeAsset: (assetId) => ipcRenderer.invoke('assets:remove', assetId),
+  reanalyzeAsset: (assetId) => ipcRenderer.invoke('assets:reanalyze', assetId),
+  revealAsset: (assetId) => ipcRenderer.invoke('assets:reveal', assetId),
   listJobs: (projectId) => ipcRenderer.invoke('jobs:list', projectId),
   cancelJob: (jobId) => ipcRenderer.invoke('jobs:cancel', jobId),
   exportPresets: () => ipcRenderer.invoke('exports:presets'),

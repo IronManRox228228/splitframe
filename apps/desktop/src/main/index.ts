@@ -64,7 +64,11 @@ function createMainWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith(getRendererOrigin())) e.preventDefault();
+    // a dropped file navigates to file:///its/path; in a packaged build the origin is file://, so
+    // only the app's own page (ignoring hash) may be navigated to
+    const origin = getRendererOrigin();
+    const own = (mainWindow?.webContents.getURL() ?? '').split('#')[0];
+    if (!url.startsWith(origin) || (origin === 'file://' && url.split('#')[0] !== own)) e.preventDefault();
   });
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -253,11 +257,12 @@ function buildMenu(): void {
     {
       label: 'Timeline',
       submenu: [
-        // plain-key shortcuts (S, Backspace, ⌘D) are handled by the renderer's keydown
-        // handler so they never fire while typing in inputs.
-        { label: 'Split at Playhead', click: send('split') },
-        { label: 'Delete Selected', click: send('delete') },
-        { label: 'Clone Selected', click: send('clone') },
+        // plain-key shortcuts (S, Delete/Backspace, Ctrl+D) are handled by the renderer's keydown
+        // handler so they never fire while typing in inputs. registerAccelerator:false shows the
+        // hint in the menu without the menu intercepting the key.
+        { label: 'Split at Playhead', accelerator: 'S', registerAccelerator: false, click: send('split') },
+        { label: 'Delete Selected', accelerator: 'Delete', registerAccelerator: false, click: send('delete') },
+        { label: 'Clone Selected', accelerator: 'CmdOrCtrl+D', registerAccelerator: false, click: send('clone') },
         { type: 'separator' },
         { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: send('zoomIn') },
         { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: send('zoomOut') },
@@ -268,9 +273,10 @@ function buildMenu(): void {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
+        // developer entry points only in dev builds
+        ...(app.isPackaged
+          ? []
+          : [{ role: 'reload' as const }, { role: 'forceReload' as const }, { role: 'toggleDevTools' as const }, { type: 'separator' as const }]),
         { role: 'resetZoom' },
         { role: 'zoomIn' },
         { role: 'zoomOut' },

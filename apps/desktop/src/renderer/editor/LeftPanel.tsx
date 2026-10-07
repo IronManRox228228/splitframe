@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useEditor, type LeftPanelId, type JobInfo } from '../store.ts';
 import { mediaUrl } from '../lib/url.ts';
 import { shortcutLabel } from '../lib/platform-labels.ts';
 import { Icon, type IconName } from '../ui/Icon.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { ChatTab } from './ChatTab.tsx';
 import { AudioPanel, CaptionsPanel, TextPanel } from './panels.tsx';
 
@@ -70,7 +71,8 @@ function MediaPanel() {
   const importMedia = useEditor((s) => s.importMedia);
   const platform = useEditor((s) => s.appInfo?.platform);
   const jobs = useEditor((s) => s.jobs);
-  const addAssetToTimeline = useEditor((s) => s.addAssetToTimeline);
+  const doc = useEditor((s) => s.doc);
+  const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string; uses: number } | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
@@ -137,40 +139,209 @@ function MediaPanel() {
                 (j) => j.type === 'ingest-asset' && j.payload?.assetId === asset.id && (j.status === 'running' || j.status === 'pending'),
               );
               return (
-                <div
+                <MediaCard
                   key={asset.id}
-                  className="flex flex-col gap-1.5 cursor-grab active:cursor-grabbing"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/cutboard-asset', asset.id);
-                    e.dataTransfer.effectAllowed = 'copy';
+                  asset={asset}
+                  job={activeJob}
+                  onRemove={() => {
+                    const uses = doc?.items.filter((i) => i.assetId === asset.id).length ?? 0;
+                    if (uses === 0) void useEditor.getState().removeAssetFromProject(asset.id, false);
+                    else setPendingRemove({ id: asset.id, name: asset.originalName, uses });
                   }}
-                  onDoubleClick={() => void addAssetToTimeline(asset.id)}
-                  title={`${asset.originalName} (drag to the timeline or double-click to add)`}
-                >
-                  <div className="aspect-[4/3] rounded-[10px] bg-surface-800 relative overflow-hidden">
-                    {asset.thumbPath ? (
-                      <img src={mediaUrl(asset.thumbPath)} alt="" className="w-full h-full object-cover" draggable={false} />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-fg-faint">
-                        <Icon name={asset.kind === 'audio' ? 'audio' : asset.kind === 'image' ? 'image' : 'media'} size={24} />
-                      </div>
-                    )}
-                    {asset.kind !== 'image' && asset.durationMs > 0 && (
-                      <span className="absolute right-1.5 bottom-1.5 px-1.5 py-0.5 rounded-md bg-surface-950/70 font-mono text-[11px] text-fg">
-                        {formatDuration(asset.durationMs)}
-                      </span>
-                    )}
-                    {activeJob && <ProgressBar value={activeJob.progress ?? 0} />}
-                  </div>
-                  <span className="text-xs text-fg-2 truncate">{asset.originalName}</span>
-                  <AssetStatus asset={asset} job={activeJob} />
-                </div>
+                />
               );
             })}
           </div>
         )}
       </div>
+      {pendingRemove && (
+        <Dialog title="Remove from project?" width={440} onClose={() => setPendingRemove(null)}>
+          <div className="px-6 pt-3 pb-6 flex flex-col gap-5">
+            <p className="text-sm text-fg-2">
+              &ldquo;{pendingRemove.name}&rdquo; is used in {pendingRemove.uses} clip{pendingRemove.uses === 1 ? '' : 's'} on the timeline. Remove {pendingRemove.uses === 1 ? 'it' : 'them'} too? Your original file is not
+              deleted. Removing the media itself cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button className="btn-outline" onClick={() => setPendingRemove(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn-danger"
+                onClick={() => {
+                  const id = pendingRemove.id;
+                  setPendingRemove(null);
+                  void useEditor.getState().removeAssetFromProject(id, true);
+                }}
+              >
+                Remove clips and media
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+interface MenuState {
+  x: number;
+  y: number;
+}
+
+interface CardAction {
+  label: string;
+  run(): void;
+  danger?: boolean;
+  disabled?: boolean;
+  separatorBefore?: boolean;
+}
+
+function MediaCard({ asset, job, onRemove }: { asset: AssetT; job: JobInfo | undefined; onRemove(): void }) {
+  const addAssetToTimeline = useEditor((s) => s.addAssetToTimeline);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const missing = asset.status === 'missing';
+  const busy = Boolean(job) || asset.status === 'processing' || asset.status === 'importing';
+
+  const items: CardAction[] = [
+    { label: 'Add to timeline', run: () => void addAssetToTimeline(asset.id), disabled: missing || asset.status === 'failed' },
+    {
+      label: 'Show in folder',
+      run: () =>
+        void window.cutboard.revealAsset(asset.id).then((ok) => {
+          if (!ok) useEditor.getState().showToast('The original file could not be found.', { kind: 'error' });
+        }),
+    },
+    { label: 'Re-analyze', run: () => void useEditor.getState().reanalyzeAsset(asset.id), disabled: busy || missing },
+    { label: 'Remove from project', run: onRemove, danger: true, separatorBefore: true },
+  ];
+
+  return (
+    <div
+      className="group relative flex flex-col gap-1.5 cursor-grab active:cursor-grabbing rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      tabIndex={0}
+      role="group"
+      aria-label={asset.originalName}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/cutboard-asset', asset.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      onDoubleClick={() => void addAssetToTimeline(asset.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          void addAssetToTimeline(asset.id);
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove();
+        } else if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu({ x: r.left + 12, y: r.top + 12 });
+        }
+      }}
+      title={missing ? `Original not found: ${asset.path}` : `${asset.originalName} (drag to the timeline or double-click to add)`}
+    >
+      <div className="aspect-[4/3] rounded-[10px] bg-surface-800 relative overflow-hidden">
+        {asset.thumbPath ? (
+          <img src={mediaUrl(asset.thumbPath)} alt="" className="w-full h-full object-cover" draggable={false} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-fg-faint">
+            <Icon name={asset.kind === 'audio' ? 'audio' : asset.kind === 'image' ? 'image' : 'media'} size={24} />
+          </div>
+        )}
+        {asset.kind !== 'image' && asset.durationMs > 0 && (
+          <span className="absolute right-1.5 bottom-1.5 px-1.5 py-0.5 rounded-md bg-surface-950/70 font-mono text-[11px] text-fg">
+            {formatDuration(asset.durationMs)}
+          </span>
+        )}
+        {job && <ProgressBar value={job.progress ?? 0} />}
+        <button
+          className="absolute left-1.5 top-1.5 w-6 h-6 rounded-md bg-surface-950/70 text-fg flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-surface-950"
+          aria-label={`Actions for ${asset.originalName}`}
+          aria-haspopup="menu"
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenu({ x: r.left, y: r.bottom + 4 });
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <Icon name="more" size={14} />
+        </button>
+      </div>
+      <span className="text-xs text-fg-2 truncate">{asset.originalName}</span>
+      <AssetStatus asset={asset} job={job} />
+      {menu && <CardMenu at={menu} items={items} onClose={() => setMenu(null)} />}
+    </div>
+  );
+}
+
+/** Fixed-position action menu used by both right-click and the hover button. */
+function CardMenu({ at, items, onClose }: { at: MenuState; items: CardAction[]; onClose(): void }) {
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-card-menu]')) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', onClose);
+    document.querySelector<HTMLElement>('[data-card-menu] [role="menuitem"]:not([disabled])')?.focus();
+    return () => {
+      window.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('blur', onClose);
+    };
+  }, [onClose]);
+
+  const left = Math.min(at.x, window.innerWidth - 200);
+  const top = Math.min(at.y, window.innerHeight - 170);
+  return (
+    <div
+      data-card-menu
+      role="menu"
+      style={{ left, top }}
+      className="fixed z-30 min-w-[184px] p-1.5 rounded-xl bg-surface-850 border border-surface-700 shadow-[0_12px_32px_rgba(0,0,0,0.5)] flex flex-col cursor-default"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        const els = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')];
+        const i = els.indexOf(document.activeElement as HTMLElement);
+        els[(i + (e.key === 'ArrowDown' ? 1 : -1) + els.length) % els.length]?.focus();
+      }}
+    >
+      {items.map((it) => (
+        <div key={it.label} className="contents">
+          {it.separatorBefore && <div className="h-px bg-surface-700 my-1" />}
+          <button
+            role="menuitem"
+            disabled={it.disabled}
+            onClick={() => {
+              onClose();
+              it.run();
+            }}
+            className={`h-8 px-2.5 rounded-lg text-left text-sm disabled:opacity-40 hover:bg-surface-800 focus:bg-surface-800 outline-none ${it.danger ? 'text-danger' : 'text-fg-2 hover:text-fg'}`}
+          >
+            {it.label}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -200,6 +371,9 @@ function AssetStatus({ asset, job }: { asset: AssetT; job?: JobInfo }) {
     return (
       <div className="flex flex-col gap-1">
         <span className="text-[11px] text-danger leading-snug">File not found at its original location</span>
+        <span className="text-[11px] text-fg-faint leading-snug break-all line-clamp-2" title={asset.path}>
+          {asset.path}
+        </span>
         <RelinkButton assetId={asset.id} />
       </div>
     );
@@ -213,7 +387,13 @@ function AssetStatus({ asset, job }: { asset: AssetT; job?: JobInfo }) {
             {asset.error}
           </span>
         )}
-        <RelinkButton assetId={asset.id} label="Relink file" />
+        <div className="flex gap-1.5">
+          <button className="btn-outline btn-sm" onClick={() => void useEditor.getState().reanalyzeAsset(asset.id)}>
+            <Icon name="retry" size={13} />
+            Retry
+          </button>
+          <RelinkButton assetId={asset.id} label="Relink file" />
+        </div>
       </div>
     );
   }

@@ -7,6 +7,8 @@ import type { MediaPool } from '../lib/media.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { CommandBar } from './CommandBar.tsx';
 import { latestOnly, needsResync, planAudio, planVideo } from '../lib/playback-plan.ts';
+import { CanvasOverlay, type LiveMap, type OverlayRect } from './canvas/CanvasOverlay.tsx';
+import type { TimelineDoc } from '@cutboard/schema';
 
 /**
  * Preview: paused scrubbing renders via seeked media (exact frames); playback advances
@@ -19,7 +21,6 @@ export function PreviewPane() {
   const playing = useEditor((s) => s.playing);
   const setPlaying = useEditor((s) => s.setPlaying);
   const setPlayhead = useEditor((s) => s.setPlayhead);
-  const selection = useEditor((s) => s.selection);
   const stepFrames = useEditor((s) => s.stepFrames);
   const importMedia = useEditor((s) => s.importMedia);
   const muted = useEditor((s) => s.previewMuted);
@@ -29,18 +30,26 @@ export function PreviewPane() {
   const compositorRef = useRef(new CanvasCompositor());
   const rafRef = useRef<number>(0);
   const lastTickRef = useRef<number>(0);
+  const stageRef = useRef<HTMLDivElement>(null);
+  // transforms being dragged on the canvas: drawn live, committed once on pointer-up
+  const [live, setLive] = useState<LiveMap | null>(null);
+  const liveRef = useRef<LiveMap | null>(null);
+  liveRef.current = live;
+  const [rect, setRect] = useState<OverlayRect | null>(null);
+  const [sizeTick, setSizeTick] = useState(0);
 
   const drawNow = async ({ frame, live }: { frame: number; live: boolean }) => {
     const canvas = canvasRef.current;
     const state = useEditor.getState();
     const pool = state.mediaPool;
     if (!canvas || !state.doc || !pool) return;
-    canvas.width = 960;
-    canvas.height = Math.max(1, Math.round((960 * state.doc.project.height) / state.doc.project.width));
-    await compositorRef.current.draw(canvas, state.doc, frame, pool, {
-      selectedIds: live ? [] : state.selection,
+    // project resolution, like export, so x/y/font sizes mean the same thing in both
+    canvas.width = Math.max(1, state.doc.project.width);
+    canvas.height = Math.max(1, state.doc.project.height);
+    await compositorRef.current.draw(canvas, withLive(state.doc, liveRef.current, true), frame, pool, {
       showSafeZones,
     });
+    if (!live) setSizeTick((n) => n + 1);
   };
   // draws reset and repaint one shared canvas, so they run one at a time and a burst of
   // requests (scrubbing, playback ticks) collapses to the newest frame
@@ -53,7 +62,30 @@ export function PreviewPane() {
   useEffect(() => {
     if (playing) return;
     void renderFrame(playhead, false);
-  }, [doc, playhead, selection, playing, showSafeZones, renderFrame]);
+  }, [doc, playhead, live, playing, showSafeZones, renderFrame]);
+
+  // keep the overlay glued to the canvas as the layout or aspect changes
+  const hasDoc = doc !== null;
+  useEffect(() => {
+    const stage = stageRef.current;
+    const canvas = canvasRef.current;
+    if (!stage || !canvas) return;
+    const measure = () => {
+      const s = stage.getBoundingClientRect();
+      const c = canvas.getBoundingClientRect();
+      const next = { left: c.left - s.left, top: c.top - s.top, width: c.width, height: c.height };
+      setRect((prev) =>
+        prev && prev.left === next.left && prev.top === next.top && prev.width === next.width && prev.height === next.height
+          ? prev
+          : next,
+      );
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(stage);
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [hasDoc]);
 
   // preview mute: mirrors the toggle onto every media element the pool owns
   useEffect(() => {
@@ -139,12 +171,24 @@ export function PreviewPane() {
   return (
     <main className="flex-1 min-w-0 min-h-0 relative flex flex-col items-center bg-surface-950">
       <CommandBar />
-      <div className="flex-1 min-h-0 w-full flex items-center justify-center px-6 pt-[76px] pb-4 relative">
+      <div ref={stageRef} className="flex-1 min-h-0 w-full flex items-center justify-center px-6 pt-[76px] pb-4 relative">
         <canvas
           ref={canvasRef}
           className="max-h-full max-w-full rounded-md bg-black"
           style={{ boxShadow: '0 0 0 1px #1c1c20' }}
         />
+        {!empty && rect && (
+          <CanvasOverlay
+            doc={withLive(doc, live, false)}
+            frame={Math.round(playhead)}
+            canvasW={doc.project.width}
+            canvasH={doc.project.height}
+            rect={rect}
+            sizeTick={sizeTick}
+            mediaSize={(id) => useEditor.getState().mediaPool?.sizeOf(id) ?? null}
+            onLive={setLive}
+          />
+        )}
         {empty && (
           <div className="absolute inset-0 pt-[76px] flex items-center justify-center pointer-events-none">
             <div className="flex flex-col items-center gap-3 text-center pointer-events-auto">
@@ -214,6 +258,21 @@ function applyMute(pool: MediaPool | null, muted: boolean): void {
   if (!pool) return;
   for (const el of pool.allAudio) if (el.muted !== muted) el.muted = muted;
   for (const el of pool.allVideoElements) if (el.muted !== muted) el.muted = muted;
+}
+
+/** The doc with in-flight drag transforms merged in (opacity only when drawing, so a hidden item keeps its box). */
+function withLive(doc: TimelineDoc, live: LiveMap | null, includeOpacity: boolean): TimelineDoc {
+  if (!live) return doc;
+  return {
+    ...doc,
+    items: doc.items.map((item) => {
+      const t = live[item.id];
+      if (!t) return item;
+      const { opacity, ...rest } = t;
+      const merged = { ...item.transform, ...rest, ...(includeOpacity && opacity !== undefined ? { opacity } : {}) };
+      return { ...item, transform: merged };
+    }),
+  };
 }
 
 type EditorDoc = NonNullable<ReturnType<typeof useEditor.getState>['doc']>;

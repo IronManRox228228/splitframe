@@ -3,7 +3,8 @@ import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { Op, opSchema, Actor } from '@cutboard/schema';
 import { projectService } from './project-service.ts';
-import { checkAssetAvailability, getAsset, importFiles, isMediaFile, relinkAsset, removeAsset, onAssetEvent } from './asset-service.ts';
+import { checkAssetAvailability, getAsset, importPaths, isMediaFile, reanalyzeAsset, relinkAsset, removeAsset, onAssetEvent } from './asset-service.ts';
+import { MEDIA_EXTENSION_LIST } from './import-paths.ts';
 import { exportService, EXPORT_PRESETS, registerExportWindowIpc, onExportEvent } from './export-service.ts';
 import { jobs, JobRow, onJobEvent } from './jobs.ts';
 import { getFfmpeg, FfmpegInfo } from './ffmpeg.ts';
@@ -81,12 +82,17 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     const res = await showOpen(win, {
       title: 'Import media',
       properties: ['openFile', 'multiSelections'],
-      filters: [
-        { name: 'Media', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'gif', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'aiff', 'png', 'jpg', 'jpeg', 'webp', 'bmp'] },
-      ],
+      filters: [{ name: 'Media', extensions: [...MEDIA_EXTENSION_LIST] }],
     });
-    if (res.canceled || res.filePaths.length === 0) return [];
-    return importFiles(res.filePaths);
+    if (res.canceled || res.filePaths.length === 0) return null;
+    return importPaths(res.filePaths);
+  });
+
+  // drag-and-drop: the paths come from webUtils.getPathForFile in the preload, but the renderer is
+  // untrusted, so every path is re-checked (absolute, exists, regular file, supported extension)
+  ipcMain.handle('assets:importPaths', (_e, paths: unknown) => {
+    const parsed = z.array(z.string().min(1).max(4096)).min(1).max(200).parse(paths);
+    return importPaths(parsed);
   });
 
   ipcMain.handle('dialog:pickFile', async (e) => {
@@ -94,6 +100,10 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     const res = await showOpen(win, {
       title: 'Choose file',
       properties: ['openFile'],
+      filters: [
+        { name: 'Media', extensions: [...MEDIA_EXTENSION_LIST] },
+        { name: 'All files', extensions: ['*'] },
+      ],
     });
     if (res.canceled || res.filePaths.length === 0) return null;
     return res.filePaths[0]!;
@@ -168,6 +178,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   ipcMain.handle('history:labels', () => projectService.historyLabels);
 
   // ---------- assets ----------
+  const assetId_ = z.string().min(1).max(80);
   ipcMain.handle('assets:get', (_e, assetId: string) => getAsset(assetId));
   ipcMain.handle('assets:checkAvailability', (_e, assetId: string) => checkAssetAvailability(assetId));
   ipcMain.handle(
@@ -181,11 +192,19 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   ipcMain.handle(
     'assets:remove',
     (_e, assetId: string) => {
-      z.string().parse(assetId);
-      removeAsset(assetId);
+      removeAsset(assetId_.parse(assetId));
       return true;
     },
   );
+  ipcMain.handle('assets:reanalyze', (_e, assetId: string) => reanalyzeAsset(assetId_.parse(assetId)));
+  // reveals the original file only for an asset of the open project
+  ipcMain.handle('assets:reveal', (_e, assetId: string) => {
+    const asset = getAsset(assetId_.parse(assetId));
+    if (!asset || !projectService.isOpen || asset.projectId !== projectService.projectId) return false;
+    if (!existsSync(asset.path)) return false;
+    shell.showItemInFolder(asset.path);
+    return true;
+  });
 
   // ---------- jobs ----------
   ipcMain.handle('jobs:list', (_e, projectId?: string) => jobs.list(projectId));
@@ -337,13 +356,14 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
 
   // ---------- models / analysis / search (Milestone 2) ----------
   ipcMain.handle('models:list', () => listModels());
-  ipcMain.handle('models:download', (_e, id: string) => downloadModel(id));
+  const modelId = z.string().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/);
+  ipcMain.handle('models:download', (_e, id: string) => downloadModel(modelId.parse(id)));
   ipcMain.handle('models:delete', (_e, id: string) => {
-    deleteModel(id);
+    deleteModel(modelId.parse(id));
     return true;
   });
   ipcMain.handle('models:cancel', (_e, id: string) => {
-    cancelModelDownload(id);
+    cancelModelDownload(modelId.parse(id));
     return true;
   });
   ipcMain.handle(

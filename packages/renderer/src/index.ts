@@ -4,3 +4,4 @@ export * from './effects.ts';
 export * from './motion.ts';
 export * from './compositor.ts';
 export * from './captions.ts';
+export * from './bounds.ts';

@@ -88,6 +88,11 @@ export interface EditorState {
   closeProject(): Promise<void>;
   revealProjectDir(): Promise<void>;
   importMedia(): Promise<void>;
+  /** import OS paths (drag-and-drop); main re-validates them */
+  importPaths(paths: string[]): Promise<void>;
+  reanalyzeAsset(assetId: string): Promise<void>;
+  /** remove an asset (and optionally the timeline clips using it, as one undoable group) from the open project */
+  removeAssetFromProject(assetId: string, removeClips: boolean): Promise<void>;
   handleEvent(envelope: { type: string; payload?: unknown }): void;
   applyOps(ops: Op[], groupLabel?: string): Promise<void>;
   undo(): Promise<void>;
@@ -131,6 +136,33 @@ export interface ToastOptions {
 let toastSeq = 0;
 
 const DEFAULT_PX_PER_FRAME = 3;
+
+/** assets removed this session; late asset events for them must not resurrect the card */
+const removedAssetIds = new Set<string>();
+
+/** Strip Electron's "Error invoking remote method ..." wrapper so toasts read as plain sentences. */
+const plainError = (err: unknown): string =>
+  (err instanceof Error ? err.message : String(err)).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
+const nameList = (names: string[]): string => (names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2} more`);
+
+/** Merge imported assets into the panel and show one summary toast. */
+function mergeImport(summary: { assets: unknown[]; imported: number; skipped: string[]; failed: { name: string; error: string }[] }): void {
+  const s = useEditor.getState();
+  // asset events for these files can arrive before the call returns; merge by id so the panel
+  // doesn't show a second, never-updated copy
+  const byId = new Map(s.assets.map((a) => [a.id, a]));
+  for (const a of summary.assets as Asset[]) if (!byId.has(a.id)) byId.set(a.id, a);
+  useEditor.setState({ assets: [...byId.values()] });
+  const parts: string[] = [];
+  if (summary.imported > 0) parts.push(`Imported ${summary.imported} file${summary.imported === 1 ? '' : 's'}`);
+  if (summary.skipped.length > 0) parts.push(`${summary.skipped.length} unsupported (${nameList(summary.skipped)})`);
+  if (summary.failed.length > 0) parts.push(`${summary.failed.length} failed (${nameList(summary.failed.map((f) => f.name))})`);
+  if (parts.length === 0) return;
+  const bad = summary.skipped.length + summary.failed.length;
+  const kind: ToastKind = bad === 0 ? 'success' : summary.imported === 0 ? 'error' : 'info';
+  s.showToast(parts.join(' · '), { kind, durationMs: bad > 0 ? 7000 : undefined });
+}
 
 export const useEditor = create<EditorState>((set, get) => ({
   screen: 'projects',
@@ -246,15 +278,50 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   async importMedia() {
-    const imported = (await window.cutboard.pickMediaFiles()) as Asset[];
-    if (imported.length > 0) {
-      // asset events for these files can arrive before this call returns; merge by id so
-      // the panel doesn't show a second, never-updated copy
-      const byId = new Map(get().assets.map((a) => [a.id, a]));
-      for (const a of imported) if (!byId.has(a.id)) byId.set(a.id, a);
-      set({ assets: [...byId.values()] });
-      get().showToast(`Importing ${imported.length} file${imported.length > 1 ? 's' : ''}…`);
+    try {
+      const summary = await window.cutboard.pickMediaFiles();
+      if (summary) mergeImport(summary);
+    } catch (err) {
+      get().showToast(plainError(err), { kind: 'error' });
     }
+  },
+
+  async importPaths(paths) {
+    if (paths.length === 0) return;
+    try {
+      mergeImport(await window.cutboard.importPaths(paths));
+    } catch (err) {
+      get().showToast(plainError(err), { kind: 'error' });
+    }
+  },
+
+  async reanalyzeAsset(assetId) {
+    try {
+      await window.cutboard.reanalyzeAsset(assetId);
+    } catch (err) {
+      get().showToast(plainError(err), { kind: 'error' });
+    }
+  },
+
+  async removeAssetFromProject(assetId, removeClips) {
+    const { doc } = get();
+    if (!doc) return;
+    const itemIds = doc.items.filter((i) => i.assetId === assetId).map((i) => i.id);
+    if (itemIds.length > 0) {
+      if (!removeClips) return;
+      await get().applyOps([{ type: 'item.remove', itemIds, ripple: false }], 'Remove media from timeline');
+      if (get().doc?.items.some((i) => i.assetId === assetId)) return; // applyOps already toasted the error
+    }
+    try {
+      await window.cutboard.removeAsset(assetId);
+    } catch (err) {
+      get().showToast(plainError(err), { kind: 'error' });
+      return;
+    }
+    removedAssetIds.add(assetId);
+    const gone = new Set(itemIds);
+    set({ assets: get().assets.filter((a) => a.id !== assetId), selection: get().selection.filter((id) => !gone.has(id)) });
+    get().showToast('Removed from project. Your original file was not touched.');
   },
 
   handleEvent(envelope) {
@@ -269,6 +336,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       }
       case 'asset': {
         const asset = envelope.payload as Asset;
+        if (removedAssetIds.has(asset.id)) break; // a cancelled job can still emit one last update
         // background jobs of another project can still be finishing; keep them out of this editor
         if (s.doc && asset.projectId !== s.doc.project.id) break;
         const assets = [...s.assets];
@@ -332,11 +400,13 @@ export const useEditor = create<EditorState>((set, get) => ({
   async undo() {
     const res = await window.cutboard.undo();
     if (res.ok && res.doc) set({ doc: res.doc as TimelineDoc });
+    else if (!res.ok) get().showToast('Nothing to undo');
   },
 
   async redo() {
     const res = await window.cutboard.redo();
     if (res.ok && res.doc) set({ doc: res.doc as TimelineDoc });
+    else if (!res.ok) get().showToast('Nothing to redo');
   },
 
   setPlayhead(frame) {
@@ -397,7 +467,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       [{ type: 'item.remove', itemIds: selection, ripple: rippleEnabled }],
       rippleEnabled ? 'Ripple delete' : 'Delete',
     );
+    const removed = selection.filter((id) => !get().doc?.items.some((i) => i.id === id)).length;
     set({ selection: [] });
+    if (removed > 0) {
+      get().showToast(`Deleted ${removed} clip${removed === 1 ? '' : 's'}`, { action: { label: 'Undo', run: () => void get().undo() } });
+    }
   },
 
   async splitAtPlayhead() {
@@ -497,6 +571,9 @@ export const useEditor = create<EditorState>((set, get) => ({
 }));
 
 export function itemName(item: Item): string {
+  // a text item's label is a snapshot from creation; its current text is what the user recognises
+  const text = (item.props as { text?: unknown } | undefined)?.text;
+  if (item.type === 'text' && typeof text === 'string' && text.trim()) return text.trim().slice(0, 60);
   return item.labels?.name ?? `${item.type} ${item.id.slice(4, 10)}`;
 }
 
