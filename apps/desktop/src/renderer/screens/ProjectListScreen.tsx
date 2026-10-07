@@ -4,6 +4,7 @@ import { Icon } from '../ui/Icon.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { ProjectCard } from '../home/ProjectCard.tsx';
 import { shortFfmpegVersion } from '../home/format.ts';
+import logoUrl from '../assets/brand/splitframe.svg';
 
 interface FormatCard {
   key: string;
@@ -16,10 +17,10 @@ interface FormatCard {
 }
 
 const FORMATS: FormatCard[] = [
-  { key: 'short', title: 'Short', hint: '9:16 · Reels, TikTok', width: 1080, height: 1920, box: { w: 34, h: 60 } },
-  { key: 'video', title: 'Video', hint: '16:9 · YouTube', width: 1920, height: 1080, box: { w: 84, h: 48 } },
-  { key: 'square', title: 'Square', hint: '1:1 · Feed posts', width: 1080, height: 1080, box: { w: 56, h: 56 } },
-  { key: 'portrait', title: 'Portrait', hint: '4:5 · Instagram', width: 1080, height: 1350, box: { w: 48, h: 60 } },
+  { key: 'short', title: 'Short', hint: '9:16 · Reels, TikTok', width: 1080, height: 1920, box: { w: 28, h: 50 } },
+  { key: 'video', title: 'Video', hint: '16:9 · YouTube', width: 1920, height: 1080, box: { w: 72, h: 40 } },
+  { key: 'square', title: 'Square', hint: '1:1 · Feed posts', width: 1080, height: 1080, box: { w: 48, h: 48 } },
+  { key: 'portrait', title: 'Portrait', hint: '4:5 · Instagram', width: 1080, height: 1350, box: { w: 40, h: 50 } },
 ];
 
 /** Strip Electron's "Error invoking remote method ..." wrapper so toasts read as plain sentences. */
@@ -94,44 +95,47 @@ export function ProjectListScreen() {
 
   const ffmpeg = appInfo?.ffmpeg;
 
+  const newVideo = () => void create({ width: 1920, height: 1080 });
+
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-surface-950">
-      <header className="h-16 shrink-0 flex items-center gap-4 px-8 border-b border-line">
-        <div className="flex items-center gap-2.5 w-[140px] shrink-0">
-          <span className="w-[26px] h-[26px] rounded-[7px] bg-primary flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="text-surface-950">
-              <path d="M12 3v18" />
-              <path d="M5 8h4" />
-              <path d="M15 16h4" />
-            </svg>
-          </span>
-          <span className="text-base font-semibold tracking-[-0.01em] text-fg">SplitFrame</span>
-        </div>
-        <div className="flex-1 flex justify-center">
-          <label className="w-[480px] max-w-full h-[38px] px-3.5 flex items-center gap-2.5 rounded-xl bg-surface-850 border border-surface-800 focus-within:border-accent/60 text-fg-muted transition-colors">
-            <Icon name="search" size={15} />
+      <main className="flex-1 min-h-0 overflow-y-auto">
+        <div className="w-[1120px] max-w-full mx-auto px-8 pt-16 pb-8 flex flex-col items-center gap-11">
+          <h1 className="sr-only">SplitFrame</h1>
+          <div className="relative flex flex-col items-center gap-[22px]">
+            {/* the only gradient in the app: a soft grey glow behind the wordmark */}
+            <div
+              aria-hidden
+              className="absolute left-1/2 top-1/2 w-[1100px] h-[560px] rounded-[50%] pointer-events-none"
+              style={{
+                transform: 'translate(-50%, -55%)',
+                background: 'radial-gradient(closest-side, rgba(236,238,236,0.24), rgba(236,238,236,0.10) 40%, rgba(236,238,236,0.03) 70%, transparent)'
+              }}
+            />
+            <img src={logoUrl} alt="" draggable={false} className="relative w-[340px] h-auto" />
+            <p className="relative text-[15px] text-fg-muted text-center">Tell it what the cut should feel like. Your footage never leaves this machine.</p>
+          </div>
+
+          <label className="glass relative w-[560px] max-w-full h-[50px] rounded-full flex items-center gap-3 pl-5 pr-2 text-fg-muted focus-within:border-accent/60">
+            <Icon name="search" size={17} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search projects"
               aria-label="Search projects"
-              className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-fg placeholder:text-fg-faint"
+              className="flex-1 min-w-0 bg-transparent outline-none text-sm text-fg placeholder:text-fg-faint"
             />
             {query && (
               <button type="button" aria-label="Clear search" className="text-fg-muted hover:text-fg" onClick={() => setQuery('')}>
                 <Icon name="close" size={14} />
               </button>
             )}
+            <button type="button" disabled={busy} onClick={newVideo} className="btn-primary h-9 px-[18px] text-[13px]">
+              New video
+            </button>
           </label>
-        </div>
-        {/* balances the wordmark so the search box stays centred (no settings to show yet) */}
-        <div className="w-[140px] shrink-0" aria-hidden />
-      </header>
 
-      <main className="flex-1 min-h-0 overflow-y-auto">
-        <div className="max-w-[1240px] w-full mx-auto px-8 pt-10 pb-8 flex flex-col gap-10">
-          <section className="flex flex-col gap-4">
-            <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-fg">Make a video</h1>
+          <section className="w-full" aria-label="Make a video">
             <div className="grid grid-cols-5 gap-3.5">
               {FORMATS.map((f) => (
                 <button
@@ -139,9 +143,9 @@ export function ProjectListScreen() {
                   type="button"
                   disabled={busy}
                   onClick={() => void create({ width: f.width, height: f.height })}
-                  className="h-[148px] rounded-2xl bg-surface-900 border border-surface-800 hover:border-surface-600 hover:bg-surface-850 flex flex-col items-center justify-center gap-3 text-fg transition-colors disabled:opacity-60"
+                  className="glass h-[132px] rounded-[22px] flex flex-col items-center justify-center gap-3 text-fg hover:border-line-strong hover:bg-white/[0.07] transition-colors disabled:opacity-60"
                 >
-                  <span className="rounded-md border-[1.5px] border-surface-600" style={{ width: f.box.w, height: f.box.h }} />
+                  <span className="rounded-md border-[1.5px] border-fg/55" style={{ width: f.box.w, height: f.box.h }} />
                   <span className="flex flex-col gap-0.5">
                     <span className="text-[13px] font-medium">{f.title}</span>
                     <span className="text-[11px] text-fg-muted">{f.hint}</span>
@@ -152,7 +156,7 @@ export function ProjectListScreen() {
                 type="button"
                 disabled={busy}
                 onClick={() => void create(undefined, true)}
-                className="h-[148px] rounded-2xl border border-dashed border-surface-600 hover:border-fg-muted hover:bg-surface-900 flex flex-col items-center justify-center gap-3 text-fg-2 transition-colors disabled:opacity-60"
+                className="h-[132px] rounded-[22px] border border-dashed border-line-strong bg-[rgba(8,10,9,0.35)] hover:border-fg-muted hover:text-fg flex flex-col items-center justify-center gap-3 text-fg-2 transition-colors disabled:opacity-60"
               >
                 <Icon name="upload" size={22} strokeWidth={1.6} />
                 <span className="flex flex-col gap-0.5">
@@ -163,17 +167,20 @@ export function ProjectListScreen() {
             </div>
           </section>
 
-          <section className="flex flex-col gap-4">
-            <h2 className="text-[17px] font-semibold text-fg">Recent</h2>
+          <section className="w-full flex flex-col gap-3.5">
+            <div className="flex items-center gap-3.5">
+              <h2 className="heading">Recent</h2>
+              <div className="flex-1 h-px bg-line" aria-hidden />
+            </div>
             {recents.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-surface-700 py-14 flex flex-col items-center gap-2 text-center">
+              <div className="rounded-[22px] border border-dashed border-line-strong py-14 flex flex-col items-center gap-2 text-center">
                 <p className="text-sm font-medium text-fg">No videos yet</p>
                 <p className="text-xs text-fg-muted">Pick a format above, or start from footage you already have.</p>
               </div>
             ) : shown.length === 0 ? (
               <p className="text-sm text-fg-muted py-6">No projects match &ldquo;{query.trim()}&rdquo;.</p>
             ) : (
-              <div className="grid grid-cols-4 gap-5 pb-16">
+              <div className="grid grid-cols-4 gap-4 pb-16">
                 {shown.map((p) => (
                   <ProjectCard
                     key={p.id}
@@ -194,7 +201,7 @@ export function ProjectListScreen() {
         </div>
       </main>
 
-      <footer className="h-10 shrink-0 px-8 flex items-center justify-between border-t border-line text-xs text-fg-faint">
+      <footer className="h-10 shrink-0 px-8 flex items-center justify-between text-xs text-fg-faint">
         <span>SplitFrame {appInfo ? `v${appInfo.version}` : ''}</span>
         <span className={ffmpeg || !appInfo ? '' : 'text-danger'}>
           {!appInfo ? '' : ffmpeg ? `Video engine: ffmpeg ${shortFfmpegVersion(ffmpeg.version)}` : "Video engine not found — exports won't work"}

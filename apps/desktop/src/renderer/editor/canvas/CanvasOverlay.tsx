@@ -353,7 +353,7 @@ function BoxFrame({
         width: b.w * k,
         height: b.h * k,
         transform: `translate(-50%, -50%) rotate(${b.rotation}deg)`,
-        boxShadow: variant === 'selected' ? '0 0 0 1.5px #8b93ff' : '0 0 0 1px rgba(139,147,255,0.45)',
+        boxShadow: variant === 'selected' ? '0 0 0 1.5px #5FB7A1' : '0 0 0 1px rgba(95,183,161,0.45)',
       }}
     >
       {children}
@@ -468,7 +468,7 @@ function TextEditor({
         color: s.color,
         textAlign: s.align === 'left' ? 'left' : s.align === 'right' ? 'right' : 'center',
         textTransform: s.uppercase ? 'uppercase' : 'none',
-        boxShadow: '0 0 0 1.5px #8b93ff',
+        boxShadow: '0 0 0 1.5px #5FB7A1',
         padding: 0,
         border: 0,
       }}

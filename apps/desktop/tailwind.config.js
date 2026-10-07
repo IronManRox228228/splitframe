@@ -4,33 +4,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        // SplitFrame "Graphite": near-black ground, hairline borders, one accent for live state
+        // SplitFrame "clean glass": flat near-black ground, glass slabs, one mint accent for live state
         surface: {
-          950: '#0a0a0b', // app ground
-          900: '#0d0d0f', // panels
-          850: '#141417', // raised: inputs, cards
-          800: '#1c1c20', // hover / selected
-          700: '#26262b', // strong border, pressed
-          600: '#33333a'
+          950: '#050606', // app ground
+          900: '#0A0C0B', // solid panel fallback
+          850: '#0D0F0E', // inputs, raised (sits on glass)
+          800: '#1B1F1D', // hover / selected
+          700: '#343A37', // strong border, pressed
+          600: '#4A514E'
         },
         accent: {
-          DEFAULT: '#8b93ff',
-          hover: '#a3a9ff',
-          dim: '#2a2c52'
+          DEFAULT: '#5FB7A1',
+          hover: '#7BC9B5',
+          dim: '#215C4F',
+          deep: '#215C4F'
         },
         fg: {
-          DEFAULT: '#ededef',
-          2: '#c9c9d1',
-          muted: '#9c9ca5',
-          faint: '#85858e'
+          DEFAULT: '#ECEEEC',
+          2: '#C4CAC7',
+          muted: '#8E9793',
+          faint: '#78837E' // 4.8:1 on #050606, 4.5+:1 on glass
         },
         primary: {
-          DEFAULT: '#f2f2f4',
-          hover: '#ffffff'
+          DEFAULT: '#ECEEEC',
+          hover: '#FFFFFF'
         },
-        danger: '#ff8a80',
-        success: '#5ee0a0',
-        line: '#1c1c20'
+        danger: '#F28B82',
+        success: '#86D39B',
+        line: 'rgba(236,238,236,0.10)',
+        'line-strong': 'rgba(236,238,236,0.22)'
       },
       fontFamily: {
         sans: ['Geist', 'system-ui', 'sans-serif'],
@@ -40,7 +42,7 @@ export default {
         DEFAULT: '8px',
         lg: '12px',
         xl: '14px',
-        '2xl': '20px'
+        '2xl': '22px'
       },
       fontSize: {
         xs: ['12px', '16px'],

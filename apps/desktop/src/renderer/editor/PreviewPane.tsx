@@ -169,13 +169,13 @@ export function PreviewPane() {
   const empty = doc.items.length === 0;
 
   return (
-    <main className="flex-1 min-w-0 min-h-0 relative flex flex-col items-center bg-surface-950">
+    <main className="flex-1 min-w-0 min-h-0 relative flex flex-col items-center">
       <CommandBar />
-      <div ref={stageRef} className="flex-1 min-h-0 w-full flex items-center justify-center px-6 pt-[76px] pb-4 relative">
+      <div ref={stageRef} className="flex-1 min-h-0 w-full flex items-center justify-center px-6 pt-[60px] pb-5 relative">
         <canvas
           ref={canvasRef}
-          className="max-h-full max-w-full rounded-md bg-black"
-          style={{ boxShadow: '0 0 0 1px #1c1c20' }}
+          className="max-h-full max-w-full rounded-[14px] bg-black"
+          style={{ boxShadow: '0 0 0 1px rgba(236,238,236,0.10), 0 40px 100px -30px rgba(0,0,0,0.9)' }}
         />
         {!empty && rect && (
           <CanvasOverlay
@@ -190,7 +190,7 @@ export function PreviewPane() {
           />
         )}
         {empty && (
-          <div className="absolute inset-0 pt-[76px] flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 pt-[60px] flex items-center justify-center pointer-events-none">
             <div className="flex flex-col items-center gap-3 text-center pointer-events-auto">
               <p className="text-fg text-sm font-medium">Add media to start</p>
               <p className="text-xs text-fg-muted">Your preview appears here.</p>
@@ -202,12 +202,12 @@ export function PreviewPane() {
           </div>
         )}
       </div>
-      <div className="mb-4 flex items-center gap-1.5 p-1.5 rounded-[14px] bg-surface-850 border border-surface-800">
+      <div className="glass flex items-center gap-1 p-[5px] rounded-full">
         <button className="icon-btn-sm" aria-label="Previous frame" title="Previous frame (Left)" onClick={() => stepFrames(-1)}>
           <Icon name="skipStart" size={16} />
         </button>
         <button
-          className="w-9 h-9 rounded-[10px] bg-primary text-surface-950 flex items-center justify-center hover:bg-primary-hover"
+          className="w-[38px] h-[38px] rounded-full bg-primary text-[#0B0D0C] flex items-center justify-center hover:bg-primary-hover"
           aria-label={playing ? 'Pause' : 'Play'}
           title={playing ? 'Pause (Space)' : 'Play (Space)'}
           onClick={() => setPlaying(!playing)}
@@ -217,7 +217,7 @@ export function PreviewPane() {
         <button className="icon-btn-sm" aria-label="Next frame" title="Next frame (Right)" onClick={() => stepFrames(1)}>
           <Icon name="skipEnd" size={16} />
         </button>
-        <span className="px-2.5 font-mono text-xs text-fg tabular-nums whitespace-nowrap">
+        <span className="px-3 font-mono text-xs text-fg tabular-nums whitespace-nowrap">
           {formatTimecode(Math.round(playhead), fps)} <span className="text-fg-faint">/ {formatTimecode(total, fps)}</span>
         </span>
         <button
@@ -230,7 +230,7 @@ export function PreviewPane() {
           <Icon name={muted ? 'mute' : 'volume'} size={16} />
         </button>
         <button
-          className={`icon-btn-sm ${showSafeZones ? 'text-accent' : ''}`}
+          className={`icon-btn-sm ${showSafeZones ? 'text-accent bg-accent-deep/35' : ''}`}
           aria-label="Safe zones"
           aria-pressed={showSafeZones}
           title={showSafeZones ? 'Hide safe zones' : 'Show safe zones'}

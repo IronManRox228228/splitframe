@@ -562,7 +562,7 @@ function drawSelectionOutline(
 ): void {
   const box = itemBox(canvasW, canvasH);
   ctx.save();
-  ctx.strokeStyle = '#8b93ff'; // UI selection accent, not the project's brand color
+  ctx.strokeStyle = '#5FB7A1'; // UI selection accent, not the project's brand color
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 4]);
   ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);

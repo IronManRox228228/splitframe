@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useEditor } from '../store.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Menu } from '../ui/Menu.tsx';
+import logoUrl from '../assets/brand/splitframe.svg';
 
 function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
@@ -66,10 +67,12 @@ export function TopBar() {
   };
 
   return (
-    <header className="h-14 shrink-0 flex items-center gap-3 px-4 border-b border-line select-none">
-      <button className="icon-btn" aria-label="Back to projects" title="Back to projects" onClick={() => void closeProject()}>
+    <header className="glass h-14 shrink-0 rounded-[20px] flex items-center gap-3 pl-2 pr-2.5 select-none">
+      <button className="icon-btn w-[38px] h-[38px] rounded-xl" aria-label="Back to projects" title="Back to projects" onClick={() => void closeProject()}>
         <Icon name="back" size={18} />
       </button>
+      <img src={logoUrl} alt="SplitFrame" draggable={false} className="h-[22px] w-auto opacity-95" />
+      <span className="w-px h-5 bg-line-strong/70" aria-hidden />
       <div className="flex flex-col min-w-0">
         <input
           value={name}
@@ -83,24 +86,24 @@ export function TopBar() {
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className="bg-transparent border border-transparent hover:border-surface-700 focus:border-surface-600 rounded-md -ml-1.5 px-1.5 text-sm font-medium text-fg outline-none w-56 h-6"
+          className="bg-transparent border border-transparent hover:border-line-strong focus:border-accent/60 rounded-md -ml-1.5 px-1.5 text-sm font-medium text-fg outline-none w-56 h-6"
         />
         <span className="text-[11px] text-fg-faint leading-4">{subtitle}</span>
       </div>
 
       <div className="flex-1" />
-      <div className="flex gap-1">
-        <button className="icon-btn" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!history.canUndo} onClick={() => void undo()}>
+      <div className="flex gap-0.5 p-[3px] rounded-full bg-[rgba(8,10,9,0.35)] border border-line">
+        <button className="icon-btn w-[34px] h-[30px]" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!history.canUndo} onClick={() => void undo()}>
           <Icon name="undo" size={18} />
         </button>
-        <button className="icon-btn" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!history.canRedo} onClick={() => void redo()}>
+        <button className="icon-btn w-[34px] h-[30px]" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={!history.canRedo} onClick={() => void redo()}>
           <Icon name="redo" size={18} />
         </button>
       </div>
       <div className="flex-1" />
 
       <button
-        className={`icon-btn ${mcpOn ? 'text-success' : ''}`}
+        className={`icon-btn ${mcpOn ? 'text-accent bg-accent-deep/35' : ''}`}
         aria-label={mcpOn ? 'MCP server on' : 'MCP server off'}
         aria-pressed={mcpOn}
         title={
@@ -120,7 +123,7 @@ export function TopBar() {
         )}
         items={[{ label: 'Show project folder', onSelect: () => void revealProjectDir() }]}
       />
-      <button className="btn-primary" onClick={() => setExportDialog(true)}>
+      <button className="btn-primary h-[38px] px-[18px]" onClick={() => setExportDialog(true)}>
         Export
       </button>
     </header>

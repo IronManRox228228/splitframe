@@ -39,7 +39,7 @@ export function Menu({ trigger, items, align = 'end' }: { trigger: (props: { ope
       {open && (
         <div
           role="menu"
-          className={`absolute z-30 top-full mt-1.5 min-w-[176px] p-1.5 rounded-xl bg-surface-850 border border-surface-700 shadow-[0_12px_32px_rgba(0,0,0,0.5)] flex flex-col ${align === 'end' ? 'right-0' : 'left-0'}`}
+          className={`absolute z-30 top-full mt-1.5 min-w-[176px] p-1.5 glass-strong rounded-2xl flex flex-col ${align === 'end' ? 'right-0' : 'left-0'}`}
           onKeyDown={(e) => {
             if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
             e.preventDefault();
@@ -50,7 +50,7 @@ export function Menu({ trigger, items, align = 'end' }: { trigger: (props: { ope
         >
           {items.map((it) => (
             <div key={it.label} className="contents">
-              {it.separatorBefore && <div className="h-px bg-surface-700 my-1" />}
+              {it.separatorBefore && <div className="h-px bg-line my-1" />}
               <button
                 role="menuitem"
                 disabled={it.disabled}
@@ -58,7 +58,7 @@ export function Menu({ trigger, items, align = 'end' }: { trigger: (props: { ope
                   setOpen(false);
                   it.onSelect();
                 }}
-                className={`h-8 px-2.5 rounded-lg text-left text-sm disabled:opacity-40 hover:bg-surface-800 focus:bg-surface-800 outline-none ${it.danger ? 'text-danger' : 'text-fg-2 hover:text-fg'}`}
+                className={`h-8 px-2.5 rounded-xl text-left text-sm disabled:opacity-40 hover:bg-white/[0.08] focus:bg-white/[0.08] outline-none focus-visible:ring-1 focus-visible:ring-accent ${it.danger ? 'text-danger' : 'text-fg-2 hover:text-fg'}`}
               >
                 {it.label}
               </button>

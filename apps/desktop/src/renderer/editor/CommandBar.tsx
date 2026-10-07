@@ -33,8 +33,8 @@ export function CommandBar() {
   };
 
   return (
-    <label className="absolute left-1/2 top-[18px] -translate-x-1/2 z-10 w-[460px] max-w-[calc(100%-32px)] h-10 flex items-center gap-2.5 pl-3.5 pr-2 rounded-xl bg-surface-850 border border-surface-700 text-fg-faint focus-within:border-accent/60 focus-within:text-fg-muted">
-      <Icon name="sparkles" size={16} />
+    <label className="absolute left-1/2 top-[2px] -translate-x-1/2 z-10 glass w-[440px] max-w-[calc(100%-32px)] h-[42px] flex items-center gap-2.5 pl-4 pr-2 rounded-full text-fg-muted focus-within:border-accent/60">
+      <Icon name="sparkles" size={16} className="text-accent" />
       <input
         ref={inputRef}
         value={text}

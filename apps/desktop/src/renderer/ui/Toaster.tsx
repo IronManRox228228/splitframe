@@ -12,13 +12,13 @@ export function Toaster() {
         <div
           key={t.id}
           role={t.kind === 'error' ? 'alert' : 'status'}
-          className="pointer-events-auto flex items-center gap-3 min-h-11 max-w-[min(640px,90vw)] pl-4 pr-1.5 py-1.5 rounded-xl bg-surface-800 border border-surface-700 shadow-[0_12px_32px_rgba(0,0,0,0.5)] text-sm text-fg"
+          className="pointer-events-auto flex items-center gap-3 min-h-11 max-w-[min(640px,90vw)] pl-5 pr-1.5 py-1.5 glass-strong rounded-3xl text-sm text-fg"
         >
           <span className={`w-2 h-2 rounded-full shrink-0 ${DOT[t.kind]}`} />
           <span className="flex-1 py-1 select-text break-words">{t.message}</span>
           {t.action && (
             <button
-              className="btn-secondary btn-sm bg-surface-700 hover:bg-surface-600"
+              className="btn-secondary btn-sm"
               onClick={() => {
                 t.action!.run();
                 dismiss(t.id);

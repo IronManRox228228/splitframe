@@ -242,7 +242,7 @@ export async function makeThumbnail(src: string, dest: string, atSec = 1): Promi
 export async function makeWaveform(src: string, dest: string): Promise<void> {
   await runFfmpegChecked([
     '-i', src,
-    '-filter_complex', 'showwavespic=s=800x120:colors=#fbbf24:split_channels=0',
+    '-filter_complex', 'showwavespic=s=800x120:colors=#5FB7A1:split_channels=0',
     '-frames:v', '1',
     dest,
   ]);

@@ -29,13 +29,13 @@ export function ProjectCard({
   const [thumbFailed, setThumbFailed] = useState(false);
   const showThumb = project.thumbPath && !thumbFailed;
   return (
-    <div className="group flex flex-col gap-2.5 min-w-0">
+    <div className="group glass rounded-[22px] p-2 pb-3 flex flex-col gap-2.5 min-w-0">
       <div className="relative">
         <button
           type="button"
           onClick={onOpen}
           aria-label={`Open ${project.name}`}
-          className="block w-full relative aspect-[16/10] rounded-[14px] overflow-hidden bg-surface-850 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-surface-600 transition-shadow"
+          className="block w-full relative aspect-[16/10] rounded-[15px] overflow-hidden bg-surface-850 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent transition-shadow"
         >
           {showThumb ? (
             <img
@@ -50,10 +50,10 @@ export function ProjectCard({
               <Icon name="media" size={28} strokeWidth={1.4} />
             </span>
           )}
-          <span className="absolute left-2 bottom-2 px-[7px] py-0.5 rounded-md bg-surface-950/70 font-mono text-[11px] text-fg">
+          <span className="absolute left-2 bottom-2 px-2 py-0.5 rounded-full bg-surface-950/60 font-mono text-[11px] text-fg">
             {formatDuration(project.durationMs)}
           </span>
-          <span className="absolute right-2 bottom-2 px-[7px] py-0.5 rounded-md bg-surface-950/70 text-[11px] text-fg-2">
+          <span className="absolute right-2 bottom-2 px-2 py-0.5 rounded-full bg-surface-950/60 text-[11px] text-fg-2">
             {aspectLabel(project.width, project.height)}
           </span>
         </button>
@@ -65,7 +65,7 @@ export function ProjectCard({
                 aria-label={`Actions for ${project.name}`}
                 aria-haspopup="menu"
                 onClick={toggle}
-                className="w-[30px] h-[30px] rounded-lg bg-surface-950/75 hover:bg-surface-950 flex items-center justify-center text-fg"
+                className="w-[30px] h-[30px] rounded-full bg-surface-950/70 hover:bg-surface-950 flex items-center justify-center text-fg"
               >
                 <Icon name="more" size={16} />
               </button>
@@ -79,7 +79,7 @@ export function ProjectCard({
           />
         </div>
       </div>
-      <div className="flex flex-col gap-0.5 px-0.5 min-w-0">
+      <div className="flex flex-col gap-0.5 px-1.5 min-w-0">
         {renaming ? (
           <RenameInput initial={project.name} onCommit={onCommitRename} onCancel={onCancelRename} />
         ) : (

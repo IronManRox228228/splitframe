@@ -24,7 +24,7 @@ export function renderInline(text: string, keyPrefix = 'i'): ReactNode[] {
     const key = `${keyPrefix}-${n++}`;
     if (tok.startsWith('`')) {
       out.push(
-        <code key={key} className="px-1 py-0.5 rounded bg-surface-800 font-mono text-[12px] text-fg">
+        <code key={key} className="px-1 py-0.5 rounded bg-white/[0.08] font-mono text-[12px] text-fg">
           {tok.slice(1, -1)}
         </code>,
       );
@@ -147,7 +147,7 @@ export function Markdown({ text }: { text: string }) {
             );
           case 'code':
             return (
-              <pre key={key} className="rounded-lg bg-surface-850 border border-surface-800 p-2.5 font-mono text-[12px] leading-relaxed text-fg-2 overflow-x-auto">
+              <pre key={key} className="rounded-xl bg-[rgba(8,10,9,0.4)] border border-line p-2.5 font-mono text-[12px] leading-relaxed text-fg-2 overflow-x-auto">
                 <code>{b.text}</code>
               </pre>
             );
@@ -173,10 +173,10 @@ export function Markdown({ text }: { text: string }) {
             );
           case 'table':
             return (
-              <div key={key} className="overflow-x-auto rounded-lg border border-surface-800">
+              <div key={key} className="overflow-x-auto rounded-xl border border-line">
                 <table className="text-xs border-collapse min-w-full">
                   <thead>
-                    <tr className="bg-surface-850">
+                    <tr className="bg-white/[0.04]">
                       {b.head.map((c, j) => (
                         <th key={j} className="text-left font-medium text-fg px-2.5 py-1.5 whitespace-nowrap">
                           {renderInline(c, `${key}-h${j}`)}
@@ -186,7 +186,7 @@ export function Markdown({ text }: { text: string }) {
                   </thead>
                   <tbody>
                     {b.rows.map((r, j) => (
-                      <tr key={j} className="border-t border-surface-800">
+                      <tr key={j} className="border-t border-line">
                         {b.head.map((_, k) => (
                           <td key={k} className="px-2.5 py-1.5 whitespace-nowrap text-fg-2">
                             {renderInline(r[k] ?? '', `${key}-${j}-${k}`)}

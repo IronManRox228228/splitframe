@@ -11,8 +11,8 @@ body,
 #root {
   height: 100%;
   margin: 0;
-  background: #0a0a0b;
-  color: #ededef;
+  background: #050606;
+  color: #ECEEEC;
   font-family: Geist, system-ui, sans-serif;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
@@ -30,13 +30,13 @@ body,
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26262b;
+  background: rgba(236, 238, 236, 0.16);
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #33333a;
+  background-color: rgba(236, 238, 236, 0.28);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -49,7 +49,7 @@ textarea {
 
 /* one visible focus ring for keyboard users, nothing for mouse clicks */
 :focus-visible {
-  outline: 2px solid #8b93ff;
+  outline: 2px solid #5FB7A1;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
@@ -65,62 +65,85 @@ select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* Glass slab: flat translucent fill, blurred backdrop, hairline edge. No gradients. */
+.glass {
+  position: relative;
+  background: rgba(255, 255, 255, 0.045);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  backdrop-filter: blur(40px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 24px 60px -30px rgba(0, 0, 0, 0.7);
+}
+/* Menus and dialogs: slightly more opaque so text stays readable over the canvas. */
+.glass-strong {
+  position: relative;
+  background: rgba(16, 18, 17, 0.92);
+  -webkit-backdrop-filter: blur(40px) saturate(110%);
+  backdrop-filter: blur(40px) saturate(110%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 24px 60px -30px rgba(0, 0, 0, 0.7);
+}
+
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 h-9 text-sm font-medium transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-full px-4 h-9 text-sm font-medium transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap;
   }
   .btn-sm {
-    @apply h-8 px-3 text-xs rounded;
+    @apply h-8 px-3.5 text-xs;
   }
   .btn-primary {
-    @apply btn bg-primary text-surface-950 font-semibold hover:bg-primary-hover;
+    @apply btn bg-primary text-[#0B0D0C] font-semibold hover:bg-primary-hover;
   }
   .btn-accent {
-    @apply btn bg-accent text-surface-950 font-semibold hover:bg-accent-hover;
+    @apply btn bg-accent text-[#0B0D0C] font-semibold hover:bg-accent-hover;
   }
   .btn-secondary {
-    @apply btn bg-surface-800 text-fg hover:bg-surface-700;
+    @apply btn bg-[rgba(8,10,9,0.55)] border border-line-strong text-fg hover:border-fg;
   }
   .btn-ghost {
-    @apply btn text-fg-2 hover:bg-surface-800 hover:text-fg;
+    @apply btn text-fg-2 hover:bg-white/[0.07] hover:text-fg;
   }
   .btn-outline {
-    @apply btn border border-surface-700 text-fg-2 hover:border-surface-600 hover:text-fg;
+    @apply btn border border-line-strong text-fg-2 hover:border-fg hover:text-fg;
   }
   .btn-danger {
     @apply btn bg-danger/15 text-danger hover:bg-danger/25;
   }
   .icon-btn {
-    @apply inline-flex items-center justify-center w-9 h-9 rounded text-fg-muted hover:bg-surface-800 hover:text-fg transition-colors duration-150 disabled:opacity-30 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center w-9 h-9 rounded-full text-fg-muted hover:bg-white/[0.07] hover:text-fg transition-colors duration-150 disabled:opacity-30 disabled:pointer-events-none;
   }
   .icon-btn-sm {
     @apply icon-btn w-8 h-8;
   }
   .input {
-    @apply h-9 w-full rounded-[10px] bg-surface-850 border border-surface-800 px-3 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-accent/60 transition-colors;
+    @apply h-9 w-full rounded-xl bg-[rgba(8,10,9,0.4)] border border-line px-3 text-sm text-fg placeholder:text-fg-faint outline-none focus:border-accent/60 transition-colors;
   }
   .label {
     @apply text-xs text-fg-muted;
   }
   .panel {
-    @apply bg-surface-900 border border-line rounded-lg;
+    @apply glass rounded-[22px];
   }
   .card {
-    @apply bg-surface-850 border border-surface-800 rounded-xl;
+    @apply bg-[rgba(8,10,9,0.4)] border border-line rounded-xl;
   }
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-2.5 h-6 text-xs font-medium bg-surface-800 text-fg-2;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 h-6 text-xs font-medium bg-white/[0.07] text-fg-2;
   }
   .pill {
-    @apply inline-flex items-center rounded-full px-3 h-7 text-xs bg-surface-800 text-fg-2 hover:bg-surface-700 hover:text-fg transition-colors;
+    @apply inline-flex items-center rounded-full px-3 h-7 text-xs border border-line text-fg-2 hover:border-line-strong hover:text-fg transition-colors;
   }
   .pill-active {
-    @apply pill bg-fg text-surface-950 hover:bg-white hover:text-surface-950 font-medium;
+    @apply inline-flex items-center rounded-full px-3 h-7 text-xs border border-fg bg-fg text-[#0B0D0C] hover:bg-white font-medium;
   }
   .heading {
-    @apply text-[15px] font-semibold text-fg;
+    @apply text-[15px] font-semibold tracking-[-0.01em] text-fg;
   }
   .kbd {
-    @apply inline-flex items-center rounded-md bg-surface-800 px-1.5 h-5 font-mono text-[11px] text-fg-muted;
+    @apply inline-flex items-center rounded-full bg-white/[0.08] px-2 h-5 font-mono text-[11px] text-fg-muted;
   }
 }

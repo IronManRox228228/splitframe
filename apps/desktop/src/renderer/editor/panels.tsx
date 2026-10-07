@@ -56,7 +56,7 @@ function PanelShell({ title, children }: { title: string; children: React.ReactN
 }
 
 const PRESET_CARD =
-  'h-[84px] rounded-xl bg-surface-850 border border-surface-800 text-fg flex flex-col items-center justify-center gap-1 hover:border-surface-600 transition-colors disabled:opacity-40 disabled:pointer-events-none';
+  'h-[84px] rounded-2xl bg-[rgba(8,10,9,0.4)] border border-line text-fg flex flex-col items-center justify-center gap-1 hover:border-line-strong transition-colors disabled:opacity-40 disabled:pointer-events-none';
 
 export function TextPanel() {
   const doc = useEditor((s) => s.doc);
@@ -157,7 +157,7 @@ export function AudioPanel() {
       <div className="flex flex-col gap-1.5">
         <span className="label">Your audio</span>
         {audio.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-surface-700 p-4 text-center text-xs text-fg-muted flex flex-col items-center gap-2.5">
+          <div className="rounded-2xl border border-dashed border-line-strong p-4 text-center text-xs text-fg-muted flex flex-col items-center gap-2.5">
             No audio files yet
             <button className="btn-outline btn-sm" onClick={() => void importMedia()}>
               <Icon name="upload" size={14} />
@@ -168,7 +168,7 @@ export function AudioPanel() {
           audio.map((a) => (
             <button
               key={a.id}
-              className="flex items-center gap-2.5 h-11 px-3 rounded-[10px] bg-surface-850 border border-surface-800 hover:border-surface-600 text-left"
+              className="flex items-center gap-2.5 h-11 px-3 rounded-xl bg-[rgba(8,10,9,0.4)] border border-line hover:border-line-strong text-left"
               title="Add to the timeline at the playhead"
               onClick={() => void addAssetToTimeline(a.id, Math.round(useEditor.getState().playhead))}
             >

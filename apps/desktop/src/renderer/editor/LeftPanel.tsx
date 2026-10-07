@@ -21,7 +21,7 @@ export function LeftPanel() {
   const setPanel = useEditor((s) => s.setLeftPanel);
   return (
     <>
-      <nav aria-label="Panels" className="w-[72px] shrink-0 flex flex-col items-center gap-1 pt-2.5 border-r border-line">
+      <nav aria-label="Panels" className="glass w-[68px] shrink-0 rounded-[22px] flex flex-col items-center gap-1 py-2.5">
         {RAIL.map((r) => {
           const active = panel === r.id;
           return (
@@ -31,8 +31,8 @@ export function LeftPanel() {
               aria-pressed={active}
               title={active ? `Hide ${r.label}` : r.label}
               onClick={() => setPanel(active ? null : r.id)}
-              className={`w-[60px] h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors ${
-                active ? 'bg-surface-800 text-fg' : 'text-fg-faint hover:text-fg hover:bg-surface-850'
+              className={`w-[52px] h-[54px] rounded-2xl flex flex-col items-center justify-center gap-1 transition-colors ${
+                active ? 'bg-fg/10 text-fg' : 'text-fg-muted hover:text-fg hover:bg-white/[0.06]'
               }`}
             >
               <Icon name={r.icon} size={20} />
@@ -43,7 +43,7 @@ export function LeftPanel() {
       </nav>
       <aside
         aria-label="Panel"
-        className={`w-[300px] shrink-0 border-r border-line bg-surface-900 flex-col min-h-0 ${panel ? 'flex' : 'hidden'}`}
+        className={`glass w-[292px] shrink-0 rounded-[22px] flex-col min-h-0 overflow-hidden ${panel ? 'flex' : 'hidden'}`}
       >
         {panel === 'media' && <MediaPanel />}
         {panel === 'text' && <TextPanel />}
@@ -88,7 +88,7 @@ function MediaPanel() {
           Upload
         </button>
       </div>
-      <label className="flex items-center gap-2 h-9 px-3 rounded-[10px] bg-surface-850 border border-surface-800 text-fg-faint focus-within:border-accent/60">
+      <label className="flex items-center gap-2 h-[38px] px-3.5 rounded-full bg-[rgba(8,10,9,0.4)] border border-line text-fg-muted focus-within:border-accent/60">
         <Icon name="search" size={15} />
         <input
           value={query}
@@ -217,7 +217,7 @@ function MediaCard({ asset, job, onRemove }: { asset: AssetT; job: JobInfo | und
 
   return (
     <div
-      className="group relative flex flex-col gap-1.5 cursor-grab active:cursor-grabbing rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      className="group relative flex flex-col gap-1.5 cursor-grab active:cursor-grabbing rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-accent"
       tabIndex={0}
       role="group"
       aria-label={asset.originalName}
@@ -249,7 +249,7 @@ function MediaCard({ asset, job, onRemove }: { asset: AssetT; job: JobInfo | und
       }}
       title={missing ? `Original not found: ${asset.path}` : `${asset.originalName} (drag to the timeline or double-click to add)`}
     >
-      <div className="aspect-[4/3] rounded-[10px] bg-surface-800 relative overflow-hidden">
+      <div className="aspect-[4/3] rounded-[14px] bg-surface-800 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)] relative overflow-hidden">
         {asset.thumbPath ? (
           <img src={mediaUrl(asset.thumbPath)} alt="" className="w-full h-full object-cover" draggable={false} />
         ) : (
@@ -258,13 +258,13 @@ function MediaCard({ asset, job, onRemove }: { asset: AssetT; job: JobInfo | und
           </div>
         )}
         {asset.kind !== 'image' && asset.durationMs > 0 && (
-          <span className="absolute right-1.5 bottom-1.5 px-1.5 py-0.5 rounded-md bg-surface-950/70 font-mono text-[11px] text-fg">
+          <span className="absolute right-1.5 bottom-1.5 px-2 py-0.5 rounded-full bg-surface-950/60 font-mono text-[11px] text-fg">
             {formatDuration(asset.durationMs)}
           </span>
         )}
         {job && <ProgressBar value={job.progress ?? 0} />}
         <button
-          className="absolute left-1.5 top-1.5 w-6 h-6 rounded-md bg-surface-950/70 text-fg flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-surface-950"
+          className="absolute left-1.5 top-1.5 w-6 h-6 rounded-full bg-surface-950/70 text-fg flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:bg-surface-950"
           aria-label={`Actions for ${asset.originalName}`}
           aria-haspopup="menu"
           onClick={(e) => {
@@ -314,7 +314,7 @@ function CardMenu({ at, items, onClose }: { at: MenuState; items: CardAction[]; 
       data-card-menu
       role="menu"
       style={{ left, top }}
-      className="fixed z-30 min-w-[184px] p-1.5 rounded-xl bg-surface-850 border border-surface-700 shadow-[0_12px_32px_rgba(0,0,0,0.5)] flex flex-col cursor-default"
+      className="fixed z-30 min-w-[184px] p-1.5 glass-strong rounded-2xl flex flex-col cursor-default"
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
@@ -328,7 +328,7 @@ function CardMenu({ at, items, onClose }: { at: MenuState; items: CardAction[]; 
     >
       {items.map((it) => (
         <div key={it.label} className="contents">
-          {it.separatorBefore && <div className="h-px bg-surface-700 my-1" />}
+          {it.separatorBefore && <div className="h-px bg-line my-1" />}
           <button
             role="menuitem"
             disabled={it.disabled}
@@ -336,7 +336,7 @@ function CardMenu({ at, items, onClose }: { at: MenuState; items: CardAction[]; 
               onClose();
               it.run();
             }}
-            className={`h-8 px-2.5 rounded-lg text-left text-sm disabled:opacity-40 hover:bg-surface-800 focus:bg-surface-800 outline-none ${it.danger ? 'text-danger' : 'text-fg-2 hover:text-fg'}`}
+            className={`h-8 px-2.5 rounded-xl text-left text-sm disabled:opacity-40 hover:bg-white/[0.08] focus:bg-white/[0.08] outline-none focus-visible:ring-1 focus-visible:ring-accent ${it.danger ? 'text-danger' : 'text-fg-2 hover:text-fg'}`}
           >
             {it.label}
           </button>
@@ -348,7 +348,7 @@ function CardMenu({ at, items, onClose }: { at: MenuState; items: CardAction[]; 
 
 function ProgressBar({ value }: { value: number }) {
   return (
-    <span className="absolute left-1.5 right-1.5 top-1.5 h-[3px] rounded-sm bg-white/20 overflow-hidden" role="progressbar" aria-valuenow={Math.round(value * 100)}>
+    <span className="absolute left-1.5 right-1.5 top-1.5 h-[3px] rounded-full bg-white/20 overflow-hidden" role="progressbar" aria-valuenow={Math.round(value * 100)}>
       <span className="block h-full bg-accent" style={{ width: `${Math.max(4, Math.round(value * 100))}%` }} />
     </span>
   );
@@ -410,7 +410,7 @@ function AssetStatus({ asset, job }: { asset: AssetT; job?: JobInfo }) {
   if (asset.status === 'analyzed' && asset.error?.startsWith('Transcription')) {
     return (
       <span className="text-[11px] text-fg-muted flex items-center gap-1.5" title={asset.error}>
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+        <span className="w-1.5 h-1.5 rounded-full bg-[#E7D9B8]" />
         No transcript
       </span>
     );

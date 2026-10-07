@@ -67,10 +67,12 @@ export function DropImport() {
   if (!active) return null;
   return (
     <div className="fixed inset-0 z-50 pointer-events-none bg-surface-950/80 flex items-center justify-center p-6" role="presentation">
-      <div className="w-full h-full rounded-2xl border-2 border-dashed border-accent flex flex-col items-center justify-center gap-3 text-fg">
+      <div className="w-full h-full rounded-[22px] border-2 border-dashed border-accent flex items-center justify-center text-fg">
+        <div className="glass-strong rounded-[22px] px-12 py-9 flex flex-col items-center gap-3">
         <Icon name="upload" size={36} strokeWidth={1.6} />
         <p className="text-lg font-semibold">Drop to import</p>
         <p className="text-sm text-fg-muted">Video, audio and images</p>
+        </div>
       </div>
     </div>
   );

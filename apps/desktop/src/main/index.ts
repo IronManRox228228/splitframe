@@ -49,7 +49,7 @@ function createMainWindow(): void {
     minWidth: 1100,
     minHeight: 700,
     title: 'SplitFrame',
-    backgroundColor: '#0a0a0b',
+    backgroundColor: '#050606',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 14 },
     webPreferences: {

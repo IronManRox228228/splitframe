@@ -54,7 +54,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
-        className="rounded-2xl bg-surface-900 border border-surface-800 shadow-[0_30px_80px_rgba(0,0,0,0.6)] flex flex-col max-h-full overflow-hidden"
+        className="glass-strong rounded-[22px] flex flex-col max-h-full overflow-hidden"
         style={{ width }}
       >
         <div className="flex items-center justify-between pl-6 pr-4 pt-5">

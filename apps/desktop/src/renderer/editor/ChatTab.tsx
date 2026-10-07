@@ -257,13 +257,13 @@ export function ChatTab() {
         {!streaming && (
           <div className="flex gap-1.5 flex-wrap">
             {SUGGESTIONS.map((s) => (
-              <button key={s.label} className="pill bg-surface-850" onClick={() => send(s.prompt)}>
+              <button key={s.label} className="pill" onClick={() => send(s.prompt)}>
                 {s.label}
               </button>
             ))}
           </div>
         )}
-        <div className="flex items-end gap-2 pl-3 pr-2.5 py-2.5 bg-surface-850 border border-surface-700 rounded-[14px] focus-within:border-accent/60">
+        <div className="flex items-end gap-2 pl-3 pr-2.5 py-2.5 bg-[rgba(8,10,9,0.4)] border border-line-strong rounded-[18px] focus-within:border-accent/60">
           <textarea
             ref={textareaRef}
             value={input}
@@ -280,12 +280,12 @@ export function ChatTab() {
             className="flex-1 bg-transparent outline-none resize-none text-[13px] leading-[20px] text-fg placeholder:text-fg-faint py-[4px] max-h-[140px]"
           />
           {streaming ? (
-            <button className="w-7 h-7 rounded-lg bg-surface-700 text-fg flex items-center justify-center shrink-0 hover:bg-surface-600" aria-label="Stop" title="Stop" onClick={stop}>
+            <button className="w-7 h-7 rounded-full bg-surface-700 text-fg flex items-center justify-center shrink-0 hover:bg-surface-600" aria-label="Stop" title="Stop" onClick={stop}>
               <Icon name="stop" size={14} />
             </button>
           ) : (
             <button
-              className="w-7 h-7 rounded-lg bg-accent text-surface-950 flex items-center justify-center shrink-0 hover:bg-accent-hover disabled:opacity-40 disabled:pointer-events-none"
+              className="w-7 h-7 rounded-full bg-accent text-[#0B0D0C] flex items-center justify-center shrink-0 hover:bg-accent-hover disabled:opacity-40 disabled:pointer-events-none"
               aria-label="Send"
               title="Send (Enter)"
               onClick={() => send()}
@@ -324,7 +324,7 @@ function AssistantTurn({
       .catch(() => useEditor.getState().showToast('Could not copy to the clipboard.', { kind: 'error' }));
   };
   return (
-    <div className="flex flex-col gap-2 text-[13px] leading-[1.5] text-[#d6d6dc] min-w-0">
+    <div className="flex flex-col gap-2 text-[13px] leading-[1.5] text-fg-2 min-w-0">
       {turn.tools.length > 0 && (
         <div className="flex flex-col gap-1">
           {turn.tools.map((tc, j) => (
@@ -437,8 +437,8 @@ function ToolRow({ card }: { card: ToolCard }) {
   const pending = card.phase === 'call';
   const summary = failure ? failure.replace(/\s+/g, ' ').slice(0, 140) : pending ? null : summarizeResult(card.result);
   return (
-    <div className="rounded-lg bg-surface-850 border border-surface-800 overflow-hidden">
-      <button className="w-full flex items-start gap-2 px-2.5 py-1.5 text-left hover:bg-surface-800 text-xs" onClick={() => setOpen(!open)} aria-expanded={open}>
+    <div className="rounded-xl bg-[rgba(8,10,9,0.4)] border border-line overflow-hidden">
+      <button className="w-full flex items-start gap-2 px-2.5 py-1.5 text-left hover:bg-white/[0.06] text-xs" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span className={`mt-px shrink-0 ${pending ? 'text-fg-muted animate-pulse' : failure ? 'text-danger' : 'text-success'}`}>
           {pending ? <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Icon name={failure ? 'alert' : 'check'} size={14} />}
         </span>
@@ -449,7 +449,7 @@ function ToolRow({ card }: { card: ToolCard }) {
         <Icon name={open ? 'chevronDown' : 'chevronRight'} size={13} className="mt-0.5 text-fg-faint shrink-0" />
       </button>
       {open && (
-        <pre className="px-2.5 py-2 border-t border-surface-800 text-[11px] text-fg-muted overflow-x-auto max-h-48 whitespace-pre-wrap font-mono">
+        <pre className="px-2.5 py-2 border-t border-line text-[11px] text-fg-muted overflow-x-auto max-h-48 whitespace-pre-wrap font-mono">
           {JSON.stringify(card.phase === 'result' ? (card.result ?? card.error) : card.args, null, 1)}
         </pre>
       )}

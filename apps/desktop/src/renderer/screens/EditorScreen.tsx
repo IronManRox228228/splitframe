@@ -26,9 +26,9 @@ export function EditorScreen() {
   if (!doc) return null;
 
   return (
-    <div ref={containerRef} className="flex-1 flex flex-col min-h-0 bg-surface-950">
+    <div ref={containerRef} className="flex-1 flex flex-col min-h-0 bg-surface-950 p-3 gap-3">
       <TopBar />
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 gap-3">
         <LeftPanel />
         <PreviewPane />
         <Inspector />

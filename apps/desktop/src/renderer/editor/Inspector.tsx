@@ -46,7 +46,7 @@ export function Inspector() {
   return (
     <aside
       aria-label={`Selected ${TYPE_TITLES[item.type] ?? item.type}`}
-      className="w-[272px] shrink-0 border-l border-line bg-surface-900 flex flex-col gap-5 p-4 overflow-y-auto min-h-0"
+      className="glass w-[260px] shrink-0 rounded-[22px] flex flex-col gap-5 p-4 overflow-y-auto min-h-0"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="heading">{TYPE_TITLES[item.type] ?? item.type}</h2>
@@ -63,7 +63,7 @@ export function Inspector() {
           </Field>
           <Field label="Size and alignment">
             <div className="flex gap-2">
-              <label className="flex-1 h-9 px-3 rounded-[10px] bg-surface-850 border border-surface-800 flex items-center justify-between text-xs text-fg-muted focus-within:border-accent/60">
+              <label className="flex-1 h-9 px-3 rounded-xl bg-[rgba(8,10,9,0.4)] border border-line flex items-center justify-between text-xs text-fg-muted focus-within:border-accent/60">
                 Size
                 <NumberInput value={Number(style.fontSize ?? 72)} min={8} max={400} ariaLabel="Font size" onCommit={(fontSize) => setStyle({ fontSize })} />
               </label>
@@ -90,12 +90,12 @@ export function Inspector() {
                     aria-pressed={active}
                     title={c.label}
                     onClick={() => setStyle({ color: c.value })}
-                    className="w-7 h-7 rounded-full border border-surface-600"
-                    style={{ background: c.value, boxShadow: active ? '0 0 0 2px #0d0d0f, 0 0 0 3.5px #8b93ff' : undefined }}
+                    className="w-7 h-7 rounded-full border border-line-strong"
+                    style={{ background: c.value, boxShadow: active ? '0 0 0 2px #0B0D0C, 0 0 0 3.5px #5FB7A1' : undefined }}
                   />
                 );
               })}
-              <label className="w-7 h-7 rounded-full border border-dashed border-surface-600 text-fg-muted flex items-center justify-center cursor-pointer text-sm hover:text-fg overflow-hidden relative" title="Custom color">
+              <label className="w-7 h-7 rounded-full border border-dashed border-line-strong text-fg-muted flex items-center justify-center cursor-pointer text-sm hover:text-fg overflow-hidden relative" title="Custom color">
                 +
                 <input
                   type="color"
@@ -193,7 +193,7 @@ function TextContent({ value, onCommit }: { value: string; onCommit(v: string): 
           (e.target as HTMLTextAreaElement).blur();
         }
       }}
-      className="w-full rounded-[10px] bg-surface-850 border border-surface-800 px-3 py-2 text-[13px] text-fg outline-none focus:border-surface-600 resize-none"
+      className="w-full rounded-xl bg-[rgba(8,10,9,0.4)] border border-line px-3 py-2 text-[13px] text-fg outline-none focus:border-accent/60 resize-none"
     />
   );
 }

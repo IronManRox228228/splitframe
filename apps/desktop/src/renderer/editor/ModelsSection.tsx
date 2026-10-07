@@ -123,7 +123,7 @@ export function ModelsSection() {
             {progress && (
               <div className="flex flex-col gap-1">
                 <div
-                  className="h-1.5 rounded-full bg-surface-800 overflow-hidden"
+                  className="h-1.5 rounded-full bg-fg/15 overflow-hidden"
                   role="progressbar"
                   aria-label={`Downloading ${m.id}`}
                   aria-valuenow={pct ?? undefined}

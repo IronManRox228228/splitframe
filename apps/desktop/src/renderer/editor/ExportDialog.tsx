@@ -127,7 +127,7 @@ export function ExportDialog() {
       {view === 'setup' && (
         <div className="flex flex-col gap-5 px-6 pt-5 pb-6">
           <div className="flex items-center gap-3.5">
-            <div className="w-[112px] h-[63px] shrink-0 rounded-lg bg-surface-850 overflow-hidden flex items-center justify-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
+            <div className="w-[112px] h-[63px] shrink-0 rounded-xl bg-surface-850 overflow-hidden flex items-center justify-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.05)]">
               {info.poster ? (
                 <img src={mediaUrl(info.poster)} alt="" className="w-full h-full object-cover" />
               ) : (
@@ -145,7 +145,7 @@ export function ExportDialog() {
 
           <label className="flex flex-col gap-2">
             <span className="text-xs text-fg-2">File name</span>
-            <span className="flex items-center h-10 px-3 rounded-[10px] bg-surface-850 border border-surface-800 focus-within:border-accent/60 transition-colors">
+            <span className="flex items-center h-10 px-3 rounded-xl bg-[rgba(8,10,9,0.4)] border border-line focus-within:border-accent/60 transition-colors">
               <input
                 value={fileName}
                 maxLength={120}
@@ -162,7 +162,7 @@ export function ExportDialog() {
             <button
               type="button"
               onClick={() => void window.cutboard.chooseExportFolder().then((f) => f && setFolder(f)).catch((err) => showToast(plainError(err), { kind: 'error' }))}
-              className="h-10 px-3 rounded-[10px] bg-surface-850 border border-surface-800 hover:border-surface-600 flex items-center gap-2.5 text-[13px] text-fg transition-colors"
+              className="h-10 px-3 rounded-xl bg-[rgba(8,10,9,0.4)] border border-line hover:border-line-strong flex items-center gap-2.5 text-[13px] text-fg transition-colors"
               title={folder?.dir}
             >
               <Icon name="folder" size={16} className="text-fg-2 shrink-0" />
@@ -198,7 +198,7 @@ export function ExportDialog() {
             </select>
           </label>
 
-          {info.empty && <p className="text-[13px] text-fg-2 rounded-[10px] bg-surface-850 border border-surface-800 px-3 py-2.5">Your timeline is empty. Add a clip before exporting.</p>}
+          {info.empty && <p className="text-[13px] text-fg-2 rounded-xl bg-[rgba(8,10,9,0.4)] border border-line px-3 py-2.5">Your timeline is empty. Add a clip before exporting.</p>}
           {startError && <p className="text-[13px] text-danger">{startError}</p>}
 
           <div className="flex items-center justify-between gap-4 pt-1">
@@ -341,8 +341,8 @@ function RunningView({ session, onCancel, onKeepEditing }: { session: ExportRowI
         <span className="font-mono text-[28px] font-medium text-fg tabular-nums">{pct}%</span>
         <span className="text-xs text-fg-muted">{etaSec === null ? 'Estimating time…' : `About ${etaSec < 90 ? `${etaSec} s` : `${Math.ceil(etaSec / 60)} min`} left`}</span>
       </div>
-      <div className="h-1.5 rounded-[3px] bg-surface-700" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Export progress">
-        <div className="h-1.5 rounded-[3px] bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
+      <div className="h-1.5 rounded-full bg-fg/15" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Export progress">
+        <div className="h-1.5 rounded-full bg-accent transition-[width] duration-300" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-xs text-fg-muted">{detail}</span>
       <div className="flex justify-end gap-2">

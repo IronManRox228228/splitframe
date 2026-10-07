@@ -453,7 +453,7 @@ export function Timeline() {
     <section
       ref={rootRef}
       aria-label="Timeline"
-      className="relative shrink-0 flex flex-col border-t border-line bg-surface-900"
+      className="glass relative shrink-0 flex flex-col rounded-[22px] overflow-hidden"
       style={{ height }}
     >
       {dragCursor && <style>{`html, html * { cursor: ${dragCursor} !important; }`}</style>}
@@ -461,7 +461,7 @@ export function Timeline() {
         role="separator"
         aria-orientation="horizontal"
         aria-label="Resize timeline"
-        className="absolute -top-1 inset-x-0 h-2 z-50 cursor-row-resize hover:bg-accent/30"
+        className="absolute top-0 inset-x-0 h-1.5 z-50 cursor-row-resize hover:bg-accent/30"
         onPointerDown={onSplitterDown}
         onDoubleClick={() => setUserHeight(null)}
       />
@@ -494,7 +494,7 @@ export function Timeline() {
         >
           <Icon name="clone" />
         </button>
-        <span className="w-px h-[18px] bg-surface-700 mx-1.5" />
+        <span className="w-px h-[18px] bg-line-strong/70 mx-1.5" />
         <ToggleButton icon="magnet" label="Snap" active={snapEnabled} onClick={toggleSnap} title="Snap to clip edges, markers and the playhead (N)" />
         <ToggleButton icon="ripple" label="Ripple" active={rippleEnabled} onClick={toggleRipple} title="Ripple delete and trims close the gap" />
         <div className="flex-1" />
@@ -512,7 +512,7 @@ export function Timeline() {
           value={Number.isFinite(zoomValue) ? zoomValue : 0.5}
           aria-label="Timeline zoom"
           onChange={(e) => setPxPerFrame(Math.exp(LOG_MIN + Number(e.target.value) * (LOG_MAX - LOG_MIN)))}
-          className="w-[120px] h-1 appearance-none rounded-full bg-surface-700 outline-none cursor-pointer
+          className="w-[120px] h-1 appearance-none rounded-full bg-fg/15 outline-none cursor-pointer
             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5
             [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fg"
         />
@@ -528,11 +528,11 @@ export function Timeline() {
       <div ref={scrollRef} data-timeline-viewport className="flex-1 min-h-0 overflow-auto relative">
         <div className="relative" style={{ width: HEADER_W + contentFrames * pxPerFrame, minWidth: '100%' }}>
           {/* ruler */}
-          <div className="sticky top-0 z-30 flex bg-surface-900 border-b border-line" style={{ height: RULER_H }}>
-            <div className="sticky left-0 z-30 shrink-0 bg-surface-900" style={{ width: HEADER_W }} />
+          <div className="sticky top-0 z-30 flex bg-[#101211] border-b border-line" style={{ height: RULER_H }}>
+            <div className="sticky left-0 z-30 shrink-0 bg-[#101211]" style={{ width: HEADER_W }} />
             <div className="relative flex-1 cursor-ew-resize select-none" onPointerDown={onRulerPointerDown}>
               {ticks.map((f) => (
-                <div key={f} className="absolute top-0 bottom-0 border-l border-surface-700/70 pointer-events-none" style={{ left: f * pxPerFrame }}>
+                <div key={f} className="absolute top-0 bottom-0 border-l border-line pointer-events-none" style={{ left: f * pxPerFrame }}>
                   <span className="absolute top-1.5 left-[9px] text-[11px] leading-none font-mono text-fg-faint whitespace-nowrap">
                     {formatTimecode(f, fps)}
                   </span>
@@ -540,7 +540,7 @@ export function Timeline() {
                     Array.from({ length: subdivisions - 1 }, (_, i) => (
                       <span
                         key={i}
-                        className="absolute bottom-0 w-px h-1.5 bg-surface-700"
+                        className="absolute bottom-0 w-px h-1.5 bg-fg/15"
                         style={{ left: (i + 1) * minorStep * pxPerFrame }}
                       />
                     ))}
@@ -550,7 +550,7 @@ export function Timeline() {
                 className="absolute top-0 bottom-0 w-0.5 -ml-px bg-accent pointer-events-none z-10"
                 style={{ left: playhead * pxPerFrame }}
               >
-                <span className="absolute -left-1.5 top-0 w-[14px] h-3.5 rounded-t-[3px] rounded-b-[7px] bg-accent" />
+                <span className="absolute -left-[5px] top-0 w-3 h-3 rounded-full bg-accent" />
               </div>
             </div>
           </div>
@@ -623,7 +623,7 @@ export function Timeline() {
             {/* marquee */}
             {marquee && (
               <div
-                className="absolute z-20 pointer-events-none rounded-[3px] border border-accent bg-accent/10"
+                className="absolute z-20 pointer-events-none rounded-[6px] border border-accent bg-accent/10"
                 style={{
                   left: Math.min(marquee.x1, marquee.x2),
                   top: Math.min(marquee.y1, marquee.y2),
@@ -674,8 +674,8 @@ function ToggleButton({
       aria-label={`${label}: ${active ? 'on' : 'off'}`}
       title={title}
       onClick={onClick}
-      className={`h-7 px-2.5 rounded-lg inline-flex items-center gap-1.5 text-xs transition-colors ${
-        active ? 'bg-surface-800 text-fg' : 'text-fg-faint hover:bg-surface-800/60 hover:text-fg-2'
+      className={`h-[30px] px-3 rounded-full border inline-flex items-center gap-1.5 text-xs transition-colors ${
+        active ? 'border-accent/35 bg-accent-deep/35 text-fg' : 'border-transparent text-fg-muted hover:bg-white/[0.06] hover:text-fg'
       }`}
     >
       <Icon name={icon} size={14} />
@@ -693,11 +693,11 @@ function TrackGutter({ track }: { track: Track }) {
     void applyOps([{ type: 'track.update', trackId: track.id, patch }], label);
   const btn = (active: boolean) =>
     `w-6 h-6 rounded-md inline-flex items-center justify-center transition-colors ${
-      active ? 'bg-surface-700 text-fg' : 'text-fg-muted hover:bg-surface-800 hover:text-fg'
+      active ? 'bg-white/[0.14] text-fg' : 'text-fg-muted hover:bg-white/[0.08] hover:text-fg'
     }`;
   return (
     <div
-      className="group sticky left-0 z-30 shrink-0 bg-surface-900 border-r border-line flex flex-col items-center justify-center gap-0.5 text-fg-faint"
+      className="group sticky left-0 z-30 shrink-0 bg-[#101211] border-r border-line flex flex-col items-center justify-center gap-0.5 text-fg-faint"
       style={{ width: HEADER_W }}
       title={track.name}
     >
@@ -710,7 +710,7 @@ function TrackGutter({ track }: { track: Track }) {
         </span>
       )}
       <div
-        className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-40 flex gap-0.5 p-0.5 rounded-lg border border-surface-700 bg-surface-850 shadow-lg
+        className="absolute left-full top-1/2 -translate-y-1/2 ml-1 z-40 flex gap-0.5 p-0.5 rounded-full border border-line-strong glass-strong shadow-lg
           opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"
       >
         <button
@@ -746,13 +746,13 @@ function TrackGutter({ track }: { track: Track }) {
 }
 
 const TYPE_BG: Record<string, string> = {
-  video: 'bg-[#1d2733]',
-  image: 'bg-[#2a2336]',
-  audio: 'bg-[#12261f]',
-  text: 'bg-[#2a2540]',
-  caption: 'bg-[#2a2540]',
-  shape: 'bg-[#33271f]',
-  motionGraphic: 'bg-[#1f2540]',
+  video: 'bg-[#1F2A27]',
+  image: 'bg-[#2A2830]',
+  audio: 'bg-[rgba(33,92,79,0.30)]',
+  text: 'bg-[rgba(95,183,161,0.18)]',
+  caption: 'bg-[rgba(95,183,161,0.18)]',
+  shape: 'bg-[#2E2B24]',
+  motionGraphic: 'bg-[#252B33]',
 };
 
 function ItemBlock({
@@ -792,7 +792,7 @@ function ItemBlock({
 
   return (
     <div
-      className={`group/clip absolute rounded-lg select-none ${TYPE_BG[item.type] ?? TYPE_BG.video} ${
+      className={`group/clip absolute rounded-[10px] select-none ${TYPE_BG[item.type] ?? TYPE_BG.video} ${
         locked ? 'cursor-default' : 'cursor-grab'
       } ${selected ? 'outline outline-[1.5px] outline-accent z-[5]' : ''} ${lifted ? 'z-[6] opacity-90 shadow-lg shadow-black/50' : ''} ${
         trimming ? 'opacity-70' : ''
@@ -801,7 +801,7 @@ function ItemBlock({
       onPointerDown={(e) => onPointerDown(e, 'move')}
       title={`${label} · ${formatTimecode(startFrame, fps)} → ${formatTimecode(startFrame + durationFrames, fps)}`}
     >
-      <div className="absolute inset-0 rounded-lg overflow-hidden shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+      <div className="absolute inset-0 rounded-[10px] overflow-hidden shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
         {thumb && (
           <div
             className="absolute inset-0 opacity-80"
@@ -815,7 +815,7 @@ function ItemBlock({
           />
         )}
         {width > 36 && (
-          <span className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)] truncate px-1.5 py-px rounded-[5px] bg-surface-950/60 text-[11px] leading-4 text-fg">
+          <span className="absolute left-1.5 top-1.5 max-w-[calc(100%-12px)] truncate px-2 py-px rounded-full bg-surface-950/55 text-[11px] leading-4 text-fg">
             {label}
           </span>
         )}
@@ -838,20 +838,20 @@ function ItemBlock({
             style={{ width: hw }}
             onPointerDown={(e) => onPointerDown(e, 'trim-in')}
           >
-            <span className="w-[3px] rounded-l-lg bg-fg/0 group-hover/h:bg-fg/70 transition-colors" />
+            <span className="w-[3px] rounded-l-[10px] bg-fg/0 group-hover/h:bg-fg/70 transition-colors" />
           </div>
           <div
             className="group/h absolute right-0 top-0 bottom-0 cursor-e-resize flex items-stretch justify-end"
             style={{ width: hw }}
             onPointerDown={(e) => onPointerDown(e, 'trim-out')}
           >
-            <span className="w-[3px] rounded-r-lg bg-fg/0 group-hover/h:bg-fg/70 transition-colors" />
+            <span className="w-[3px] rounded-r-[10px] bg-fg/0 group-hover/h:bg-fg/70 transition-colors" />
           </div>
         </>
       )}
 
       {trimming && (
-        <span className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-40 whitespace-nowrap px-1.5 py-0.5 rounded-md bg-surface-950 border border-surface-700 font-mono text-[11px] text-fg">
+        <span className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-40 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-surface-950 border border-line-strong font-mono text-[11px] text-fg">
           {formatTimecode(startFrame, fps)} · {formatDurationBadge(durationFrames, fps)}
         </span>
       )}
