@@ -37,7 +37,7 @@ describe('addText', () => {
   it('fills in the default style when none is given', async () => {
     const { ctx, state } = makeCtx([]);
     await addText.handler(addText.input.parse({ text: 'Hello', startFrame: 0, durationFrames: 60 }), ctx);
-    expect(state.doc.items[0]).toMatchObject({ type: 'text', props: { text: 'Hello', style: { fontFamily: 'Montserrat', fontSize: 72 } } });
+    expect(state.doc.items[0]).toMatchObject({ type: 'text', props: { text: 'Hello', style: { fontFamily: 'Geist', fontSize: 72 } } });
   });
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useEditor } from '../store.ts';
 
 interface ModelRow {
   id: string;
@@ -48,33 +49,33 @@ export function ModelsSection() {
         delete next[id];
         return next;
       });
-      if (!res.ok) window.alert(`Download failed: ${res.error ?? 'unknown error'}`);
+      if (!res.ok) useEditor.getState().showToast(`Download failed: ${res.error ?? 'unknown error'}`, { kind: 'error' });
       refresh();
     });
   };
 
   return (
-    <div className="border-t border-line pt-2 space-y-1.5">
-      <p className="text-fg-faint">Local models (downloaded only when you ask)</p>
+    <div className="space-y-2.5">
+      <p className="label">Local models (downloaded only when you ask)</p>
       {models.map((m) => {
         const progress = busy[m.id];
         return (
           <div key={m.id} className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <p className="text-fg-2 truncate">{m.id}</p>
-              <p className="text-[11px] text-fg-faint truncate">
+              <p className="text-sm text-fg-2 truncate">{m.id}</p>
+              <p className="text-[11px] text-fg-muted truncate">
                 {m.kind === 'asr' ? 'transcription' : 'semantic search'}
                 {m.sizeMB ? ` · ${m.sizeMB} MB` : ''}
               </p>
             </div>
             {m.downloaded ? (
-              <span className="text-emerald-400 text-[11px]">installed</span>
+              <span className="text-success text-[11px]">Installed</span>
             ) : progress ? (
-              <span className="text-fg-muted text-[11px]">
+              <span className="text-accent text-[11px]">
                 {progress.total > 0 ? `${Math.round((progress.received / progress.total) * 100)}%` : '…'}
               </span>
             ) : (
-              <button className="btn-outline" onClick={() => download(m.id)}>
+              <button className="btn-outline btn-sm" onClick={() => download(m.id)}>
                 Download
               </button>
             )}

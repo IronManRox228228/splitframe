@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { getDb } from './db.ts';
 import { applyOps, createEmptyDoc, parseDoc, History, OpError } from '@cutboard/editor-core';
 import type { UndoGroup } from '@cutboard/editor-core';
@@ -6,6 +8,19 @@ import type { ProjectBundle } from '@cutboard/schema';
 import { broadcast } from './events.ts';
 import { projectDir, getPaths } from './paths.ts';
 import { commitProjectDoc, type SqlDb } from './project-store.ts';
+import {
+  DEFAULT_PROJECT_NAME,
+  deleteProject as deleteProjectRows,
+  duplicateProject as duplicateProjectRows,
+  findProjectDir,
+  listProjects,
+  renameProject as renameProjectRows,
+  uniqueProjectName,
+  type LibDb,
+  type ProjectSummary,
+} from './project-library.ts';
+import { removeAssetIndex } from './analysis/search.ts';
+import { jobs } from './jobs.ts';
 
 /**
  * The main process is the source of truth (addendum §2). Every timeline change goes
@@ -17,40 +32,91 @@ export interface ProjectRow {
   name: string;
   updatedAt: string;
 }
+export type { ProjectSummary };
 
 /** Folder of any project (not only the open one), e.g. for background jobs of another project. */
 export function resolveProjectDir(projectId: string): string {
   const row = getDb().prepare(`SELECT id, name FROM projects WHERE id=?`).get(projectId) as { id: string; name: string } | undefined;
   if (!row) throw new Error(`Project ${projectId} not found`);
-  return projectDir(getPaths().projectsRoot, row.id, row.name);
+  return dirOf(row.id, row.name);
 }
+
+/** Existing folder of a project (found by id, so renames don't orphan it), or a fresh one. */
+function dirOf(id: string, name: string): string {
+  const root = getPaths().projectsRoot;
+  const existing = findProjectDir(root, id);
+  if (existing) {
+    mkdirSync(join(existing, 'cache'), { recursive: true });
+    mkdirSync(join(existing, 'exports'), { recursive: true });
+    return existing;
+  }
+  return projectDir(root, id, name);
+}
+
 
 export class ProjectService {
   private current: { id: string; doc: TimelineDoc; dir: string } | null = null;
   private history = new History();
 
-  listRecent(): ProjectRow[] {
-    const db = getDb();
-    const rows = db
-      .prepare(`SELECT id, name, updated_at FROM projects ORDER BY updated_at DESC LIMIT 50`)
-      .all() as { id: string; name: string; updated_at: string }[];
-    return rows.map((r) => ({ id: r.id, name: r.name, updatedAt: r.updated_at }));
+  /** Every project, newest first, with the summary fields the Home grid shows. */
+  listRecent(): ProjectSummary[] {
+    return listProjects(getDb() as unknown as LibDb);
   }
 
-  create(name: string, opts: { fps?: number; width?: number; height?: number } = {}): ProjectRow {
+  create(name: string | undefined, opts: { fps?: number; width?: number; height?: number } = {}): ProjectRow {
     const db = getDb();
+    const finalName = name?.trim() ? name.trim() : uniqueProjectName(db as unknown as LibDb, DEFAULT_PROJECT_NAME);
     const id = newId('prj');
-    const doc = createEmptyDoc({ id, name, ...opts });
+    const doc = createEmptyDoc({ id, name: finalName, ...opts });
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO projects (id, name, doc, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`).run(
       id,
-      name,
+      finalName,
       JSON.stringify(doc),
       now,
       now,
     );
-    projectDir(getPaths().projectsRoot, id, name); // ensure folder exists
-    return { id, name, updatedAt: now };
+    projectDir(getPaths().projectsRoot, id, finalName); // ensure folder exists
+    return { id, name: finalName, updatedAt: now };
+  }
+
+  rename(projectId: string, name: string): void {
+    if (this.current?.id === projectId) {
+      // the open project renames through the op pipeline so the editor, undo and op log stay in step
+      this.apply([{ type: 'project.rename', name: name.trim() }], 'user', 'Rename project');
+      return;
+    }
+    renameProjectRows(getDb() as unknown as LibDb, projectId, name);
+  }
+
+  duplicate(projectId: string): ProjectRow {
+    const db = getDb();
+    const res = duplicateProjectRows(db as unknown as LibDb, {
+      projectsRoot: getPaths().projectsRoot,
+      projectId,
+      dirFor: (id, name) => projectDir(getPaths().projectsRoot, id, name),
+    });
+    return { id: res.id, name: res.name, updatedAt: new Date().toISOString() };
+  }
+
+  /** Remove a project and its folder. The open project is refused: close it first. */
+  remove(projectId: string): void {
+    if (this.current?.id === projectId) throw new Error('Close this project before deleting it.');
+    for (const job of jobs.list(projectId)) {
+      if (job.status === 'pending' || job.status === 'running') jobs.cancel(job.id);
+    }
+    deleteProjectRows(getDb() as unknown as LibDb, {
+      projectsRoot: getPaths().projectsRoot,
+      projectId,
+      onAssetsRemoved: (assetIds, sceneIds) => {
+        assetIds.forEach((id, i) => removeAssetIndex(id, i === 0 ? sceneIds : []));
+      },
+    });
+  }
+
+  /** Folder of any project, for "Show in folder". */
+  dirOfProject(projectId: string): string {
+    return resolveProjectDir(projectId);
   }
 
   open(projectId: string): ProjectBundle {
@@ -60,7 +126,7 @@ export class ProjectService {
       | undefined;
     if (!row) throw new Error(`Project ${projectId} not found`);
     const doc = parseDoc(JSON.parse(row.doc));
-    this.current = { id: row.id, doc, dir: projectDir(getPaths().projectsRoot, row.id, row.name) };
+    this.current = { id: row.id, doc, dir: dirOf(row.id, row.name) };
     this.history.clear();
 
     const assets = (db.prepare(`SELECT * FROM assets WHERE project_id=? ORDER BY created_at`).all(projectId) as Record<string, unknown>[]).map(

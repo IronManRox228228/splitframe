@@ -2,6 +2,7 @@ import { CanvasCompositor, MOTION_RUNTIME_SOURCE, MOTION_EVAL_SOURCE } from '@cu
 import { docDurationFrames } from '@cutboard/editor-core';
 import type { TimelineDoc } from '@cutboard/schema';
 import { MediaPool } from './lib/media.ts';
+import './fonts.css';
 
 // motion-graphics sandbox runtime (provisioned before any frame renders)
 (window as unknown as Record<string, unknown>)['__cutboardMotionRuntime'] = MOTION_RUNTIME_SOURCE + MOTION_EVAL_SOURCE;
@@ -19,6 +20,8 @@ interface ExportSettings {
 }
 
 async function main(): Promise<void> {
+  // text is drawn with the bundled Geist; load every weight we use before the first frame
+  await Promise.all([400, 500, 600, 700, 800, 900].map((w) => document.fonts.load(`${w} 16px Geist`))).catch(() => undefined);
   const params = new URLSearchParams(window.location.search);
   const exportId = params.get('exportId');
   const width = Number(params.get('width') ?? 1920);

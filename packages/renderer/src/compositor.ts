@@ -228,7 +228,7 @@ function drawTextBlock(
   ctx.translate(cx, cy);
   if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
   ctx.scale(scaleX, scaleY);
-  ctx.font = `${style.fontWeight} ${style.fontSize}px ${style.fontFamily}`;
+  ctx.font = `${style.fontWeight} ${style.fontSize}px ${style.fontFamily}, Geist, system-ui, sans-serif`;
   ctx.textAlign = style.align === 'center' ? 'center' : style.align;
   ctx.textBaseline = 'middle';
   const lines = text.split('\n');
@@ -287,7 +287,7 @@ function drawCaption(
   ctx.translate(canvasW / 2 + item.transform.x, canvasH * style.placementY + item.transform.y);
   if (rotation !== 0) ctx.rotate((rotation * Math.PI) / 180);
   ctx.scale(scale, scale);
-  ctx.font = `${style.fontWeight} ${style.fontSize}px ${style.fontFamily}`;
+  ctx.font = `${style.fontWeight} ${style.fontSize}px ${style.fontFamily}, Geist, system-ui, sans-serif`;
   ctx.textBaseline = 'middle';
 
   // wrap into lines by maxCharsPerLine
@@ -562,7 +562,7 @@ function drawSelectionOutline(
 ): void {
   const box = itemBox(canvasW, canvasH);
   ctx.save();
-  ctx.strokeStyle = doc.project.styleConfig?.primaryColor ?? '#fbbf24';
+  ctx.strokeStyle = '#8b93ff'; // UI selection accent, not the project's brand color
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 4]);
   ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);

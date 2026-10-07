@@ -4,6 +4,8 @@ import { CanvasCompositor, itemVolumeAt } from '@cutboard/renderer';
 import { itemEnd, sourceFrameAt, docDurationFrames } from '@cutboard/editor-core';
 import { formatTimecode } from '@cutboard/schema';
 import type { MediaPool } from '../lib/media.ts';
+import { Icon } from '../ui/Icon.tsx';
+import { CommandBar } from './CommandBar.tsx';
 import { latestOnly, needsResync, planAudio, planVideo } from '../lib/playback-plan.ts';
 
 /**
@@ -18,6 +20,10 @@ export function PreviewPane() {
   const setPlaying = useEditor((s) => s.setPlaying);
   const setPlayhead = useEditor((s) => s.setPlayhead);
   const selection = useEditor((s) => s.selection);
+  const stepFrames = useEditor((s) => s.stepFrames);
+  const importMedia = useEditor((s) => s.importMedia);
+  const muted = useEditor((s) => s.previewMuted);
+  const setMuted = useEditor((s) => s.setPreviewMuted);
   const [showSafeZones, setShowSafeZones] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const compositorRef = useRef(new CanvasCompositor());
@@ -49,6 +55,11 @@ export function PreviewPane() {
     void renderFrame(playhead, false);
   }, [doc, playhead, selection, playing, showSafeZones, renderFrame]);
 
+  // preview mute: mirrors the toggle onto every media element the pool owns
+  useEffect(() => {
+    applyMute(useEditor.getState().mediaPool, muted);
+  }, [muted, playing]);
+
   // playback loop
   useEffect(() => {
     if (!playing) return;
@@ -65,6 +76,7 @@ export function PreviewPane() {
       const state = useEditor.getState();
       pool.liveMode = true;
       // position every active video at the playhead, then let them play
+      applyMute(pool, useEditor.getState().previewMuted);
       await Promise.all(syncVideo(startDoc, pool, state.playhead, fps));
       syncAudio(startDoc, pool, state.playhead, fps);
       lastTickRef.current = performance.now();
@@ -83,6 +95,7 @@ export function PreviewPane() {
         }
         s.setPlayhead(playheadFrames);
         // clips entering view mid-playback start playing instead of being re-seeked every frame
+        applyMute(pool, s.previewMuted);
         syncVideo(s.doc, pool, playheadFrames, fps);
         syncAudio(s.doc, pool, playheadFrames, fps);
         void renderFrame(playheadFrames, true);
@@ -120,50 +133,87 @@ export function PreviewPane() {
 
   if (!doc) return null;
   const total = docDurationFrames(doc);
+  const fps = doc.project.fps;
+  const empty = doc.items.length === 0;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-surface-950">
-      <div className="flex-1 flex items-center justify-center p-4 min-h-0">
+    <main className="flex-1 min-w-0 min-h-0 relative flex flex-col items-center bg-surface-950">
+      <CommandBar />
+      <div className="flex-1 min-h-0 w-full flex items-center justify-center px-6 pt-[76px] pb-4 relative">
         <canvas
           ref={canvasRef}
-          className="max-h-full max-w-full rounded-lg border border-line shadow-2xl shadow-black/60"
+          className="max-h-full max-w-full rounded-md bg-black"
+          style={{ boxShadow: '0 0 0 1px #1c1c20' }}
         />
+        {empty && (
+          <div className="absolute inset-0 pt-[76px] flex items-center justify-center pointer-events-none">
+            <div className="flex flex-col items-center gap-3 text-center pointer-events-auto">
+              <p className="text-fg text-sm font-medium">Add media to start</p>
+              <p className="text-xs text-fg-muted">Your preview appears here.</p>
+              <button className="btn-primary" onClick={() => void importMedia()}>
+                <Icon name="upload" size={16} />
+                Import media
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-      <div className="h-11 shrink-0 border-t border-line bg-surface-900 flex items-center gap-3 px-4">
+      <div className="mb-4 flex items-center gap-1.5 p-1.5 rounded-[14px] bg-surface-850 border border-surface-800">
+        <button className="icon-btn-sm" aria-label="Previous frame" title="Previous frame (Left)" onClick={() => stepFrames(-1)}>
+          <Icon name="skipStart" size={16} />
+        </button>
         <button
-          className="btn-ghost w-8 px-0 justify-center text-sm"
+          className="w-9 h-9 rounded-[10px] bg-primary text-surface-950 flex items-center justify-center hover:bg-primary-hover"
+          aria-label={playing ? 'Pause' : 'Play'}
           title={playing ? 'Pause (Space)' : 'Play (Space)'}
           onClick={() => setPlaying(!playing)}
         >
-          {playing ? '⏸' : '▶'}
+          <Icon name={playing ? 'pause' : 'play'} size={16} />
         </button>
-        <span className="text-xs text-fg-2 font-mono tabular-nums w-24">
-          {formatTimecode(Math.round(playhead), doc.project.fps)}
+        <button className="icon-btn-sm" aria-label="Next frame" title="Next frame (Right)" onClick={() => stepFrames(1)}>
+          <Icon name="skipEnd" size={16} />
+        </button>
+        <span className="px-2.5 font-mono text-xs text-fg tabular-nums whitespace-nowrap">
+          {formatTimecode(Math.round(playhead), fps)} <span className="text-fg-faint">/ {formatTimecode(total, fps)}</span>
         </span>
-        <span className="text-[11px] text-fg-faint font-mono">/ {formatTimecode(total, doc.project.fps)}</span>
-        <div className="flex-1" />
-        <label className="flex items-center gap-1.5 text-[11px] text-fg-faint cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showSafeZones}
-            onChange={(e) => setShowSafeZones(e.target.checked)}
-            className="accent-accent"
-          />
-          Safe zones
-        </label>
         <button
-          className="btn-ghost"
-          title="Jump to end"
+          className="icon-btn-sm"
+          aria-label={muted ? 'Unmute preview' : 'Mute preview'}
+          aria-pressed={muted}
+          title={muted ? 'Unmute preview' : 'Mute preview'}
+          onClick={() => setMuted(!muted)}
+        >
+          <Icon name={muted ? 'mute' : 'volume'} size={16} />
+        </button>
+        <button
+          className={`icon-btn-sm ${showSafeZones ? 'text-accent' : ''}`}
+          aria-label="Safe zones"
+          aria-pressed={showSafeZones}
+          title={showSafeZones ? 'Hide safe zones' : 'Show safe zones'}
+          onClick={() => setShowSafeZones(!showSafeZones)}
+        >
+          <Icon name="layers" size={16} />
+        </button>
+        <button
+          className="icon-btn-sm"
+          aria-label="Full screen"
+          title="Full screen preview"
           onClick={() => {
-            setPlaying(false);
-            setPlayhead(total);
+            if (document.fullscreenElement) void document.exitFullscreen();
+            else void canvasRef.current?.requestFullscreen?.();
           }}
         >
-          ⤓
+          <Icon name="fullscreen" size={16} />
         </button>
       </div>
-    </div>
+    </main>
   );
+}
+
+function applyMute(pool: MediaPool | null, muted: boolean): void {
+  if (!pool) return;
+  for (const el of pool.allAudio) if (el.muted !== muted) el.muted = muted;
+  for (const el of pool.allVideoElements) if (el.muted !== muted) el.muted = muted;
 }
 
 type EditorDoc = NonNullable<ReturnType<typeof useEditor.getState>['doc']>;

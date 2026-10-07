@@ -36,6 +36,8 @@ export interface Settings {
   mcp: McpSettings;
   ai?: AiSettings;
   asr?: { model?: string };
+  /** folder the user last picked in the export dialog (always chosen through a native dialog) */
+  export?: { lastDir?: string };
 }
 
 const DEFAULTS: Settings = {
@@ -60,6 +62,7 @@ export async function getSettings(): Promise<Settings> {
       mcp: { ...DEFAULTS.mcp, ...parsed.mcp },
       ai: { ...DEFAULTS.ai, ...parsed.ai },
       asr: { ...DEFAULTS.asr, ...parsed.asr },
+      export: typeof parsed.export?.lastDir === 'string' ? { lastDir: parsed.export.lastDir } : {},
     };
   } catch (err) {
     loaded = structuredClone(DEFAULTS);
@@ -94,6 +97,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
     mcp: { ...current.mcp, ...patch.mcp ?? current.mcp },
     ai: { ...current.ai, ...patch.ai ?? {} },
     asr: { ...current.asr ?? DEFAULTS.asr, ...patch.asr ?? {} },
+    export: { ...current.export, ...patch.export },
   };
   await persistSettings(cache);
   return cache;

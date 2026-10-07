@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shortcutFor, type KeyInfo } from './shortcuts.ts';
+import { clipEdges, neighborEdge, runShortcut, shortcutFor, type KeyInfo, type ShortcutStore } from './shortcuts.ts';
 
 const key = (over: Partial<KeyInfo>): KeyInfo => ({
   key: '',
@@ -47,5 +47,83 @@ describe('shortcutFor', () => {
     expect(shortcutFor(key({ key: 'l' }), { playing: true })).toBeNull();
     expect(shortcutFor(key({ key: 'k' }), { playing: true })).toBe('pause');
     expect(shortcutFor(key({ key: 'Z', shiftKey: true }), idle)).toBe('zoomFit');
+  });
+});
+
+describe('new shortcuts', () => {
+  it('maps navigation, selection and snap keys', () => {
+    expect(shortcutFor(key({ key: 'Home' }), idle)).toBe('goStart');
+    expect(shortcutFor(key({ key: 'End' }), idle)).toBe('goEnd');
+    expect(shortcutFor(key({ key: 'ArrowUp' }), idle)).toBe('prevEdge');
+    expect(shortcutFor(key({ key: 'ArrowDown' }), idle)).toBe('nextEdge');
+    expect(shortcutFor(key({ key: 'a', ctrlKey: true }), idle)).toBe('selectAll');
+    expect(shortcutFor(key({ key: 'a', metaKey: true }), idle)).toBe('selectAll');
+    expect(shortcutFor(key({ key: 'n' }), idle)).toBe('toggleSnap');
+    expect(shortcutFor(key({ key: 'ArrowLeft', shiftKey: true }), idle)).toBe('secondBack');
+    expect(shortcutFor(key({ key: 'ArrowRight', shiftKey: true }), idle)).toBe('secondForward');
+    expect(shortcutFor(key({ key: 'j' }), idle)).toBe('secondBack');
+    expect(shortcutFor(key({ key: 'a', ctrlKey: true, targetTag: 'INPUT' }), idle)).toBeNull();
+  });
+});
+
+describe('edges', () => {
+  const edges = clipEdges([
+    { startFrame: 0, durationFrames: 30 },
+    { startFrame: 30, durationFrames: 20 },
+    { startFrame: 80, durationFrames: 10 },
+  ]);
+  it('dedupes and sorts', () => expect(edges).toEqual([0, 30, 50, 80, 90]));
+  it('finds neighbours', () => {
+    expect(neighborEdge(edges, 30, 1)).toBe(50);
+    expect(neighborEdge(edges, 30, -1)).toBe(0);
+    expect(neighborEdge(edges, 90, 1)).toBeNull();
+    expect(neighborEdge(edges, 0, -1)).toBeNull();
+  });
+});
+
+describe('runShortcut', () => {
+  const make = (fps: number): ShortcutStore & { calls: string[] } => {
+    const calls: string[] = [];
+    const noop = (name: string) => () => {
+      calls.push(name);
+    };
+    return {
+      calls,
+      doc: { project: { fps }, items: [{ id: 'a', startFrame: 0, durationFrames: 100 }] },
+      playhead: 10,
+      playing: false,
+      pxPerFrame: 2,
+      togglePlay: noop('togglePlay'),
+      setPlayhead: (f) => calls.push(`seek:${f}`),
+      stepFrames: (n) => calls.push(`step:${n}`),
+      undo: async () => {},
+      redo: async () => {},
+      cloneSelection: async () => {},
+      importMedia: async () => {},
+      deleteSelection: async () => {},
+      splitAtPlayhead: async () => {},
+      setPxPerFrame: (px) => calls.push(`px:${px}`),
+      zoomFit: (n) => calls.push(`fit:${n}`),
+      toggleSnap: noop('snap'),
+      select: noop('select'),
+      setSelection: (ids) => calls.push(`sel:${ids.join(',')}`),
+    };
+  };
+  it('steps one second at the project fps', () => {
+    const s = make(24);
+    runShortcut('secondForward', s);
+    runShortcut('secondBack', s);
+    expect(s.calls).toEqual(['step:24', 'step:-24']);
+  });
+  it('goes to start and end', () => {
+    const s = make(30);
+    runShortcut('goStart', s);
+    runShortcut('goEnd', s);
+    expect(s.calls).toEqual(['seek:0', 'seek:100']);
+  });
+  it('selects all items', () => {
+    const s = make(30);
+    runShortcut('selectAll', s);
+    expect(s.calls).toEqual(['sel:a']);
   });
 });

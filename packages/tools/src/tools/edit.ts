@@ -10,7 +10,7 @@ import type { ToolDef } from '../registry.ts';
  */
 
 const textStyleInput = z.object({
-  fontFamily: z.string().default('Montserrat'),
+  fontFamily: z.string().default('Geist'),
   fontSize: z.number().positive().default(72),
   fontWeight: z.number().int().min(100).max(1000).default(800),
   color: z.string().default('#ffffff'),

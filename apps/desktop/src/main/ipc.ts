@@ -8,6 +8,9 @@ import { exportService, EXPORT_PRESETS, registerExportWindowIpc, onExportEvent }
 import { jobs, JobRow, onJobEvent } from './jobs.ts';
 import { getFfmpeg, FfmpegInfo } from './ffmpeg.ts';
 import { getPaths } from './paths.ts';
+import { existsSync, statSync } from 'node:fs';
+import { basename, extname } from 'node:path';
+import { resolveExport, EXPORT_QUALITIES } from '../shared/export-options.ts';
 import { editorContextCache } from './editor-context.ts';
 import { callTool } from './tools-bridge.ts';
 import { getSettings, saveSettings, rotateMcpToken } from './settings.ts';
@@ -97,24 +100,39 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   });
 
   // ---------- projects ----------
+  const projectId = z.string().regex(/^prj_[0-9a-f]{10,}$/);
   ipcMain.handle('projects:listRecent', () => projectService.listRecent());
   ipcMain.handle(
     'projects:create',
     (_e, input: { name?: string; fps?: number; width?: number; height?: number }) => {
       const parsed = z
         .object({
-          name: z.string().min(1).max(120).optional(),
+          name: z.string().trim().min(1).max(120).optional(),
           fps: z.number().int().min(1).max(120).optional(),
           width: z.number().int().min(16).max(7680).optional(),
           height: z.number().int().min(16).max(4320).optional(),
         })
         .parse(input ?? {});
-      return projectService.create(parsed.name ?? 'Untitled project', parsed);
+      const { name, ...size } = parsed;
+      return projectService.create(name, size);
     },
   );
-  ipcMain.handle('projects:open', (_e, projectId: string) => {
-    z.string().regex(/^prj_[0-9a-f]{10,}$/).parse(projectId);
-    return projectService.open(projectId);
+  ipcMain.handle('projects:rename', (_e, input: { projectId: string; name: string }) => {
+    const parsed = z.object({ projectId, name: z.string().trim().min(1).max(120) }).parse(input);
+    projectService.rename(parsed.projectId, parsed.name);
+    return true;
+  });
+  ipcMain.handle('projects:duplicate', (_e, id: string) => projectService.duplicate(projectId.parse(id)));
+  ipcMain.handle('projects:delete', (_e, id: string) => {
+    projectService.remove(projectId.parse(id));
+    return true;
+  });
+  ipcMain.handle('projects:revealById', (_e, id: string) => {
+    void shell.openPath(projectService.dirOfProject(projectId.parse(id)));
+    return true;
+  });
+  ipcMain.handle('projects:open', (_e, id: string) => {
+    return projectService.open(projectId.parse(id));
   });
   ipcMain.handle('projects:close', () => {
     projectService.close();
@@ -179,17 +197,64 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   // ---------- exports ----------
   ipcMain.handle('exports:presets', () => EXPORT_PRESETS);
   ipcMain.handle('exports:list', (_e, projectId?: string) => exportService.list(projectId));
-  ipcMain.handle('exports:start', (_e, presetName: string) => {
-    z.string().min(1).parse(presetName);
-    return exportService.start(presetName);
+  // the export folder is only ever set through a native dialog; the renderer never supplies a path
+  const exportDir = async (): Promise<string> => {
+    const saved = (await getSettings()).export?.lastDir;
+    if (saved && existsSync(saved)) return saved;
+    return app.getPath('videos');
+  };
+  const exportStartInput = z.union([
+    z.string().min(1).max(120),
+    z.object({
+      presetName: z.string().min(1).max(120).optional(),
+      quality: z.enum(EXPORT_QUALITIES as unknown as [string, ...string[]]).optional(),
+      format: z.enum(['mp4', 'webm']).optional(),
+      fileName: z.string().max(200).optional(),
+    }),
+  ]);
+  ipcMain.handle('exports:start', async (_e, input: unknown) => {
+    const parsed = exportStartInput.parse(input);
+    if (typeof parsed === 'string') return exportService.start(parsed);
+    const dest = { dir: await exportDir(), fileName: parsed.fileName ?? projectService.doc.project.name };
+    if (parsed.presetName) return exportService.start(parsed.presetName, dest);
+    if (!parsed.quality || !parsed.format) throw new Error('Choose a quality and a format.');
+    const { width, height } = projectService.doc.project;
+    const preset = resolveExport(parsed.quality as '720p' | '1080p' | '1440p', parsed.format, width, height);
+    return exportService.start(preset, dest);
   });
-  ipcMain.handle('exports:cancel', (_e, exportId: string) => exportService.cancel(exportId));
+  ipcMain.handle('exports:getFolder', async () => {
+    const dir = await exportDir();
+    return { dir, label: basename(dir) || dir };
+  });
+  ipcMain.handle('exports:chooseFolder', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const res = await showOpen(win, {
+      title: 'Save exports to',
+      defaultPath: await exportDir(),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (res.canceled || res.filePaths.length === 0) return null;
+    const dir = res.filePaths[0]!;
+    await saveSettings({ export: { lastDir: dir } });
+    return { dir, label: basename(dir) || dir };
+  });
+  ipcMain.handle('exports:cancel', (_e, exportId: string) => exportService.cancel(z.string().min(1).max(80).parse(exportId)));
+  // only files this app exported may be revealed or opened; the renderer must not probe arbitrary paths
+  const revealable = new Set<string>();
+  const isKnownExport = (path: string) => revealable.has(path) || exportService.list().some((row) => row.outputPath === path);
   ipcMain.handle('exports:revealPath', (_e, path: string) => {
     z.string().min(1).parse(path);
-    // only reveal files this app exported; the renderer must not probe arbitrary paths
-    if (!exportService.list().some((row) => row.outputPath === path)) return false;
+    if (!isKnownExport(path)) return false;
     shell.showItemInFolder(path);
     return true;
+  });
+  ipcMain.handle('exports:openFile', async (_e, path: string) => {
+    z.string().min(1).parse(path);
+    if (!isKnownExport(path)) return false;
+    // never launch anything but the video containers we write
+    if (!['.mp4', '.webm'].includes(extname(path).toLowerCase())) return false;
+    if (!existsSync(path) || !statSync(path).isFile()) return false;
+    return (await shell.openPath(path)) === '';
   });
   ipcMain.handle('exports:otio', async (_e) => {
     if (!projectService.isOpen) throw new Error('No project open');
@@ -204,6 +269,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     const json = buildOtio(doc, (assetId) => media.get(assetId) ?? null);
     const slug = doc.project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'timeline';
     const path = await saveOtio(`${slug}-${Date.now()}`, json, projectService.dir);
+    revealable.add(path);
     return { path };
   });
 

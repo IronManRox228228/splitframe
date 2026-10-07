@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { join } from 'node:path';
+import { existsSync, mkdirSync, statSync, unlinkSync } from 'node:fs';
 import { getDb } from './db.ts';
 import { runFfmpeg, getFfmpeg } from './ffmpeg.ts';
 import { projectService } from './project-service.ts';
@@ -7,6 +8,7 @@ import { getAsset } from './asset-service.ts';
 import { exportMediaPath, selectAudioSources, buildAudioGraph } from './export-plan.ts';
 import { TimelineDoc, newId } from '@cutboard/schema';
 import { docDurationFrames } from '@cutboard/editor-core';
+import { sanitizeFileName } from '../shared/export-options.ts';
 
 /**
  * Export pipeline (addendum §3 "Render/export"): a hidden Chromium window renders each
@@ -41,6 +43,17 @@ export interface ExportRow {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  /** live frame counts while the export is running (not persisted) */
+  frames?: { done: number; total: number };
+  /** size of the finished file in bytes */
+  sizeBytes?: number;
+}
+
+/** Where an export is written. Only ever built in the main process (the folder comes from a native dialog). */
+export interface ExportDestination {
+  dir: string;
+  /** base name without extension; sanitized again here */
+  fileName: string;
 }
 
 type ExportListener = (e: ExportRow) => void;
@@ -60,11 +73,11 @@ class ExportService {
     { controller: AbortController; window: BrowserWindow | null; totalFrames: number; doneFrames: number; stdin: NodeJS.WritableStream | null }
   >();
 
-  async start(presetName: string): Promise<ExportRow> {
+  async start(presetOrName: string | ExportPreset, destination?: ExportDestination): Promise<ExportRow> {
     if (!projectService.isOpen) throw new Error('No project open');
-    const preset = EXPORT_PRESETS.find((p) => p.name === presetName);
+    const preset = typeof presetOrName === 'string' ? EXPORT_PRESETS.find((p) => p.name === presetOrName) : presetOrName;
     if (!preset) {
-      throw new Error(`Unknown export preset "${presetName}". Available: ${EXPORT_PRESETS.map((p) => p.name).join(', ')}.`);
+      throw new Error(`Unknown export preset "${String(presetOrName)}". Available: ${EXPORT_PRESETS.map((p) => p.name).join(', ')}.`);
     }
     const projectId = projectService.projectId;
     const doc = projectService.doc;
@@ -74,7 +87,10 @@ class ExportService {
     const db = getDb();
     const id = newId('exp');
     const now = new Date().toISOString();
-    const outputPath = join(projectService.dir, 'exports', `${slug(doc.project.name)}-${id.slice(4, 12)}.${preset.format}`);
+    if (destination) mkdirSync(destination.dir, { recursive: true });
+    const outputPath = destination
+      ? uniqueOutputPath(destination.dir, sanitizeFileName(destination.fileName) || slug(doc.project.name), preset.format)
+      : join(projectService.dir, 'exports', `${slug(doc.project.name)}-${id.slice(4, 12)}.${preset.format}`);
     db.prepare(
       `INSERT INTO exports (id, project_id, preset, status, progress, output_path, created_at, updated_at)
        VALUES (?, ?, ?, 'queued', 0, ?, ?, ?)`,
@@ -165,6 +181,7 @@ class ExportService {
     state.controller.abort();
     state.window?.destroy();
     this.active.delete(exportId);
+    this.removePartial(exportId);
     this.update(exportId, { status: 'cancelled' });
   }
 
@@ -185,7 +202,18 @@ class ExportService {
   }
 
   private rowToExport(r: Record<string, unknown>): ExportRow {
+    const state = this.active.get(r.id as string);
+    let sizeBytes: number | undefined;
+    if (r.status === 'done' && typeof r.output_path === 'string' && existsSync(r.output_path)) {
+      try {
+        sizeBytes = statSync(r.output_path).size;
+      } catch {
+        /* file vanished */
+      }
+    }
     return {
+      ...(state ? { frames: { done: state.doneFrames, total: state.totalFrames } } : {}),
+      ...(sizeBytes !== undefined ? { sizeBytes } : {}),
       id: r.id as string,
       projectId: r.project_id as string,
       preset: JSON.parse(r.preset as string),
@@ -217,7 +245,22 @@ class ExportService {
     state?.window?.destroy();
     state?.controller.abort();
     this.active.delete(id);
+    this.removePartial(id);
     this.update(id, { status: 'failed', error: message });
+  }
+
+  /** A half-written video is worse than none: drop the file of an export that did not finish. */
+  private removePartial(id: string): void {
+    const row = this.get(id);
+    if (!row?.outputPath || row.status === 'done') return;
+    // give ffmpeg a moment to release the handle; failure to delete is not worth reporting
+    setTimeout(() => {
+      try {
+        unlinkSync(row.outputPath!);
+      } catch {
+        /* never created, still locked or already gone */
+      }
+    }, 500);
   }
 
   private async spawnEncoder(
@@ -284,6 +327,13 @@ class ExportService {
       this.update(exportId, { status: 'done', progress: 1, outputPath });
     }
   }
+}
+
+/** `<dir>/<base>.<ext>`, or `<base> (2).<ext>` when that name is taken, so an export never overwrites a file. */
+function uniqueOutputPath(dir: string, base: string, ext: string): string {
+  let candidate = join(dir, `${base}.${ext}`);
+  for (let n = 2; existsSync(candidate) && n < 1000; n++) candidate = join(dir, `${base} (${n}).${ext}`);
+  return candidate;
 }
 
 function slug(name: string): string {

@@ -4,6 +4,30 @@ import { contextBridge, ipcRenderer } from 'electron';
  * Typed, allowlisted bridge. The renderer never touches Node — every capability is an
  * explicit invoke channel validated again in the main process (addendum §5.4).
  */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  updatedAt: string;
+  width: number;
+  height: number;
+  fps: number;
+  durationMs: number;
+  thumbPath: string | null;
+}
+
+export interface ExportStartOptions {
+  /** one of the platform presets by name; otherwise quality + format are used */
+  presetName?: string;
+  quality?: '720p' | '1080p' | '1440p';
+  format?: 'mp4' | 'webm';
+  fileName?: string;
+}
+
+export interface ExportFolder {
+  dir: string;
+  label: string;
+}
+
 export interface CutboardApi {
   appInfo(): Promise<{
     version: string;
@@ -13,7 +37,11 @@ export interface CutboardApi {
   }>;
   pickMediaFiles(): Promise<unknown[]>;
   pickFilePath(): Promise<string | null>;
-  listRecentProjects(): Promise<{ id: string; name: string; updatedAt: string }[]>;
+  listRecentProjects(): Promise<ProjectSummary[]>;
+  renameProject(projectId: string, name: string): Promise<boolean>;
+  duplicateProject(projectId: string): Promise<{ id: string; name: string; updatedAt: string }>;
+  deleteProject(projectId: string): Promise<boolean>;
+  revealProjectById(projectId: string): Promise<boolean>;
   createProject(input?: { name?: string; fps?: number; width?: number; height?: number }): Promise<{ id: string; name: string; updatedAt: string }>;
   openProject(projectId: string): Promise<unknown>;
   closeProject(): Promise<boolean>;
@@ -29,7 +57,10 @@ export interface CutboardApi {
   listJobs(projectId?: string): Promise<unknown[]>;
   cancelJob(jobId: string): Promise<boolean>;
   exportPresets(): Promise<{ name: string; width: number; height: number; format: string; videoBitrateK: number }[]>;
-  startExport(presetName: string): Promise<unknown>;
+  startExport(options: string | ExportStartOptions): Promise<unknown>;
+  getExportFolder(): Promise<ExportFolder>;
+  chooseExportFolder(): Promise<ExportFolder | null>;
+  openExportedFile(path: string): Promise<boolean>;
   cancelExport(exportId: string): Promise<boolean>;
   listExports(): Promise<unknown[]>;
   revealExportPath(path: string): Promise<boolean>;
@@ -63,6 +94,10 @@ const api: CutboardApi = {
   pickMediaFiles: () => ipcRenderer.invoke('dialog:pickMedia'),
   pickFilePath: () => ipcRenderer.invoke('dialog:pickFile'),
   listRecentProjects: () => ipcRenderer.invoke('projects:listRecent'),
+  renameProject: (projectId, name) => ipcRenderer.invoke('projects:rename', { projectId, name }),
+  duplicateProject: (projectId) => ipcRenderer.invoke('projects:duplicate', projectId),
+  deleteProject: (projectId) => ipcRenderer.invoke('projects:delete', projectId),
+  revealProjectById: (projectId) => ipcRenderer.invoke('projects:revealById', projectId),
   createProject: (input) => ipcRenderer.invoke('projects:create', input),
   openProject: (projectId) => ipcRenderer.invoke('projects:open', projectId),
   closeProject: () => ipcRenderer.invoke('projects:close'),
@@ -78,7 +113,10 @@ const api: CutboardApi = {
   listJobs: (projectId) => ipcRenderer.invoke('jobs:list', projectId),
   cancelJob: (jobId) => ipcRenderer.invoke('jobs:cancel', jobId),
   exportPresets: () => ipcRenderer.invoke('exports:presets'),
-  startExport: (presetName) => ipcRenderer.invoke('exports:start', presetName),
+  startExport: (options) => ipcRenderer.invoke('exports:start', options),
+  getExportFolder: () => ipcRenderer.invoke('exports:getFolder'),
+  chooseExportFolder: () => ipcRenderer.invoke('exports:chooseFolder'),
+  openExportedFile: (path) => ipcRenderer.invoke('exports:openFile', path),
   cancelExport: (exportId) => ipcRenderer.invoke('exports:cancel', exportId),
   listExports: () => ipcRenderer.invoke('exports:list'),
   revealExportPath: (path) => ipcRenderer.invoke('exports:revealPath', path),

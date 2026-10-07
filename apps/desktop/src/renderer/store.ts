@@ -9,7 +9,9 @@ import {
 } from '@cutboard/schema';
 import { createItem, snapFrame, getSnapCandidates, docDurationFrames } from '@cutboard/editor-core';
 import type { MediaPool } from './lib/media.ts';
+import type { ProjectSummary } from '../preload/index.ts';
 import { assetsToMap } from './lib/media.ts';
+import { HEADER_W } from './lib/timeline-math.ts';
 
 /**
  * Renderer state. The main process owns the timeline; this store mirrors the doc for
@@ -23,6 +25,10 @@ export interface ExportRowInfo {
   outputPath: string | null;
   error: string | null;
   preset: { name: string };
+  createdAt?: string;
+  updatedAt?: string;
+  frames?: { done: number; total: number };
+  sizeBytes?: number;
 }
 
 export interface JobInfo {
@@ -44,7 +50,7 @@ export interface EditorState {
     projectsRoot: string;
     ffmpeg: { source: string; h264Encoder: string; version: string } | null;
   } | null;
-  recentProjects: { id: string; name: string; updatedAt: string }[];
+  recentProjects: ProjectSummary[];
 
   doc: TimelineDoc | null;
   assets: Asset[];
@@ -56,14 +62,28 @@ export interface EditorState {
   playhead: number;
   playing: boolean;
   pxPerFrame: number;
+  /** bumps on every zoom-to-fit so the timeline can reset its scroll */
+  fitNonce: number;
   snapEnabled: boolean;
   rippleEnabled: boolean;
   exportDialogOpen: boolean;
+  /** the export started from the dialog (drives its status view and the completion toast) */
+  watchedExportId: string | null;
+  watchExport(id: string | null): void;
   toasts: Toast[];
+  /** open left-rail panel (null = collapsed) */
+  leftPanel: LeftPanelId | null;
+  /** a message from the command bar waiting for the Assistant to send it */
+  assistantOutbox: { text: string; nonce: number } | null;
+  previewMuted: boolean;
+  setLeftPanel(panel: LeftPanelId | null): void;
+  sendToAssistant(text: string): void;
+  clearAssistantOutbox(): void;
+  setPreviewMuted(muted: boolean): void;
 
   bootstrap(): Promise<void>;
   refreshRecents(): Promise<void>;
-  createProject(name?: string): Promise<void>;
+  createProject(name?: string, size?: { width: number; height: number }): Promise<void>;
   openProject(id: string): Promise<void>;
   closeProject(): Promise<void>;
   revealProjectDir(): Promise<void>;
@@ -81,6 +101,7 @@ export interface EditorState {
   toggleSnap(): void;
   toggleRipple(): void;
   select(itemId: string | null, additive?: boolean): void;
+  setSelection(ids: string[]): void;
   deleteSelection(): Promise<void>;
   splitAtPlayhead(): Promise<void>;
   cloneSelection(): Promise<void>;
@@ -90,6 +111,7 @@ export interface EditorState {
   dismissToast(id: number): void;
 }
 
+export type LeftPanelId = 'media' | 'text' | 'audio' | 'captions' | 'assistant';
 export type ToastKind = 'info' | 'success' | 'error';
 export interface ToastAction {
   label: string;
@@ -123,10 +145,30 @@ export const useEditor = create<EditorState>((set, get) => ({
   playhead: 0,
   playing: false,
   pxPerFrame: DEFAULT_PX_PER_FRAME,
+  fitNonce: 0,
   snapEnabled: true,
   rippleEnabled: false,
   exportDialogOpen: false,
+  watchedExportId: null,
+  watchExport(id) {
+    set({ watchedExportId: id });
+  },
   toasts: [],
+  leftPanel: 'media',
+  assistantOutbox: null,
+  previewMuted: false,
+  setLeftPanel(panel) {
+    set({ leftPanel: panel });
+  },
+  sendToAssistant(text) {
+    set({ leftPanel: 'assistant', assistantOutbox: { text, nonce: Date.now() } });
+  },
+  clearAssistantOutbox() {
+    set({ assistantOutbox: null });
+  },
+  setPreviewMuted(muted) {
+    set({ previewMuted: muted });
+  },
 
   async bootstrap() {
     const appInfo = await window.cutboard.appInfo();
@@ -160,8 +202,9 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({ recentProjects: await window.cutboard.listRecentProjects() });
   },
 
-  async createProject(name) {
-    const project = await window.cutboard.createProject({ name: name ?? 'Untitled project' });
+  async createProject(name, size) {
+    // no name: the main process picks "Untitled video", numbered when taken
+    const project = await window.cutboard.createProject({ ...(name ? { name } : {}), ...size });
     await get().refreshRecents();
     await get().openProject(project.id);
   },
@@ -249,6 +292,21 @@ export const useEditor = create<EditorState>((set, get) => ({
         if (idx === -1) list.unshift(row);
         else list[idx] = row;
         set({ exportsList: list });
+        if (row.id === s.watchedExportId && !s.exportDialogOpen) {
+          if (row.status === 'done') {
+            const path = row.outputPath ?? '';
+            s.showToast('Export finished', {
+              kind: 'success',
+              action: { label: 'Open', run: () => void window.cutboard.openExportedFile(path) },
+            });
+            set({ watchedExportId: null });
+          } else if (row.status === 'failed') {
+            s.showToast(`Export failed: ${(row.error ?? 'unknown error').slice(0, 200)}`, { kind: 'error' });
+            set({ watchedExportId: null });
+          } else if (row.status === 'cancelled') {
+            set({ watchedExportId: null });
+          }
+        }
         break;
       }
       case 'doc:closed': {
@@ -303,8 +361,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
 
   zoomFit(viewportFrames) {
-    const width = Math.max(200, window.innerWidth - 480);
-    set({ pxPerFrame: Math.min(40, Math.max(0.2, (width * 0.9) / viewportFrames)) });
+    // measure the real lane viewport (minus the gutter and a little breathing room)
+    const el = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('[data-timeline-viewport]') : null;
+    const laneWidth = el ? el.clientWidth - HEADER_W - 24 : window.innerWidth - 480;
+    const width = Math.max(120, laneWidth);
+    set({ pxPerFrame: Math.min(40, Math.max(0.2, width / Math.max(1, viewportFrames))), fitNonce: get().fitNonce + 1 });
   },
 
   toggleSnap() {
@@ -321,6 +382,11 @@ export const useEditor = create<EditorState>((set, get) => ({
       const sel = get().selection;
       set({ selection: sel.includes(itemId) ? sel.filter((x) => x !== itemId) : [...sel, itemId] });
     } else set({ selection: [itemId] });
+    pushEditorContext();
+  },
+
+  setSelection(ids) {
+    set({ selection: ids });
     pushEditorContext();
   },
 
