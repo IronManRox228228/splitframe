@@ -134,6 +134,28 @@ export async function runFfmpegChecked(args: string[], opts: Parameters<typeof r
   return result;
 }
 
+/**
+ * Hardware decode for long decode jobs (proxies, scene detection): about twice as fast
+ * as software on 4K HEVC. CUDA when NVENC works, so decode and encode share the NVIDIA
+ * GPU (d3d11va would decode on the iGPU and NVENC then fails); otherwise ffmpeg's pick.
+ */
+export function hwDecodeArgs(): string[] {
+  return ['-hwaccel', getFfmpeg().h264Encoder === 'h264_nvenc' ? 'cuda' : 'auto'];
+}
+
+/**
+ * Runs `build(hwDecodeArgs())`, and if that fails for any reason other than an abort
+ * (driver, codec or adapter trouble), runs `build([])` in software instead.
+ */
+export async function runWithHwDecode(
+  build: (hw: string[]) => string[],
+  opts: Parameters<typeof runFfmpeg>[1] = {},
+): Promise<RunResult> {
+  const result = await runFfmpeg(build(hwDecodeArgs()), opts);
+  if (result.code === 0 || opts.signal?.aborted) return result;
+  return runFfmpeg(build([]), opts);
+}
+
 export interface ProbeResult {
   durationMs: number;
   width: number;
@@ -207,7 +229,8 @@ export async function makeProxy(
     libx264: ['-crf', '28', '-preset', 'veryfast'],
     mpeg4: ['-b:v', '1500k'],
   };
-  const args = [
+  const args = (hw: string[]) => [
+    ...hw,
     '-i', src,
     '-vf', `scale=-2:${height}`,
     '-c:v', h264Encoder,
@@ -218,7 +241,7 @@ export async function makeProxy(
     '-progress', 'pipe:2', '-nostats',
     dest,
   ];
-  await runFfmpegChecked(args, {
+  const result = await runWithHwDecode(args, {
     signal: opts.signal,
     onStderr: (text) => {
       const m = /out_time_ms=(\d+)/.exec(text);
@@ -227,6 +250,9 @@ export async function makeProxy(
       }
     },
   });
+  if (result.code !== 0 && !opts.signal?.aborted) {
+    throw new Error(`ffmpeg exited with ${result.code}: ${result.stderr.trim().split('\n').slice(-3).join(' | ')}`);
+  }
 }
 
 export async function makeThumbnail(src: string, dest: string, atSec = 1): Promise<void> {

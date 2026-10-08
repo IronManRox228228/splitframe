@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { runFfmpeg } from '../ffmpeg.ts';
+import { runFfmpeg, runWithHwDecode } from '../ffmpeg.ts';
 
 /**
  * Scene detection (main prompt §5): ffmpeg's scene-change selection. Returns shot
@@ -17,22 +17,19 @@ export async function detectScenes(
   opts: { threshold?: number; signal?: AbortSignal } = {},
 ): Promise<SceneBoundary[]> {
   const threshold = opts.threshold ?? 0.25;
-  let stderrAll = '';
-  const result = await runFfmpeg([
+  const result = await runWithHwDecode((hw) => [
+    ...hw,
     '-i', mediaPath,
     '-vf', `select='gt(scene,${threshold})',showinfo`,
     '-an',
     '-f', 'null',
     '-',
-  ], {
-    signal: opts.signal,
-    onStderr: (t) => (stderrAll += t),
-  });
-  void result;
+  ], { signal: opts.signal });
 
-  // showinfo lines: "[Parsed_showinfo...] n:   0 pts_time:1.234 ..."
+  // showinfo lines: "[Parsed_showinfo...] n:   0 pts_time:1.234 ..." (from the run that counted,
+  // not a failed hardware attempt that was retried in software)
   const times: number[] = [0];
-  for (const match of stderrAll.matchAll(/pts_time:(\d+(?:\.\d+)?)/g)) {
+  for (const match of result.stderr.matchAll(/pts_time:(\d+(?:\.\d+)?)/g)) {
     times.push(Number(match[1]) * 1000);
   }
   if (durationMs > 0) times.push(durationMs);

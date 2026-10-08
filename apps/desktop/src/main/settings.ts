@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import { getPaths } from './paths.ts';
+import { parseGpuPreference, type GpuPreference } from './gpu.ts';
 
 /**
  * App settings (userData/settings.json). The MCP bearer token is a random per-install
@@ -38,6 +39,8 @@ export interface Settings {
   asr?: { model?: string };
   /** folder the user last picked in the export dialog (always chosen through a native dialog) */
   export?: { lastDir?: string };
+  /** applied at startup, so a change takes effect after a restart */
+  gpu?: { preference: GpuPreference };
 }
 
 const DEFAULTS: Settings = {
@@ -63,6 +66,7 @@ export async function getSettings(): Promise<Settings> {
       ai: { ...DEFAULTS.ai, ...parsed.ai },
       asr: { ...DEFAULTS.asr, ...parsed.asr },
       export: typeof parsed.export?.lastDir === 'string' ? { lastDir: parsed.export.lastDir } : {},
+      gpu: { preference: parseGpuPreference(parsed.gpu?.preference) },
     };
   } catch (err) {
     loaded = structuredClone(DEFAULTS);
@@ -98,6 +102,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
     ai: { ...current.ai, ...patch.ai ?? {} },
     asr: { ...current.asr ?? DEFAULTS.asr, ...patch.asr ?? {} },
     export: { ...current.export, ...patch.export },
+    gpu: { preference: parseGpuPreference((patch.gpu ?? current.gpu)?.preference) },
   };
   await persistSettings(cache);
   return cache;

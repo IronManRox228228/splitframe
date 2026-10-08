@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, protocol, session, shell } from 'electron';
 import { join } from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
@@ -12,6 +12,8 @@ import { buildCsp, MOTION_SANDBOX_CSP } from './csp.ts';
 import { canServeMediaPath, parseByteRange } from './media-access.ts';
 import { buildMotionSandboxHtml } from './motion-sandbox.ts';
 import { isKnownAssetPath } from './asset-service.ts';
+import { applyGpuPreference, readGpuPreferenceSync } from './gpu.ts';
+import { saveSettings } from './settings.ts';
 
 /**
  * Cutboard desktop entry. Security posture (addendum §5.4): renderer is untrusted —
@@ -282,6 +284,13 @@ function buildMenu(): void {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
+        { type: 'separator' },
+        {
+          label: 'Render Editor on Discrete GPU',
+          type: 'checkbox',
+          checked: gpuPreference === 'high-performance',
+          click: (item) => void setGpuPreference(item.checked),
+        },
       ],
     },
     {
@@ -295,6 +304,27 @@ function buildMenu(): void {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+/** Chromium picks its GPU at launch, so the new choice is saved and applied on restart. */
+async function setGpuPreference(highPerformance: boolean): Promise<void> {
+  await saveSettings({ gpu: { preference: highPerformance ? 'high-performance' : 'auto' } });
+  const opts: Electron.MessageBoxOptions = {
+    type: 'info',
+    message: highPerformance
+      ? 'SplitFrame will render its window on the discrete GPU.'
+      : 'SplitFrame will let the system choose its GPU.',
+    detail:
+      'This takes effect the next time SplitFrame starts. Decoding and export use the discrete GPU either way; on many laptops the window itself runs smoother on the integrated one.',
+    buttons: ['Restart now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  };
+  const { response } = mainWindow ? await dialog.showMessageBox(mainWindow, opts) : await dialog.showMessageBox(opts);
+  if (response === 0) {
+    app.relaunch();
+    app.quit();
+  }
 }
 
 function registerSandboxProtocol(): void {
