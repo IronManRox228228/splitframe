@@ -12,7 +12,7 @@ export function Toaster() {
         <div
           key={t.id}
           role={t.kind === 'error' ? 'alert' : 'status'}
-          className="pointer-events-auto flex items-center gap-3 min-h-11 max-w-[min(640px,90vw)] pl-5 pr-1.5 py-1.5 glass-strong rounded-3xl text-sm text-fg"
+          className="pointer-events-auto flex items-center gap-3 min-h-11 max-w-[min(640px,90vw)] pl-5 pr-1.5 py-1.5 relative glass-strong rounded-3xl text-sm text-fg"
         >
           <span className={`w-2 h-2 rounded-full shrink-0 ${DOT[t.kind]}`} />
           <span className="flex-1 py-1 select-text break-words">{t.message}</span>

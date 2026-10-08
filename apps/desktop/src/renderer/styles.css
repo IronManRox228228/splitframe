@@ -67,7 +67,6 @@ select:focus-visible {
 
 /* Glass slab: flat translucent fill, blurred backdrop, hairline edge. No gradients. */
 .glass {
-  position: relative;
   background: rgba(255, 255, 255, 0.045);
   -webkit-backdrop-filter: blur(40px) saturate(150%);
   backdrop-filter: blur(40px) saturate(150%);
@@ -78,7 +77,6 @@ select:focus-visible {
 }
 /* Menus and dialogs: slightly more opaque so text stays readable over the canvas. */
 .glass-strong {
-  position: relative;
   background: rgba(16, 18, 17, 0.92);
   -webkit-backdrop-filter: blur(40px) saturate(110%);
   backdrop-filter: blur(40px) saturate(110%);

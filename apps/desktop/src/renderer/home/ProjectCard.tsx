@@ -29,7 +29,7 @@ export function ProjectCard({
   const [thumbFailed, setThumbFailed] = useState(false);
   const showThumb = project.thumbPath && !thumbFailed;
   return (
-    <div className="group glass rounded-[22px] p-2 pb-3 flex flex-col gap-2.5 min-w-0">
+    <div className="group relative glass rounded-[22px] p-2 pb-3 flex flex-col gap-2.5 min-w-0">
       <div className="relative">
         <button
           type="button"

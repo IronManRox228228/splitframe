@@ -46,7 +46,7 @@ export function Inspector() {
   return (
     <aside
       aria-label={`Selected ${TYPE_TITLES[item.type] ?? item.type}`}
-      className="glass w-[260px] shrink-0 rounded-[22px] flex flex-col gap-5 p-4 overflow-y-auto min-h-0"
+      className="relative glass w-[260px] shrink-0 rounded-[22px] flex flex-col gap-5 p-4 overflow-y-auto min-h-0"
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="heading">{TYPE_TITLES[item.type] ?? item.type}</h2>

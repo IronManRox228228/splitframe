@@ -67,7 +67,7 @@ export function TopBar() {
   };
 
   return (
-    <header className="glass h-14 shrink-0 rounded-[20px] flex items-center gap-3 pl-2 pr-2.5 select-none">
+    <header className="relative glass h-14 shrink-0 rounded-[20px] flex items-center gap-3 pl-2 pr-2.5 select-none">
       <button className="icon-btn w-[38px] h-[38px] rounded-xl" aria-label="Back to projects" title="Back to projects" onClick={() => void closeProject()}>
         <Icon name="back" size={18} />
       </button>

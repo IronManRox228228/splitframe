@@ -21,7 +21,7 @@ export function LeftPanel() {
   const setPanel = useEditor((s) => s.setLeftPanel);
   return (
     <>
-      <nav aria-label="Panels" className="glass w-[68px] shrink-0 rounded-[22px] flex flex-col items-center gap-1 py-2.5">
+      <nav aria-label="Panels" className="relative glass w-[76px] shrink-0 rounded-[22px] flex flex-col items-center gap-1 py-2.5">
         {RAIL.map((r) => {
           const active = panel === r.id;
           return (
@@ -31,7 +31,7 @@ export function LeftPanel() {
               aria-pressed={active}
               title={active ? `Hide ${r.label}` : r.label}
               onClick={() => setPanel(active ? null : r.id)}
-              className={`w-[52px] h-[54px] rounded-2xl flex flex-col items-center justify-center gap-1 transition-colors ${
+              className={`w-[64px] h-[54px] rounded-2xl flex flex-col items-center justify-center gap-1 transition-colors ${
                 active ? 'bg-fg/10 text-fg' : 'text-fg-muted hover:text-fg hover:bg-white/[0.06]'
               }`}
             >
@@ -43,7 +43,7 @@ export function LeftPanel() {
       </nav>
       <aside
         aria-label="Panel"
-        className={`glass w-[292px] shrink-0 rounded-[22px] flex-col min-h-0 overflow-hidden ${panel ? 'flex' : 'hidden'}`}
+        className={`relative glass w-[292px] shrink-0 rounded-[22px] flex-col min-h-0 overflow-hidden ${panel ? 'flex' : 'hidden'}`}
       >
         {panel === 'media' && <MediaPanel />}
         {panel === 'text' && <TextPanel />}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEditor } from '../store.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -18,6 +18,8 @@ interface ChatTurn {
   role: 'user' | 'assistant';
   text: string;
   tools: ToolCard[];
+  /** text runs and tool calls in the order they streamed in; a tool part points into `tools` */
+  parts: ({ kind: 'text'; text: string } | { kind: 'tool'; index: number })[];
   error?: string;
   note?: string;
   stopped?: boolean;
@@ -95,7 +97,12 @@ export function ChatTab() {
         setTurns((prev) => {
           const next = [...prev];
           const t = next[turnIdxRef.current];
-          if (t) next[turnIdxRef.current] = { ...t, text: t.text + text };
+          if (!t) return prev;
+          const parts = [...t.parts];
+          const last = parts[parts.length - 1];
+          if (last?.kind === 'text') parts[parts.length - 1] = { kind: 'text', text: last.text + text };
+          else parts.push({ kind: 'text', text });
+          next[turnIdxRef.current] = { ...t, text: t.text + text, parts };
           return next;
         });
       } else if (envelope.type === 'chat:tool') {
@@ -106,9 +113,12 @@ export function ChatTab() {
           if (!t) return prev;
           const tools = [...t.tools];
           const lastIdx = p.callId ? tools.findIndex((x) => x.callId === p.callId) : tools.map((x) => x.tool).lastIndexOf(p.tool);
-          if (p.phase === 'call' || lastIdx === -1) tools.push(p);
-          else tools[lastIdx] = p;
-          next[turnIdxRef.current] = { ...t, tools };
+          let parts = t.parts;
+          if (p.phase === 'call' || lastIdx === -1) {
+            tools.push(p);
+            parts = [...parts, { kind: 'tool', index: tools.length - 1 }];
+          } else tools[lastIdx] = p;
+          next[turnIdxRef.current] = { ...t, tools, parts };
           return next;
         });
       } else if (envelope.type === 'chat:done') {
@@ -144,7 +154,7 @@ export function ChatTab() {
     // the assistant bubble sits after the user bubble appended below
     turnIdxRef.current = base.length + 1;
     nearBottomRef.current = true;
-    setTurns([...base, { role: 'user', text: message, tools: [] }, { role: 'assistant', text: '', tools: [] }]);
+    setTurns([...base, { role: 'user', text: message, tools: [], parts: [] }, { role: 'assistant', text: '', tools: [], parts: [] }]);
     setStreaming(true);
     window.cutboard.sendChat(chatIdRef.current, message, historyOf(base));
   }, []);
@@ -325,14 +335,13 @@ function AssistantTurn({
   };
   return (
     <div className="flex flex-col gap-2 text-[13px] leading-[1.5] text-fg-2 min-w-0">
-      {turn.tools.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {turn.tools.map((tc, j) => (
-            <ToolRow key={j} card={tc} />
-          ))}
-        </div>
+      {turn.parts.map((part, j) =>
+        part.kind === 'text' ? (
+          part.text.trim() && <Markdown key={j} text={part.text} />
+        ) : (
+          turn.tools[part.index] && <ToolRow key={j} card={turn.tools[part.index]!} />
+        ),
       )}
-      {turn.text && <Markdown text={turn.text} />}
       {empty && live && (
         <span className="flex items-center gap-2 text-fg-muted text-xs">
           <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
@@ -429,7 +438,7 @@ function summarizeResult(result: unknown): string | null {
   return null;
 }
 
-function ToolRow({ card }: { card: ToolCard }) {
+const ToolRow = memo(function ToolRow({ card }: { card: ToolCard }) {
   const [open, setOpen] = useState(false);
   const label = TOOL_LABELS[card.tool] ?? card.tool;
   const resultError = typeof (card.result as { error?: unknown } | null)?.error === 'string' ? ((card.result as { error: string }).error) : undefined;
@@ -455,4 +464,4 @@ function ToolRow({ card }: { card: ToolCard }) {
       )}
     </div>
   );
-}
+});

@@ -143,7 +143,7 @@ export function ProjectListScreen() {
                   type="button"
                   disabled={busy}
                   onClick={() => void create({ width: f.width, height: f.height })}
-                  className="glass h-[132px] rounded-[22px] flex flex-col items-center justify-center gap-3 text-fg hover:border-line-strong hover:bg-white/[0.07] transition-colors disabled:opacity-60"
+                  className="relative glass h-[132px] rounded-[22px] flex flex-col items-center justify-center gap-3 text-fg hover:border-line-strong hover:bg-white/[0.07] transition-colors disabled:opacity-60"
                 >
                   <span className="rounded-md border-[1.5px] border-fg/55" style={{ width: f.box.w, height: f.box.h }} />
                   <span className="flex flex-col gap-0.5">
