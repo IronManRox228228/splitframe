@@ -1,6 +1,7 @@
 import { runChatTurn } from '../../src/main/agent/chat.ts';
 import { TraceRecorder } from '../lib/trace.ts';
 import type { AgentDriver } from '../types.ts';
+import { oracleDriver } from './oracle.ts';
 
 /**
  * Baseline driver: the app's real chat turn (system prompt, tool set, 12-step cap and message
@@ -32,6 +33,7 @@ export const chatDriver: AgentDriver = {
  */
 export const noopDriver: AgentDriver = {
   id: 'noop',
+  offline: true,
   async runTurn(message) {
     return new TraceRecorder(message).finish();
   },
@@ -40,4 +42,5 @@ export const noopDriver: AgentDriver = {
 export const DRIVERS: Record<string, AgentDriver> = {
   [chatDriver.id]: chatDriver,
   [noopDriver.id]: noopDriver,
+  [oracleDriver.id]: oracleDriver,
 };

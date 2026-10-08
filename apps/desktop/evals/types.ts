@@ -73,6 +73,12 @@ export interface DriverContext {
   signal: AbortSignal;
   /** harness settings the driver may need (provider, model, url) */
   provider: string;
+  /** the task being run (the oracle driver scripts its edit by task id) */
+  taskId: string;
+  fps: number;
+  manifest: Manifest;
+  /** fixture file name -> asset id */
+  assetIds: Record<string, string>;
 }
 
 /**
@@ -81,6 +87,8 @@ export interface DriverContext {
  */
 export interface AgentDriver {
   id: string;
+  /** needs no LLM server: the runner skips its health wait */
+  offline?: boolean;
   runTurn(message: string, history: HistoryTurn[], ctx: DriverContext): Promise<TurnTrace>;
 }
 

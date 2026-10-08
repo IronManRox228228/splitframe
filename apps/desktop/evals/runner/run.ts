@@ -12,7 +12,7 @@ import { MAX_AGENT_STEPS } from '../../src/main/agent/chat.ts';
 import { selectTasks } from '../tasks/index.ts';
 import { loadManifest, type FixtureName } from '../lib/manifest.ts';
 import { historyAfter, traceStats, type TraceStats } from '../lib/trace.ts';
-import { DRIVERS, noopDriver } from './drivers.ts';
+import { DRIVERS } from './drivers.ts';
 import type { AgentDriver, Check, CheckInput, ExportInfo, HistoryTurn, SetupContext, Task, TurnTrace } from '../types.ts';
 
 /** Run configuration written by evals/run.mjs (path in CUTBOARD_EVAL). */
@@ -206,7 +206,7 @@ async function runTask(task: Task, run: number, cfg: RunConfig, driver: AgentDri
       let history: HistoryTurn[] = [];
       try {
         for (const [i, message] of task.messages.entries()) {
-          const trace = await driver.runTurn(message, history, { chatId: `eval-${task.id}-${run}-${i}`, signal: controller.signal, provider: cfg.provider });
+          const trace = await driver.runTurn(message, history, { chatId: `eval-${task.id}-${run}-${i}`, signal: controller.signal, provider: cfg.provider, taskId: task.id, fps, manifest, assetIds });
           turns.push(trace);
           docs.push(structuredClone(projectService.doc) as TimelineDoc);
           history = historyAfter(history, trace);
@@ -287,7 +287,7 @@ export async function runEvals(configPath: string): Promise<number> {
       let result: TaskResult;
       for (;;) {
         attempts++;
-        if (driver.id !== noopDriver.id) await waitForServer(cfg.llamacppUrl);
+        if (!driver.offline) await waitForServer(cfg.llamacppUrl);
         log(`${task.id} (run ${run}, attempt ${attempts})`);
         result = await runTask(task, run, cfg, driver, manifest);
         // a dead server is not a model failure: wait for it and run the task again
