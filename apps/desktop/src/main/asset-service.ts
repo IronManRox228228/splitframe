@@ -10,6 +10,7 @@ import { transcribe } from './analysis/whisper.ts';
 import { detectScenes, extractKeyframe, keyframePath } from './analysis/scenes.ts';
 import { describeKeyframe, getVlmConfig } from './analysis/vlm.ts';
 import { indexTranscriptWords, indexScene, removeAssetIndex, removeSceneVectors } from './analysis/search.ts';
+import { computeFootageNotes, type FootageNotes } from './analysis/footage-notes.ts';
 import { getSettings } from './settings.ts';
 import { Asset, AssetKind, assetSchema, newId } from '@cutboard/schema';
 
@@ -277,6 +278,7 @@ function registerIngestHandler(): void {
       const oldScenes = db.prepare(`SELECT id FROM scenes WHERE asset_id=?`).all(assetId) as { id: string }[];
       db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
       removeSceneVectors(oldScenes.map((s) => s.id));
+      const noteScenes: { id: string; startMs: number; endMs: number; keyframePath: string }[] = [];
       for (let i = 0; i < scenes.length; i++) {
         if (ctx.signal.aborted) return;
         const scene = scenes[i]!;
@@ -298,7 +300,27 @@ function registerIngestHandler(): void {
           `INSERT OR REPLACE INTO scenes (id, asset_id, start_ms, end_ms, description, tags, keyframe_paths) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         ).run(sceneId, assetId, scene.startMs, scene.endMs, description, JSON.stringify(tags), JSON.stringify([kfPath]));
         if (description) await indexScene(sceneId, description);
+        noteScenes.push({ id: sceneId, startMs: scene.startMs, endMs: scene.endMs, keyframePath: kfPath });
         ctx.progress(0.68 + 0.24 * ((i + 1) / scenes.length), 'scenes');
+      }
+
+      // ---- deterministic footage notes (non-fatal; nothing reads them yet) ----
+      db.prepare(`DELETE FROM footage_notes WHERE asset_id=?`).run(assetId);
+      if ((await getSettings()).analysis?.footageNotes !== false) {
+        ctx.progress(0.93, 'notes');
+        try {
+          const notes = await computeFootageNotes(assetId, asset.path, {
+            durationMs: asset.durationMs,
+            hasAudio: asset.hasAudio,
+            scenes: noteScenes,
+            signal: ctx.signal,
+          });
+          if (!ctx.signal.aborted) saveFootageNotes(notes);
+        } catch (err) {
+          process.stderr.write(`[ingest] footage notes skipped for ${assetId}: ${err instanceof Error ? err.message : String(err)}
+`);
+        }
+        if (ctx.signal.aborted) return;
       }
     }
 
@@ -311,6 +333,23 @@ function registerIngestHandler(): void {
 }
 
 registerIngestHandler();
+
+function saveFootageNotes(notes: FootageNotes): void {
+  getDb()
+    .prepare(`INSERT OR REPLACE INTO footage_notes (asset_id, version, notes, computed_at) VALUES (?, ?, ?, ?)`)
+    .run(notes.assetId, notes.version, JSON.stringify(notes), notes.computedAt);
+}
+
+/** Deterministic footage notes for an asset, or null when none were computed (audio/image assets, setting off, failure). */
+export function getFootageNotes(assetId: string): FootageNotes | null {
+  const row = getDb().prepare(`SELECT notes FROM footage_notes WHERE asset_id=?`).get(assetId) as { notes: string } | undefined;
+  if (!row) return null;
+  try {
+    return JSON.parse(row.notes) as FootageNotes;
+  } catch {
+    return null;
+  }
+}
 
 export function getAssets(projectId: string): Asset[] {
   const db = getDb();
@@ -389,6 +428,7 @@ export function removeAsset(assetId: string): void {
   db.prepare(`DELETE FROM transcripts WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM beat_maps WHERE asset_id=?`).run(assetId);
+  db.prepare(`DELETE FROM footage_notes WHERE asset_id=?`).run(assetId);
   removeAssetIndex(assetId, scenes.map((s) => s.id));
   // the asset is gone for good, so undoing the clip removal must not restore clips pointing at it
   projectService.forgetAsset(assetId);

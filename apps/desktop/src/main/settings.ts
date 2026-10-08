@@ -37,6 +37,8 @@ export interface Settings {
   mcp: McpSettings;
   ai?: AiSettings;
   asr?: { model?: string };
+  /** deterministic per-scene footage notes (ffmpeg metrics + OCR) computed at import; default on */
+  analysis?: { footageNotes?: boolean };
   /** folder the user last picked in the export dialog (always chosen through a native dialog) */
   export?: { lastDir?: string };
   /** applied at startup, so a change takes effect after a restart */
@@ -47,6 +49,7 @@ const DEFAULTS: Settings = {
   mcp: { enabled: false, port: 8629, token: randomBytes(24).toString('hex') },
   ai: { vlmProvider: 'none' },
   asr: { model: 'base.en' },
+  analysis: { footageNotes: true },
 };
 
 let cache: Settings | null = null;
@@ -65,6 +68,7 @@ export async function getSettings(): Promise<Settings> {
       mcp: { ...DEFAULTS.mcp, ...parsed.mcp },
       ai: { ...DEFAULTS.ai, ...parsed.ai },
       asr: { ...DEFAULTS.asr, ...parsed.asr },
+      analysis: { ...DEFAULTS.analysis, ...parsed.analysis },
       export: typeof parsed.export?.lastDir === 'string' ? { lastDir: parsed.export.lastDir } : {},
       gpu: { preference: parseGpuPreference(parsed.gpu?.preference) },
     };
@@ -101,6 +105,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
     mcp: { ...current.mcp, ...patch.mcp ?? current.mcp },
     ai: { ...current.ai, ...patch.ai ?? {} },
     asr: { ...current.asr ?? DEFAULTS.asr, ...patch.asr ?? {} },
+    analysis: { ...DEFAULTS.analysis, ...current.analysis, ...patch.analysis },
     export: { ...current.export, ...patch.export },
     gpu: { preference: parseGpuPreference((patch.gpu ?? current.gpu)?.preference) },
   };

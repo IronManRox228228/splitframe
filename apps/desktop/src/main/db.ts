@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS beat_maps (
   sections TEXT NOT NULL DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS footage_notes (
+  asset_id TEXT PRIMARY KEY,
+  version INTEGER NOT NULL,
+  notes TEXT NOT NULL,
+  computed_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
   project_id TEXT,
