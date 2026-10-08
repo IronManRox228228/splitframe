@@ -21,7 +21,7 @@ import { listModels, downloadModel, deleteModel, cancelModelDownload, onModelPro
 import { searchWords, groupWordHits, searchScenes, isVectorSearchEnabled } from './analysis/search.ts';
 import { groupHasAllTerms } from './analysis/search-query.ts';
 import { getVlmConfig, setVlmConfig } from './analysis/vlm.ts';
-import { sendChatMessage, abortChat } from './agent/chat.ts';
+import { sendChatMessage, abortChat, DEFAULT_HARNESS } from './agent/chat.ts';
 
 /**
  * IPC is the security boundary (addendum §5.4): the renderer is untrusted, every
@@ -383,6 +383,9 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     return {
       agentProvider: settings.ai?.agentProvider ?? 'anthropic',
       agentModel: settings.ai?.agentModel ?? '',
+      harness: settings.ai?.harness ?? DEFAULT_HARNESS,
+      plannerModel: settings.ai?.plannerModel ?? '',
+      executorModel: settings.ai?.executorModel ?? '',
       vlmProvider: vlm.provider,
       vlmModel: vlm.model,
       ollamaUrl: vlm.ollamaUrl,
@@ -392,10 +395,13 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   });
   ipcMain.handle(
     'ai:setConfig',
-    (_e, patch: { agentProvider?: string; agentModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
+    (_e, patch: { agentProvider?: string; agentModel?: string; harness?: string; plannerModel?: string; executorModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
       const parsed = z.object({
         agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'llamacpp']).optional(),
         agentModel: z.string().max(120).optional(),
+        harness: z.enum(['v1', 'classic']).optional(),
+        plannerModel: z.string().max(120).optional(),
+        executorModel: z.string().max(120).optional(),
         vlmProvider: z.enum(['none', 'ollama', 'anthropic', 'openai']).optional(),
         vlmModel: z.string().max(120).optional(),
         ollamaUrl: z.string().url().optional(),

@@ -6,6 +6,9 @@ import { ModelsSection } from './ModelsSection.tsx';
 export interface AiConfig {
   agentProvider: string;
   agentModel: string;
+  harness?: string;
+  plannerModel?: string;
+  executorModel?: string;
   asrModel: string;
   vlmProvider: string;
   llamacppUrl: string;
@@ -33,6 +36,9 @@ export function AiSettings({ config, onSaved, onClose }: { config: AiConfig; onS
       .aiSetConfig({
         agentProvider: draft.agentProvider,
         agentModel: draft.agentModel,
+        harness: draft.harness === 'classic' ? 'classic' : 'v1',
+        plannerModel: draft.plannerModel ?? '',
+        executorModel: draft.executorModel ?? '',
         ...(draft.agentProvider === 'ollama' && draft.ollamaUrl.trim() ? { ollamaUrl: draft.ollamaUrl.trim() } : {}),
         ...(draft.agentProvider === 'llamacpp' && draft.llamacppUrl.trim() ? { llamacppUrl: draft.llamacppUrl.trim() } : {}),
         ...(apiKey && draft.agentProvider === 'llamacpp' ? { llamacppKey: apiKey } : {}),
@@ -75,6 +81,25 @@ export function AiSettings({ config, onSaved, onClose }: { config: AiConfig; onS
             className="input"
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Agent harness</span>
+          <select value={draft.harness === 'classic' ? 'classic' : 'v1'} onChange={(e) => setDraft({ ...draft, harness: e.target.value })} className="input">
+            <option value="v1">v1: plans, deterministic edits, verified results (local / OpenAI-compatible models)</option>
+            <option value="classic">Classic: one tool loop</option>
+          </select>
+        </label>
+        {draft.harness !== 'classic' && (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="label">Planner model</span>
+              <input value={draft.plannerModel ?? ''} onChange={(e) => setDraft({ ...draft, plannerModel: e.target.value })} placeholder="Blank = agent model" className="input" />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label">Executor model</span>
+              <input value={draft.executorModel ?? ''} onChange={(e) => setDraft({ ...draft, executorModel: e.target.value })} placeholder="Blank = agent model" className="input" />
+            </label>
+          </div>
+        )}
         {draft.agentProvider === 'ollama' && (
           <label className="flex flex-col gap-1.5">
             <span className="label">Server URL</span>

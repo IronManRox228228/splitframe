@@ -1,4 +1,5 @@
 import { runChatTurn } from '../../src/main/agent/chat.ts';
+import { runHarnessTurn } from '../../src/main/agent/harness/index.ts';
 import { TraceRecorder } from '../lib/trace.ts';
 import type { AgentDriver } from '../types.ts';
 import { oracleDriver } from './oracle.ts';
@@ -26,6 +27,25 @@ export const chatDriver: AgentDriver = {
   },
 };
 
+/** Harness v1 (state doc, router, planner, compiler macros, verifier) on the same tasks. */
+export const harnessV1Driver: AgentDriver = {
+  id: 'harness-v1',
+  async runTurn(message, history, ctx) {
+    const recorder = new TraceRecorder(message);
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    ctx.signal.addEventListener('abort', abort);
+    try {
+      await runHarnessTurn(ctx.chatId, message, history, controller, { emit: recorder.emit, onStep: recorder.onStep });
+      return recorder.finish();
+    } catch (err) {
+      return recorder.finish({ error: err instanceof Error ? err.message : String(err), timedOut: ctx.signal.aborted });
+    } finally {
+      ctx.signal.removeEventListener('abort', abort);
+    }
+  },
+};
+
 /**
  * Does nothing and needs no model. Running the suite with it checks the harness itself
  * (fixtures import and analyse, setups run, checks score an untouched timeline): every task
@@ -41,6 +61,7 @@ export const noopDriver: AgentDriver = {
 
 export const DRIVERS: Record<string, AgentDriver> = {
   [chatDriver.id]: chatDriver,
+  [harnessV1Driver.id]: harnessV1Driver,
   [noopDriver.id]: noopDriver,
   [oracleDriver.id]: oracleDriver,
 };

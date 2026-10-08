@@ -22,6 +22,11 @@ export interface AiSettings {
   /** chat model provider for the built-in agent */
   agentProvider?: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'llamacpp';
   agentModel?: string;
+  /** which agent harness answers chat: the planner/executor harness or the classic single tool loop */
+  harness?: 'v1' | 'classic';
+  /** harness v1 model overrides; blank = the agent model */
+  plannerModel?: string;
+  executorModel?: string;
   agentKeyEnc?: string;
   /** scene-description VLM */
   vlmProvider?: VlmProvider;

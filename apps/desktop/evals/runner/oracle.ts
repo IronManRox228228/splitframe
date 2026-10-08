@@ -57,6 +57,17 @@ const interviewItem = (env: Env): Item => {
 
 const durationFrames = (env: Env): number => env.items().reduce((m, i) => Math.max(m, i.startFrame + i.durationFrames), 0);
 
+/** Park the clips out of the way, then lay them back to back in this order (clip lengths are kept). */
+async function layOut(e: Env, order: string[]): Promise<void> {
+  const clips = order.map((n) => e.items().find((i) => i.assetId === e.asset(n))!);
+  for (const [k, c] of clips.entries()) await e.call('moveItem', { itemId: c.id, startFrame: e.frames(200 + 20 * k) });
+  let at = 0;
+  for (const c of clips) {
+    await e.call('moveItem', { itemId: c.id, startFrame: at });
+    at += c.durationFrames;
+  }
+}
+
 const SCRIPTS: Record<string, Script> = {
   'add-title': async (e) => {
     await e.call('addText', { text: 'Launch Day', startFrame: 0, durationFrames: e.frames(3) });
@@ -148,6 +159,67 @@ const SCRIPTS: Record<string, Script> = {
     await e.call('addCaptions', {});
     await e.call('addAudio', { assetId: e.asset('music.mp3'), startFrame: 0, durationFrames: durationFrames(e), volume: 0.3 });
     await e.call('addText', { text: 'Launch Day', startFrame: 0, durationFrames: e.frames(3) });
+  },
+
+  // ---- held-out tasks ----
+  'ho-dead-air': async (e) => {
+    await e.call('removeSilences', { thresholdSec: 0.5 });
+  },
+
+  'ho-ums-ahs': async (e) => {
+    const fillers = e.ctx.manifest.fixtures['interview.mp4'].fillers.filter((f) => f.word === 'um' || f.word === 'uh');
+    await cutSourceSpans(e, interviewItem(e).id, fillers);
+  },
+
+  'ho-flub': async (e) => {
+    const { abandoned } = e.ctx.manifest.fixtures['interview.mp4'].retake;
+    await cutSourceSpans(e, interviewItem(e).id, [abandoned]);
+  },
+
+  'ho-shorten-c': async (e) => {
+    const clip = e.items().find((i) => i.type === 'video')!;
+    await e.call('trimItem', { itemId: clip.id, edge: 'out', frame: clip.startFrame + e.frames(4) });
+  },
+
+  'ho-square': async (e) => {
+    await e.call('setProjectSettings', { aspect: '1:1' });
+  },
+
+  'ho-render-720': async (e) => {
+    await e.call('exportVideo', { preset: '720p MP4' });
+  },
+
+  'ho-b-first': async (e) => {
+    await layOut(e, ['broll-b.mp4', 'broll-a.mp4', 'broll-c.mp4']);
+  },
+
+  'ho-a-after-c': async (e) => {
+    await layOut(e, ['broll-b.mp4', 'broll-c.mp4', 'broll-a.mp4']);
+  },
+
+  'ho-split-delete': async (e) => {
+    const it = interviewItem(e);
+    const at = it.startFrame + e.frames(20);
+    const res = await e.call('splitItem', { itemId: it.id, atFrame: at });
+    const second = (res['items'] as Item[]).find((i) => i.startFrame >= at && i.id !== it.id);
+    await e.call('deleteItems', { itemIds: [second!.id], ripple: false });
+  },
+
+  'ho-thanks-title': async (e) => {
+    const total = durationFrames(e);
+    await e.call('addText', { text: 'Thanks for watching', startFrame: total - e.frames(3), durationFrames: e.frames(3) });
+  },
+
+  'ho-music-louder': async (e) => {
+    const music = e.items().find((i) => i.assetId === e.asset('music.mp3'))!;
+    await e.call('updateItem', { itemId: music.id, patch: { volume: 0.35 } });
+  },
+
+  'ho-highlight': async (e) => {
+    const topic = e.ctx.manifest.fixtures['talk.mp4'].topics.find((t) => t.id === 'customer')!;
+    const talk = e.items().find((i) => i.assetId === e.asset('talk.mp4'))!;
+    await e.call('deleteItems', { itemIds: [talk.id] });
+    await e.call('addClip', { assetId: e.asset('talk.mp4'), startFrame: 0, sourceInFrame: e.frames(topic.startSec + 1), durationFrames: e.frames(15) });
   },
 };
 

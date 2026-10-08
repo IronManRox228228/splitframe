@@ -486,4 +486,4 @@ export const duckMusic: ToolDef = {
 export const MACRO_TOOLS: ToolDef[] = [addCaptions, removeSilences, buildRoughCut, duckMusic];
 
 // re-export for tests
-export { wordsForItem, cutSpansOps, sourceFrameAt, itemsOnTrack };
+export { wordsForItem, cutSpansOps, sourceFrameAt, itemsOnTrack, findRetakeSpans, mergeSpans };

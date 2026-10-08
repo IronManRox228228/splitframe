@@ -17,7 +17,7 @@ export async function getVlmConfig(): Promise<{ provider: VlmProvider; model: st
   };
 }
 
-export async function setVlmConfig(patch: { agentProvider?: AiSettings['agentProvider']; vlmProvider?: VlmProvider; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }): Promise<void> {
+export async function setVlmConfig(patch: { agentProvider?: AiSettings['agentProvider']; harness?: AiSettings['harness']; plannerModel?: string; executorModel?: string; vlmProvider?: VlmProvider; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }): Promise<void> {
   await migrateLegacyAgentKey();
   const settings = await getSettings();
   // keys never go into settings.json; also scrub any plaintext agentKey an older build wrote

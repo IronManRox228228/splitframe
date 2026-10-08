@@ -241,6 +241,15 @@ export class ProjectService {
     return { inverses: result.inverse, seq };
   }
 
+  /** Everything applied until endUndoGroup() becomes one undo step (an agent job). */
+  beginUndoGroup(label?: string, actor?: Actor): void {
+    this.history.beginGroup(label, actor);
+  }
+
+  endUndoGroup(): void {
+    this.history.commitGroup();
+  }
+
   undo(): { applied: Op[]; label: string | null } | null {
     if (!this.current) return null;
     const current = this.current;

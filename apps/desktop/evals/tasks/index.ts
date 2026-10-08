@@ -2,6 +2,7 @@ import type { Task } from '../types.ts';
 import { removePauses, removeFillers, removeRetake } from './speech-cuts.ts';
 import { addCaptions, addTitle, vertical, captionsBiggerUndo } from './graphics.ts';
 import { trimClip, reorder, deleteSelected, beatCuts } from './clips.ts';
+import { HELDOUT } from './heldout.ts';
 import { musicDuck, teaser, exportSd, compound } from './compound.ts';
 
 /** Every eval task, in run order (cheap and fast first, the long ones last). */
@@ -23,9 +24,14 @@ export const TASKS: Task[] = [
   compound,
 ];
 
+export { HELDOUT };
+
+/** `heldout` selects the held-out group (never part of the default run); otherwise ids from either list. */
 export function selectTasks(ids?: string[]): Task[] {
   if (!ids || ids.length === 0) return TASKS;
-  const unknown = ids.filter((id) => !TASKS.some((t) => t.id === id));
-  if (unknown.length > 0) throw new Error(`Unknown task id(s): ${unknown.join(', ')}. Known: ${TASKS.map((t) => t.id).join(', ')}`);
-  return TASKS.filter((t) => ids.includes(t.id));
+  const all = [...TASKS, ...HELDOUT];
+  const wanted = ids.flatMap((id) => (id === 'heldout' ? HELDOUT.map((t) => t.id) : [id]));
+  const unknown = wanted.filter((id) => !all.some((t) => t.id === id));
+  if (unknown.length > 0) throw new Error(`Unknown task id(s): ${unknown.join(', ')}. Known: ${all.map((t) => t.id).join(', ')}, or the group "heldout"`);
+  return all.filter((t) => wanted.includes(t.id));
 }

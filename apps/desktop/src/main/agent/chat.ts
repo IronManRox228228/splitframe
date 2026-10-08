@@ -10,6 +10,7 @@ import { broadcast } from '../events.ts';
 import { editorContextCache } from '../editor-context.ts';
 import { buildMessages, formatEditorContext, type ChatTurn } from './messages.ts';
 import { splitImageResult, stripImageData } from './tool-output.ts';
+import { harnessSupported, runHarnessTurn } from './harness/index.ts';
 
 /**
  * Built-in agent (addendum §2, main prompt §6): Vercel AI SDK streaming with the shared
@@ -27,6 +28,9 @@ const LOCAL_PROVIDERS = new Set(['ollama', 'llamacpp']);
 
 /** Tool-call rounds per user message (read, edit, verify, ...); one round was too few to finish an edit. */
 export const MAX_AGENT_STEPS = 12;
+
+/** Harness used when the setting is unset; v1 beat classic in the eval (original and held-out sets). */
+export const DEFAULT_HARNESS: 'v1' | 'classic' = 'v1';
 
 function providerModel(provider: string, model: string, key: string, ai: AiSettings): LanguageModel {
   switch (provider) {
@@ -67,7 +71,13 @@ export async function sendChatMessage(chatId: string, userMessage: string, histo
   const controller = new AbortController();
   aborts.set(chatId, controller);
   try {
-    await runChatTurn(chatId, userMessage, history, controller);
+    const settings = await getSettings();
+    // classic stays available; v1 needs an OpenAI-compatible provider, otherwise fall back to it
+    if ((settings.ai?.harness ?? DEFAULT_HARNESS) === 'v1' && (await harnessSupported())) {
+      await runHarnessTurn(chatId, userMessage, history, controller, broadcastSink(chatId));
+    } else {
+      await runChatTurn(chatId, userMessage, history, controller);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     broadcastChat(chatId, 'chat:done', { error: message });
