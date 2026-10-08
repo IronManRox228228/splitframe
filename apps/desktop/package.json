@@ -12,6 +12,7 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
+    "eval": "node evals/run.mjs",
     "dist": "pnpm --filter @cutboard/mcp-shim build && electron-vite build && electron-builder --config electron-builder.yml",
     "dist:dir": "pnpm --filter @cutboard/mcp-shim build && electron-vite build && electron-builder --config electron-builder.yml --dir"
   },

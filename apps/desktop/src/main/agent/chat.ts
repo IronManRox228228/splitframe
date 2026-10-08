@@ -26,7 +26,7 @@ export interface ChatMessage {
 const LOCAL_PROVIDERS = new Set(['ollama', 'llamacpp']);
 
 /** Tool-call rounds per user message (read, edit, verify, ...); one round was too few to finish an edit. */
-const MAX_AGENT_STEPS = 12;
+export const MAX_AGENT_STEPS = 12;
 
 function providerModel(provider: string, model: string, key: string, ai: AiSettings): LanguageModel {
   switch (provider) {
@@ -76,14 +76,35 @@ export async function sendChatMessage(chatId: string, userMessage: string, histo
   }
 }
 
-async function runChatTurn(chatId: string, userMessage: string, history: ChatTurn[], controller: AbortController): Promise<void> {
+/**
+ * Where a turn reports to. The chat UI gets the broadcast sink; the eval harness passes its own
+ * to record a trace of the very same turn.
+ */
+export interface ChatSink {
+  emit(type: 'chat:delta' | 'chat:tool' | 'chat:done', payload: Record<string, unknown>): void;
+  /** each model step as the AI SDK reports it (tool calls, including invalid ones, and finish reason) */
+  onStep?(step: unknown): void;
+}
+
+function broadcastSink(chatId: string): ChatSink {
+  return { emit: (type, payload) => broadcastChat(chatId, type, payload) };
+}
+
+/** One chat turn; throws on failure (sendChatMessage reports that to the UI). */
+export async function runChatTurn(
+  chatId: string,
+  userMessage: string,
+  history: ChatTurn[],
+  controller: AbortController,
+  sink: ChatSink = broadcastSink(chatId),
+): Promise<void> {
   const settings = await getSettings();
   const provider = settings.ai?.agentProvider ?? 'anthropic';
   const model = settings.ai?.agentModel ?? '';
   // llama.cpp gets its own key slot so a cloud key is never sent to a self-hosted URL
   const key = (provider === 'llamacpp' ? await getSecret('llamacppKey') : await getAgentKey(provider)) ?? '';
   if (!LOCAL_PROVIDERS.has(provider) && !key) {
-    broadcastChat(chatId, 'chat:done', {
+    sink.emit('chat:done', {
       error: `No API key configured for ${provider}. Open Settings → AI and add one (or switch to Ollama / llama.cpp for a local model).`,
     });
     return;
@@ -102,16 +123,16 @@ async function runChatTurn(chatId: string, userMessage: string, history: ChatTur
       inputSchema: z.object(shape as never),
       execute: async (args: unknown, options?: { toolCallId?: string }) => {
         const callId = options?.toolCallId;
-        broadcastChat(chatId, 'chat:tool', { tool: tool.name, callId, args, phase: 'call' });
+        sink.emit('chat:tool', { tool: tool.name, callId, args, phase: 'call' });
         try {
           const result = await callTool(tool.name, args, 'builtin-agent');
           // the UI only needs to know an image was returned, not receive its bytes
-          broadcastChat(chatId, 'chat:tool', { tool: tool.name, callId, args, phase: 'result', result: stripImageData(result) });
+          sink.emit('chat:tool', { tool: tool.name, callId, args, phase: 'result', result: stripImageData(result) });
           return result;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const hint = (err as { hint?: string }).hint;
-          broadcastChat(chatId, 'chat:tool', { tool: tool.name, callId, args, phase: 'result', error: message });
+          sink.emit('chat:tool', { tool: tool.name, callId, args, phase: 'result', error: message });
           return { error: hint ? `${message} (hint: ${hint})` : message };
         }
       },
@@ -147,13 +168,14 @@ async function runChatTurn(chatId: string, userMessage: string, history: ChatTur
     onError: ({ error }) => {
       streamError = error;
     },
+    onStepFinish: (step) => sink.onStep?.(step),
   });
   for await (const chunk of result.textStream) {
-    broadcastChat(chatId, 'chat:delta', { text: chunk });
+    sink.emit('chat:delta', { text: chunk });
   }
   if (streamError) throw streamError;
   const finish = await result.finishReason;
-  broadcastChat(chatId, 'chat:done', {
+  sink.emit('chat:done', {
     finishReason: finish,
     ...(finish === 'tool-calls' ? { note: `Stopped after ${MAX_AGENT_STEPS} steps. Say "continue" to let the agent keep going.` } : {}),
   });

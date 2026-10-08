@@ -8,5 +8,5 @@
       "@renderer/*": ["./src/renderer/*"]
     }
   },
-  "include": ["src", "electron.vite.config.ts"]
+  "include": ["src", "evals", "electron.vite.config.ts"]
 }

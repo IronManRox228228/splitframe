@@ -1,0 +1,525 @@
+{
+  "generatedAt": "2026-10-07T13:32:50.078Z",
+  "voice": "Microsoft David Desktop",
+  "fixtures": {
+    "interview.mp4": {
+      "durationSec": 59.633,
+      "kind": "speech",
+      "segments": [
+        {
+          "kind": "speech",
+          "text": "Hi everyone, thanks for having me on the show today.",
+          "startSec": 0,
+          "endSec": 2.986
+        },
+        {
+          "kind": "pause",
+          "startSec": 2.986,
+          "endSec": 4.586
+        },
+        {
+          "kind": "speech",
+          "text": "I have been building video tools for about ten years now.",
+          "startSec": 4.586,
+          "endSec": 7.461
+        },
+        {
+          "kind": "speech",
+          "text": "We started out making simple desktop software",
+          "startSec": 7.641,
+          "endSec": 10.389
+        },
+        {
+          "kind": "filler",
+          "text": "um",
+          "startSec": 10.569,
+          "endSec": 11.186
+        },
+        {
+          "kind": "speech",
+          "text": "and over time it grew into something much bigger.",
+          "startSec": 11.366,
+          "endSec": 13.808
+        },
+        {
+          "kind": "pause",
+          "startSec": 13.808,
+          "endSec": 16.008
+        },
+        {
+          "kind": "speech",
+          "text": "The biggest lesson I learned is that speed matters more than polish.",
+          "startSec": 16.008,
+          "endSec": 19.271
+        },
+        {
+          "kind": "filler",
+          "text": "uh",
+          "startSec": 19.451,
+          "endSec": 19.609
+        },
+        {
+          "kind": "speech",
+          "text": "People want to try an idea right away, not wait for a render bar.",
+          "startSec": 19.789,
+          "endSec": 23.673
+        },
+        {
+          "kind": "pause",
+          "startSec": 23.673,
+          "endSec": 25.073
+        },
+        {
+          "kind": "speech",
+          "text": "So the reason we started this company was, well",
+          "startSec": 25.073,
+          "endSec": 28.025,
+          "retake": "abandoned"
+        },
+        {
+          "kind": "pause",
+          "startSec": 28.025,
+          "endSec": 29.125
+        },
+        {
+          "kind": "speech",
+          "text": "So the reason we started this company was to make editing feel effortless.",
+          "startSec": 29.125,
+          "endSec": 32.883,
+          "retake": "clean"
+        },
+        {
+          "kind": "speech",
+          "text": "Every feature we ship has to pass one test.",
+          "startSec": 33.063,
+          "endSec": 35.554
+        },
+        {
+          "kind": "filler",
+          "text": "you know",
+          "startSec": 35.734,
+          "endSec": 36.098
+        },
+        {
+          "kind": "speech",
+          "text": "Can a beginner finish a video in ten minutes?",
+          "startSec": 36.278,
+          "endSec": 38.641
+        },
+        {
+          "kind": "pause",
+          "startSec": 38.641,
+          "endSec": 40.641
+        },
+        {
+          "kind": "speech",
+          "text": "If the answer is no, we go back and simplify it.",
+          "startSec": 40.641,
+          "endSec": 43.75
+        },
+        {
+          "kind": "speech",
+          "text": "That is the whole philosophy, and it has not changed.",
+          "startSec": 43.93,
+          "endSec": 47.021
+        },
+        {
+          "kind": "filler",
+          "text": "um",
+          "startSec": 47.201,
+          "endSec": 47.818
+        },
+        {
+          "kind": "speech",
+          "text": "Looking ahead, we are working on better tools for audio cleanup.",
+          "startSec": 47.998,
+          "endSec": 51.654
+        },
+        {
+          "kind": "speech",
+          "text": "We also want to make collaboration feel as simple as sharing a link.",
+          "startSec": 51.834,
+          "endSec": 55.445
+        },
+        {
+          "kind": "pause",
+          "startSec": 55.445,
+          "endSec": 56.745
+        },
+        {
+          "kind": "speech",
+          "text": "Thanks again for listening, and see you next time.",
+          "startSec": 56.745,
+          "endSec": 59.634
+        }
+      ],
+      "pauses": [
+        {
+          "startSec": 2.986,
+          "endSec": 4.586,
+          "durSec": 1.6
+        },
+        {
+          "startSec": 13.808,
+          "endSec": 16.008,
+          "durSec": 2.2
+        },
+        {
+          "startSec": 23.673,
+          "endSec": 25.073,
+          "durSec": 1.4
+        },
+        {
+          "startSec": 28.025,
+          "endSec": 29.125,
+          "durSec": 1.1
+        },
+        {
+          "startSec": 38.641,
+          "endSec": 40.641,
+          "durSec": 2
+        },
+        {
+          "startSec": 55.445,
+          "endSec": 56.745,
+          "durSec": 1.3
+        }
+      ],
+      "totalPauseSec": 9.6,
+      "fillers": [
+        {
+          "word": "um",
+          "startSec": 10.569,
+          "endSec": 11.186
+        },
+        {
+          "word": "uh",
+          "startSec": 19.451,
+          "endSec": 19.609
+        },
+        {
+          "word": "you know",
+          "startSec": 35.734,
+          "endSec": 36.098
+        },
+        {
+          "word": "um",
+          "startSec": 47.201,
+          "endSec": 47.818
+        }
+      ],
+      "retake": {
+        "abandoned": {
+          "text": "So the reason we started this company was, well",
+          "startSec": 25.073,
+          "endSec": 28.025
+        },
+        "clean": {
+          "text": "So the reason we started this company was to make editing feel effortless.",
+          "startSec": 29.125,
+          "endSec": 32.883
+        }
+      }
+    },
+    "talk.mp4": {
+      "durationSec": 136.133,
+      "kind": "speech",
+      "segments": [
+        {
+          "kind": "speech",
+          "text": "Let us start with pricing, because it is the first question everyone asks.",
+          "startSec": 0,
+          "endSec": 4.413,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "The starter plan costs nine dollars a month and includes the full editor.",
+          "startSec": 4.593,
+          "endSec": 8.283,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "The team plan is nineteen dollars per seat and adds shared libraries.",
+          "startSec": 8.463,
+          "endSec": 12.264,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "We do not charge extra for exports, so you can render as many videos as you like.",
+          "startSec": 12.444,
+          "endSec": 17.411,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "Annual billing saves you twenty percent compared to paying monthly.",
+          "startSec": 17.591,
+          "endSec": 20.986,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "Students and teachers get half off the starter plan with a school email.",
+          "startSec": 21.166,
+          "endSec": 24.839,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "If you outgrow a plan, you can upgrade at any time and only pay the difference.",
+          "startSec": 25.019,
+          "endSec": 29.636,
+          "topic": "pricing"
+        },
+        {
+          "kind": "speech",
+          "text": "There are no hidden fees, no watermarks, and no surprise price increases.",
+          "startSec": 29.816,
+          "endSec": 34.918,
+          "topic": "pricing"
+        },
+        {
+          "kind": "pause",
+          "startSec": 34.918,
+          "endSec": 35.918,
+          "boundary": true
+        },
+        {
+          "kind": "speech",
+          "text": "Now I want to tell you about Maria, who runs a small bakery in Lisbon.",
+          "startSec": 35.918,
+          "endSec": 40.127,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "Maria had never edited a video before she found our app last spring.",
+          "startSec": 40.307,
+          "endSec": 43.949,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "She filmed her sourdough process on her phone and dropped the clips into the timeline.",
+          "startSec": 44.129,
+          "endSec": 48.397,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "In one afternoon she cut a two minute story about her family recipe.",
+          "startSec": 48.577,
+          "endSec": 52.286,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "Her video was shared by thousands of food lovers and her bakery sold out in three days.",
+          "startSec": 52.466,
+          "endSec": 57.164,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "Maria told us she now posts a new video every single week.",
+          "startSec": 57.344,
+          "endSec": 60.591,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "She says the captions feature helped her reach customers who watch with the sound off.",
+          "startSec": 60.771,
+          "endSec": 64.929,
+          "topic": "customer"
+        },
+        {
+          "kind": "speech",
+          "text": "Today her bakery has doubled in size and she hired two apprentices.",
+          "startSec": 65.109,
+          "endSec": 68.747,
+          "topic": "customer"
+        },
+        {
+          "kind": "pause",
+          "startSec": 68.747,
+          "endSec": 69.747,
+          "boundary": true
+        },
+        {
+          "kind": "speech",
+          "text": "Next, let me walk you through the product itself.",
+          "startSec": 69.747,
+          "endSec": 72.721,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "You begin by importing your footage, and the app analyzes every clip automatically.",
+          "startSec": 72.901,
+          "endSec": 77.573,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "The timeline shows your video tracks on top and your audio tracks underneath.",
+          "startSec": 77.753,
+          "endSec": 81.701,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "To trim a clip, you simply drag its edge to the moment you want.",
+          "startSec": 81.881,
+          "endSec": 85.517,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "You can split a clip at the playhead and delete the parts you do not need.",
+          "startSec": 85.697,
+          "endSec": 89.134,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "The inspector lets you adjust scale, position, opacity, and volume.",
+          "startSec": 89.314,
+          "endSec": 93.573,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "When you are happy with the edit, the export button renders the final movie.",
+          "startSec": 93.753,
+          "endSec": 97.805,
+          "topic": "demo"
+        },
+        {
+          "kind": "speech",
+          "text": "The whole workflow runs locally on your computer, so your footage never leaves your machine.",
+          "startSec": 97.985,
+          "endSec": 102.95,
+          "topic": "demo"
+        },
+        {
+          "kind": "pause",
+          "startSec": 102.95,
+          "endSec": 103.95,
+          "boundary": true
+        },
+        {
+          "kind": "speech",
+          "text": "Finally, a quick word about hiring, because we are growing fast.",
+          "startSec": 103.95,
+          "endSec": 108.096,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "We are looking for two senior engineers who love graphics programming.",
+          "startSec": 108.276,
+          "endSec": 111.861,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "We also need a product designer to shape the look of the editor.",
+          "startSec": 112.041,
+          "endSec": 115.132,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "Our team works remotely across five time zones and meets once a quarter.",
+          "startSec": 115.312,
+          "endSec": 119.195,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "Every employee receives equity, a learning budget, and flexible working hours.",
+          "startSec": 119.375,
+          "endSec": 124.457,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "If you are interested, send us a short note and a link to something you built.",
+          "startSec": 124.637,
+          "endSec": 128.786,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "We read every application personally and reply within a week.",
+          "startSec": 128.966,
+          "endSec": 132.224,
+          "topic": "hiring"
+        },
+        {
+          "kind": "speech",
+          "text": "Thank you so much for your time, and have a wonderful rest of your day.",
+          "startSec": 132.404,
+          "endSec": 136.115,
+          "topic": "hiring"
+        }
+      ],
+      "topics": [
+        {
+          "id": "pricing",
+          "title": "Pricing",
+          "startSec": 0,
+          "endSec": 34.918
+        },
+        {
+          "id": "customer",
+          "title": "Customer story",
+          "startSec": 35.918,
+          "endSec": 68.747
+        },
+        {
+          "id": "demo",
+          "title": "Product demo",
+          "startSec": 69.747,
+          "endSec": 102.95
+        },
+        {
+          "id": "hiring",
+          "title": "Hiring",
+          "startSec": 103.95,
+          "endSec": 136.115
+        }
+      ]
+    },
+    "broll-a.mp4": {
+      "durationSec": 5,
+      "kind": "broll",
+      "label": "BROLL A",
+      "hasAudio": false
+    },
+    "broll-b.mp4": {
+      "durationSec": 6,
+      "kind": "broll",
+      "label": "BROLL B",
+      "hasAudio": false
+    },
+    "broll-c.mp4": {
+      "durationSec": 7,
+      "kind": "broll",
+      "label": "BROLL C",
+      "hasAudio": false
+    },
+    "music.mp3": {
+      "durationSec": 60,
+      "kind": "music",
+      "bpm": 120,
+      "beatPeriodSec": 0.5,
+      "firstBeatSec": 0,
+      "barEveryBeats": 4
+    }
+  }
+}

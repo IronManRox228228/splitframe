@@ -22,6 +22,9 @@ import { saveSettings } from './settings.ts';
  */
 
 // must be called before app ready
+const gpuPreference = readGpuPreferenceSync();
+applyGpuPreference(gpuPreference);
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'cbmedia', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   // network-less document that evaluates generated motion-graphic code (see motion-sandbox.ts)
@@ -30,6 +33,9 @@ protocol.registerSchemesAsPrivileged([
 
 // Windows only shows notifications (and groups the taskbar icon) under the installed app id
 if (process.platform === 'win32') app.setAppUserModelId('dev.cutboard.app');
+
+// eval harness: CUTBOARD_EVAL=<run config json> runs the agent eval suite headlessly (no editor window)
+const evalConfigPath = process.env['CUTBOARD_EVAL'];
 
 let mainWindow: BrowserWindow | null = null;
 const singleInstance = app.requestSingleInstanceLock();
@@ -434,13 +440,27 @@ void app.whenReady().then(() => {
   registerIpc(broadcast);
   wireEvents(broadcast);
   buildMenu();
-  createMainWindow();
+  if (!evalConfigPath) createMainWindow();
   jobs.resumePending();
 
   void (async () => {
     const { initSearchSchema } = await import('./analysis/search.ts');
     initSearchSchema();
   })();
+
+  if (evalConfigPath) {
+    void (async () => {
+      let code = 1;
+      try {
+        const { runEvals } = await import('../../evals/runner/run.ts');
+        code = await runEvals(evalConfigPath);
+      } catch (err) {
+        process.stderr.write(`[eval] harness failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}
+`);
+      }
+      app.exit(code);
+    })();
+  }
 
   // local MCP server (addendum §4): start only when the user enabled it
   void (async () => {
@@ -466,7 +486,8 @@ void app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // the eval harness only opens hidden render windows, closing the last one must not end the run
+  if (process.platform !== 'darwin' && !evalConfigPath) app.quit();
 });
 
 app.on('before-quit', () => {

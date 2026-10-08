@@ -13,5 +13,9 @@ coverage/
 sidecars/ml/models/
 apps/desktop/bin/
 
+# eval suite: generated media and run results
+apps/desktop/evals/fixtures/out/
+apps/desktop/evals/results/
+
 # packaged build output
 apps/desktop/release/

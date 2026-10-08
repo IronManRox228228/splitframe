@@ -19,7 +19,8 @@ let paths: AppPaths | null = null;
 export function getPaths(): AppPaths {
   if (paths) return paths;
   const userData = app.getPath('userData');
-  const projectsRoot = join(app.getPath('videos'), 'Cutboard');
+  // CUTBOARD_PROJECTS_ROOT lets the eval harness keep its throwaway projects out of the user's Videos folder
+  const projectsRoot = process.env['CUTBOARD_PROJECTS_ROOT'] || join(app.getPath('videos'), 'Cutboard');
   const dbPath = join(userData, 'cutboard.sqlite');
   // in dev: apps/desktop/bin/<plat>-<arch>; when packaged: <resources>/bin/<plat>-<arch>
   const plat = process.platform;
