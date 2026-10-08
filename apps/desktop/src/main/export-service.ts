@@ -8,7 +8,7 @@ import { getAsset } from './asset-service.ts';
 import { exportMediaPath, selectAudioSources, buildAudioGraph } from './export-plan.ts';
 import { TimelineDoc, newId } from '@cutboard/schema';
 import { docDurationFrames } from '@cutboard/editor-core';
-import { sanitizeFileName } from '../shared/export-options.ts';
+import { EXPORT_PRESETS, type ExportPreset, findPreset, listPresets, sanitizeFileName } from '../shared/export-options.ts';
 
 /**
  * Export pipeline (addendum §3 "Render/export"): a hidden Chromium window renders each
@@ -17,21 +17,9 @@ import { sanitizeFileName } from '../shared/export-options.ts';
  * filter_complex audio mix. Queue, progress, cancel; the exports table is SQLite-backed.
  */
 
-export interface ExportPreset {
-  name: string;
-  width: number;
-  height: number;
-  format: 'mp4' | 'webm';
-  videoBitrateK: number;
-}
+export type { ExportPreset };
 
-export const EXPORT_PRESETS: ExportPreset[] = [
-  { name: 'TikTok / Reels / Shorts', width: 1080, height: 1920, format: 'mp4', videoBitrateK: 12000 },
-  { name: 'YouTube 1080p', width: 1920, height: 1080, format: 'mp4', videoBitrateK: 12000 },
-  { name: 'Square 1080', width: 1080, height: 1080, format: 'mp4', videoBitrateK: 10000 },
-  { name: '1440p', width: 2560, height: 1440, format: 'mp4', videoBitrateK: 20000 },
-  { name: 'WebM 1080p', width: 1920, height: 1080, format: 'webm', videoBitrateK: 10000 },
-];
+export { EXPORT_PRESETS };
 
 export interface ExportRow {
   id: string;
@@ -75,9 +63,10 @@ class ExportService {
 
   async start(presetOrName: string | ExportPreset, destination?: ExportDestination): Promise<ExportRow> {
     if (!projectService.isOpen) throw new Error('No project open');
-    const preset = typeof presetOrName === 'string' ? EXPORT_PRESETS.find((p) => p.name === presetOrName) : presetOrName;
+    const { width: canvasW, height: canvasH } = projectService.doc.project;
+    const preset = typeof presetOrName === 'string' ? findPreset(presetOrName, canvasW, canvasH) : presetOrName;
     if (!preset) {
-      throw new Error(`Unknown export preset "${String(presetOrName)}". Available: ${EXPORT_PRESETS.map((p) => p.name).join(', ')}.`);
+      throw new Error(`Unknown export preset "${String(presetOrName)}". Available: ${listPresets(canvasW, canvasH).map((p) => p.name).join(', ')}.`);
     }
     const projectId = projectService.projectId;
     const doc = projectService.doc;

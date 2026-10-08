@@ -55,6 +55,18 @@ export function applyOp(doc: TimelineDoc, op: Op, opts: ApplyOptions = {}): Appl
         d.project.width = parsed.width;
         d.project.height = parsed.height;
       }, [{ type: 'project.setCanvas', width: doc.project.width, height: doc.project.height }]);
+    case 'project.setFps': {
+      const inverse: Op[] = [{ type: 'project.restoreTimeline', fps: doc.project.fps, items: clone(doc.items) as never, markers: clone(doc.markers) }];
+      return simple(next, doc, (d) => rescaleFps(d, parsed.fps), inverse);
+    }
+    case 'project.restoreTimeline': {
+      const inverse: Op[] = [{ type: 'project.restoreTimeline', fps: doc.project.fps, items: clone(doc.items) as never, markers: clone(doc.markers) }];
+      return simple(next, doc, (d) => {
+        d.project.fps = parsed.fps;
+        d.items = clone(parsed.items) as never;
+        d.markers = clone(parsed.markers);
+      }, inverse);
+    }
     case 'project.setStyleConfig':
       return simple(next, doc, (d) => {
         d.project.styleConfig = parsed.styleConfig;
@@ -143,6 +155,28 @@ export function applyOps(doc: TimelineDoc, ops: Op[], opts: ApplyOptions = {}): 
     inverses.unshift(...r.inverse);
   }
   return { doc: current, inverse: inverses };
+}
+
+/** Change fps in place: every frame count keeps its time in seconds (boundaries are rounded, so neighbours stay butted). */
+function rescaleFps(d: TimelineDoc, fps: number): void {
+  const r = fps / d.project.fps;
+  const f = (n: number) => Math.round(n * r);
+  for (const it of d.items) {
+    const end = f(it.startFrame + it.durationFrames);
+    it.startFrame = f(it.startFrame);
+    it.durationFrames = Math.max(1, end - it.startFrame);
+    if (it.sourceInFrame !== undefined) it.sourceInFrame = f(it.sourceInFrame);
+    for (const kfs of Object.values(it.keyframes)) for (const k of kfs) k.frame = f(k.frame);
+    for (const p of it.timeRemap) {
+      p.frame = f(p.frame);
+      p.sourceFrame = f(p.sourceFrame);
+    }
+    const props = it.props as { fadeInFrames?: number; fadeOutFrames?: number };
+    if (props.fadeInFrames) props.fadeInFrames = f(props.fadeInFrames);
+    if (props.fadeOutFrames) props.fadeOutFrames = f(props.fadeOutFrames);
+  }
+  for (const m of d.markers) m.frame = f(m.frame);
+  d.project.fps = fps;
 }
 
 function simple(

@@ -1,8 +1,10 @@
 import { Actor } from '@cutboard/schema';
 import { createToolRegistry, ToolContext } from '@cutboard/tools';
 import { projectService } from './project-service.ts';
-import { getAssets, getAsset, getTranscriptsForProject } from './asset-service.ts';
-import { renderStill, exportService, EXPORT_PRESETS } from './export-service.ts';
+import { getAssets, getAsset, getSilenceMap, getTranscriptsForProject } from './asset-service.ts';
+import { renderStill, exportService } from './export-service.ts';
+import { listPresets } from '../shared/export-options.ts';
+import { broadcast } from './events.ts';
 import { editorContextCache } from './editor-context.ts';
 import { detectBeats } from './analysis/beats.ts';
 import { getDb } from './db.ts';
@@ -22,6 +24,18 @@ export interface ProjectSnapshot {
   scenes: unknown[];
   beatMaps: unknown[];
   editorContext: unknown;
+}
+
+function stepHistory(dir: 'undo' | 'redo', steps: number) {
+  const labels: (string | null)[] = [];
+  for (let i = 0; i < steps; i++) {
+    const res = dir === 'undo' ? projectService.undo() : projectService.redo();
+    if (!res) break;
+    labels.push(res.label);
+    broadcast('event', { type: 'doc:changed', payload: { doc: projectService.doc, label: `${dir === 'undo' ? 'Undo' : 'Redo'}${res.label ? `: ${res.label}` : ''}` } });
+  }
+  const h = projectService.historyLabels;
+  return { steps: labels.length, labels, canUndo: h.canUndo, canRedo: h.canRedo };
 }
 
 export const registry = createToolRegistry();
@@ -45,7 +59,13 @@ export function makeToolContext(actor: Actor): ToolContext {
     captureFrame: (frame, width) => renderStill(frame, width),
     startExport: (presetName) => exportService.start(presetName),
     getExportStatus: async (exportId) => exportService.get(exportId) ?? { exportId, status: 'unknown' },
-    listExportPresets: async () => EXPORT_PRESETS,
+    listExportPresets: async () => {
+      const { width, height } = projectService.doc.project;
+      return listPresets(width, height);
+    },
+    getSilences: (assetId) => getSilenceMap(assetId),
+    undo: async (steps) => stepHistory('undo', steps),
+    redo: async (steps) => stepHistory('redo', steps),
     analyzeBeats: async (assetId) => {
       // cached in the beat_maps table; detected on demand otherwise
       const db = getDb();

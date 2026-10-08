@@ -16,9 +16,11 @@ interface Snapshot {
     items: Item[];
     markers: unknown[];
   };
-  assets: { id: string; kind: string }[];
+  assets: { id: string; kind: string; hasSpeech?: boolean; durationMs?: number }[];
   transcripts: { assetId: string; words: TranscriptWord[] }[];
 }
+
+type Silence = { startMs: number; endMs: number };
 
 function requireSnapshot(snap: unknown): Snapshot {
   const s = snap as Snapshot;
@@ -93,6 +95,79 @@ function cutSpansOps(item: Item, spans: { startFrame: number; endFrame: number }
     currentEnd = spanStart;
   }
   return ops;
+}
+
+// ---------- pauses & speech runs (from the audio, not from ASR word gaps) ----------
+
+/** Whisper stretches a word's end time across the pause that follows it, so word gaps hide pauses.
+ * The real pauses come from the audio's silence map; word starts are only used to clean up cut points. */
+async function silencesOf(ctx: ToolContext, item: Item): Promise<Silence[] | null> {
+  if (!item.assetId || !ctx.getSilences) return null;
+  try {
+    return await ctx.getSilences(item.assetId);
+  } catch {
+    return null; // detection failed: fall back to transcript gaps
+  }
+}
+
+/** Timeline frame of a source time in ms for this item. */
+function msToTimelineFrame(item: Item, fps: number, ms: number): number {
+  return Math.round(item.startFrame + ((ms / 1000) * fps - (item.sourceInFrame ?? 0)) / item.speed);
+}
+
+/**
+ * Timeline spans of an item to cut as pauses: silences longer than `thresholdSec`, shrunk by a
+ * `handleSec` handle on each side so no word is clipped.
+ * Without a silence map, transcript word gaps are used (they under-report). `keepLeading` leaves silence before the first word.
+ */
+export function pauseSpans(
+  snapshot: Snapshot,
+  item: Item,
+  silences: Silence[] | null,
+  opts: { thresholdSec: number; keepLeading: boolean; handleSec: number },
+): { startFrame: number; endFrame: number }[] {
+  const fps = snapshot.doc.project.fps;
+  const words = wordsForItem(snapshot, item);
+  const thresholdFrames = Math.round(opts.thresholdSec * fps);
+  const spans: { startFrame: number; endFrame: number }[] = [];
+  const transcript = snapshot.transcripts.find((t) => t.assetId === item.assetId);
+  const firstWordMs = transcript?.words[0]?.startMs ?? Infinity;
+
+  if (silences) {
+    const handleMs = opts.handleSec * 1000;
+    const itemStartMs = ((item.sourceInFrame ?? 0) / fps) * 1000;
+    const itemEndMs = itemStartMs + ((item.durationFrames * item.speed) / fps) * 1000;
+    for (const sil of silences) {
+      if ((sil.endMs - sil.startMs) / 1000 <= opts.thresholdSec) continue;
+      if (opts.keepLeading && sil.endMs <= firstWordMs + 1) continue;
+      // ASR word times are stretched across pauses at BOTH ends (the last word of a sentence can start
+      // in the middle of the silence), so the audio decides where speech stops and starts
+      const start0 = sil.startMs;
+      let end = sil.endMs;
+      // keep a handle next to speech; at the very start / end of the item there is no speech to protect
+      const start = start0 <= itemStartMs + 20 ? start0 : start0 + handleMs;
+      if (!(end >= itemEndMs - 20)) end -= handleMs;
+      if (end <= start) continue;
+      spans.push({
+        startFrame: Math.max(item.startFrame, msToTimelineFrame(item, fps, start)),
+        endFrame: Math.min(itemEnd(item), msToTimelineFrame(item, fps, end)),
+      });
+    }
+  }
+
+  // transcript gaps (also the only source when there is no silence map)
+  if (!silences && !opts.keepLeading && words.length > 0 && words[0]!.startFrame - item.startFrame > thresholdFrames) {
+    spans.push({ startFrame: item.startFrame, endFrame: words[0]!.startFrame });
+  }
+  for (let i = 0; !silences && i < words.length - 1; i++) {
+    if (words[i + 1]!.startFrame - words[i]!.endFrame > thresholdFrames) {
+      spans.push({ startFrame: words[i]!.endFrame, endFrame: words[i + 1]!.startFrame });
+    }
+  }
+  if (!silences && words.length > 0 && itemEnd(item) - words[words.length - 1]!.endFrame > thresholdFrames) {
+    spans.push({ startFrame: words[words.length - 1]!.endFrame, endFrame: itemEnd(item) });
+  }
+  return spans.filter((s) => s.endFrame > s.startFrame);
 }
 
 // ---------- addCaptions ----------
@@ -184,11 +259,12 @@ export const addCaptions: ToolDef = {
 export const removeSilences: ToolDef = {
   name: 'removeSilences',
   description:
-    'Cut silent gaps out of speech items using the transcript timing (default: pauses over 0.5s). Applied atomically with ripple so downstream items slide closed. Use thresholdSec 0.3 for tight cuts, 0.8 for a relaxed feel.',
+    'Cut pauses out of speech items, found from the audio itself (default: pauses over 0.5s), keeping a short handle so words are not clipped. Applied atomically with ripple so downstream items slide closed. thresholdSec 0.3 = tight cuts, 0.8 = relaxed.',
   input: z.object({
     itemIds: z.array(z.string()).optional(),
     thresholdSec: z.number().min(0.1).max(5).default(0.5),
     keepLeading: z.boolean().default(false).describe('Keep silence before the first word'),
+    handleSec: z.number().min(0).max(0.5).default(0.1).describe('Silence kept next to speech on each side of a cut'),
   }),
   mutates: true,
   async handler(input, ctx) {
@@ -199,23 +275,7 @@ export const removeSilences: ToolDef = {
     const ops: Op[] = [];
     let cutFrames = 0;
     for (const item of items) {
-      const words = wordsForItem(snapshot, item);
-      if (words.length < 2) continue;
-      const spans: { startFrame: number; endFrame: number }[] = [];
-      const thresholdFrames = Math.round(input.thresholdSec * fps);
-      if (!input.keepLeading && words[0]!.startFrame - item.startFrame > thresholdFrames) {
-        spans.push({ startFrame: item.startFrame, endFrame: words[0]!.startFrame });
-      }
-      for (let i = 0; i < words.length - 1; i++) {
-        const gap = words[i + 1]!.startFrame - words[i]!.endFrame;
-        if (gap > thresholdFrames) {
-          spans.push({ startFrame: words[i]!.endFrame, endFrame: words[i + 1]!.startFrame });
-        }
-      }
-      const lastWord = words[words.length - 1]!;
-      if (itemEnd(item) - lastWord.endFrame > thresholdFrames) {
-        spans.push({ startFrame: lastWord.endFrame, endFrame: itemEnd(item) });
-      }
+      const spans = mergeSpans(pauseSpans(snapshot, item, await silencesOf(ctx, item), input));
       for (const span of spans) cutFrames += span.endFrame - span.startFrame;
       ops.push(...cutSpansOps(item, spans));
     }
@@ -239,6 +299,8 @@ function timelineDuration(snapshot: unknown): { frames: number; seconds: number 
 
 // ---------- buildRoughCut ----------
 
+const MAX_RETAKE_WORDS = 20;
+
 function findRetakeSpans(snapshot: Snapshot, item: Item, minWords: number): { startFrame: number; endFrame: number; text: string }[] {
   const words = wordsForItem(snapshot, item);
   const n = words.length;
@@ -252,7 +314,10 @@ function findRetakeSpans(snapshot: Snapshot, item: Item, minWords: number): { st
     for (let j = i + minWords; j + minWords <= n; j++) {
       const candidate = words.slice(j, j + minWords).map(key).join(' ');
       if (candidate === phrase) {
-        spans.push({ startFrame: words[i]!.startFrame, endFrame: words[i + minWords - 1]!.endFrame, text: phrase });
+        // a short false start ("So the reason we started this company was, well ... So the reason we ...") goes
+        // whole, up to where the kept take begins; a long gap means the phrase just recurs, so cut only the phrase
+        const whole = j - i <= MAX_RETAKE_WORDS;
+        spans.push({ startFrame: words[i]!.startFrame, endFrame: whole ? words[j]!.startFrame : words[i + minWords - 1]!.endFrame, text: phrase });
         i = j; // skip past the kept occurrence
         break;
       }
@@ -269,6 +334,7 @@ export const buildRoughCut: ToolDef = {
     itemIds: z.array(z.string()).optional().describe('Speech items; default = all with transcripts'),
     thresholdSec: z.number().min(0.1).max(5).default(0.5),
     retakeMinWords: z.number().int().min(3).max(12).default(5).describe('Min words in a repeated phrase to count as a retake'),
+    handleSec: z.number().min(0).max(0.5).default(0.1).describe('Silence kept next to speech on each side of a cut'),
   }),
   mutates: true,
   async handler(input, ctx) {
@@ -279,15 +345,8 @@ export const buildRoughCut: ToolDef = {
     const ops: Op[] = [];
     let retakes = 0;
     for (const item of items) {
-      const words = wordsForItem(snapshot, item);
-      const spans: { startFrame: number; endFrame: number }[] = [];
-      // pauses
-      const thresholdFrames = Math.round(input.thresholdSec * fps);
-      for (let i = 0; i < words.length - 1; i++) {
-        if (words[i + 1]!.startFrame - words[i]!.endFrame > thresholdFrames) {
-          spans.push({ startFrame: words[i]!.endFrame, endFrame: words[i + 1]!.startFrame });
-        }
-      }
+      // pauses, measured from the audio
+      const spans = pauseSpans(snapshot, item, await silencesOf(ctx, item), { thresholdSec: input.thresholdSec, keepLeading: false, handleSec: input.handleSec });
       // retakes (drop earlier repeats)
       for (const retake of findRetakeSpans(snapshot, item, input.retakeMinWords)) {
         spans.push({ startFrame: retake.startFrame, endFrame: retake.endFrame });
@@ -304,14 +363,56 @@ export const buildRoughCut: ToolDef = {
 
 // ---------- duckMusic ----------
 
+const NON_WORD = /^\W*$|^\[.*\]$|^[♪♫]+$/u;
+
+/** Real speech has words at a talking pace; Whisper on music yields a few stray or looping tokens. */
+export function looksLikeSpeech(words: TranscriptWord[], durationMs: number): boolean {
+  const real = words.filter((w) => !NON_WORD.test(w.w.trim()));
+  if (real.length < 3) return false;
+  const spanSec = Math.max(durationMs, real[real.length - 1]!.endMs) / 1000;
+  if (real.length / spanSec < 0.5) return false;
+  if (real.length >= 8) {
+    const unique = new Set(real.map((w) => w.w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '')));
+    if (unique.size / real.length < 0.3) return false;
+  }
+  return true;
+}
+
+/** Speech runs [startMs, endMs] in source time: the audio between pauses of at least gapMs that holds words. */
+export function speechRunsMs(words: TranscriptWord[], silences: Silence[] | null, rangeMs: [number, number], gapMs: number): [number, number][] {
+  const inRange = words.filter((w) => w.endMs > rangeMs[0] && w.startMs < rangeMs[1]);
+  if (inRange.length === 0) return [];
+  if (!silences) {
+    const runs: [number, number][] = [];
+    for (const w of inRange) {
+      const last = runs[runs.length - 1];
+      if (last && w.startMs - last[1] < gapMs) last[1] = Math.max(last[1], w.endMs);
+      else runs.push([w.startMs, w.endMs]);
+    }
+    return runs;
+  }
+  const quiet = silences.filter((s) => s.endMs - s.startMs >= gapMs).sort((a, b) => a.startMs - b.startMs);
+  const runs: [number, number][] = [];
+  let cursor = rangeMs[0];
+  for (const s of quiet) {
+    if (s.startMs > cursor) runs.push([cursor, Math.min(s.startMs, rangeMs[1])]);
+    cursor = Math.max(cursor, s.endMs);
+  }
+  if (cursor < rangeMs[1]) runs.push([cursor, rangeMs[1]]);
+  // keep only runs that contain a word start (drops noise between pauses)
+  return runs.filter(([a, b]) => b > a && inRange.some((w) => w.startMs >= a - 50 && w.startMs < b));
+}
+
 export const duckMusic: ToolDef = {
   name: 'duckMusic',
   description:
-    'Duck music under speech: adds volume keyframes on the music item (default 25% under speech, 150ms ramps), computed from the speech items\' transcripts. Also honored by the exporter.',
+    "Duck music under speech: volume keyframes on the music item, lowered to level x its own volume while someone talks and back up in pauses longer than gapSec. Speech is found from the voice items' audio and transcripts; music is never treated as speech. Pass speechItemIds to name the voice items explicitly.",
   input: z.object({
     musicItemId: z.string().describe('The audio item to duck'),
-    level: z.number().min(0).max(1).default(0.25),
+    level: z.number().min(0).max(1).default(0.25).describe("Ducked volume as a fraction of the item's own volume"),
     rampMs: z.number().min(0).max(1000).default(150),
+    gapSec: z.number().min(0.1).max(5).default(0.5).describe('Pauses at least this long let the music come back up'),
+    speechItemIds: z.array(z.string()).optional().describe('Voice items to duck under; default = detected from transcripts'),
   }),
   mutates: true,
   async handler(input, ctx) {
@@ -322,36 +423,63 @@ export const duckMusic: ToolDef = {
     const fps = snapshot.doc.project.fps;
     const ramp = Math.round((input.rampMs / 1000) * fps);
 
-    const spans: { start: number; end: number }[] = [];
-    for (const item of speechItems(snapshot)) {
-      const words = wordsForItem(snapshot, item);
-      if (words.length === 0) continue;
-      const spanStart = Math.max(music.startFrame, words[0]!.startFrame - ramp);
-      const spanEnd = Math.min(itemEnd(music), words[words.length - 1]!.endFrame + ramp);
-      // merge close spans (< 2 * ramp apart)
-      if (spans.length > 0 && spanStart - spans[spans.length - 1]!.end < ramp * 2) {
-        spans[spans.length - 1]!.end = spanEnd;
-      } else {
-        spans.push({ start: spanStart, end: spanEnd });
+    const sources = speechItems(snapshot, input.speechItemIds).filter((i) => {
+      if (i.id === music.id || i.assetId === music.assetId) return false; // the music itself is never speech
+      if (input.speechItemIds) return true; // the caller named it
+      const asset = snapshot.assets.find((a) => a.id === i.assetId);
+      if (asset?.hasSpeech === false) return false;
+      const words = snapshot.transcripts.find((t) => t.assetId === i.assetId)?.words ?? [];
+      return looksLikeSpeech(words, asset?.durationMs ?? 0);
+    });
+
+    // speech runs in music-local frames
+    const runs: { start: number; end: number }[] = [];
+    for (const item of sources) {
+      const words = snapshot.transcripts.find((t) => t.assetId === item.assetId)?.words ?? [];
+      const srcStartMs = ((item.sourceInFrame ?? 0) / fps) * 1000;
+      const srcEndMs = srcStartMs + ((item.durationFrames * item.speed) / fps) * 1000;
+      for (const [a, b] of speechRunsMs(words, await silencesOf(ctx, item), [srcStartMs, srcEndMs], input.gapSec * 1000)) {
+        runs.push({
+          start: msToTimelineFrame(item, fps, Math.max(a, srcStartMs)) - music.startFrame,
+          end: msToTimelineFrame(item, fps, Math.min(b, srcEndMs)) - music.startFrame,
+        });
       }
     }
-    if (spans.length === 0) throw new Error('No speech found to duck under.');
-
-    const keyframes: { frame: number; value: number; easing: 'linear' }[] = [];
-    for (const span of spans.slice(0, 40)) {
-      keyframes.push(
-        { frame: Math.max(0, span.start - ramp), value: 1, easing: 'linear' },
-        { frame: span.start, value: input.level, easing: 'linear' },
-        { frame: span.end, value: input.level, easing: 'linear' },
-        { frame: span.end + ramp, value: 1, easing: 'linear' },
-      );
+    const merged: { start: number; end: number }[] = [];
+    for (const r of runs.sort((a, b) => a.start - b.start)) {
+      const last = merged[merged.length - 1];
+      // runs closer than the gap threshold (or the two ramps) are one run
+      if (last && r.start - last.end < Math.max(2 * ramp, Math.round(input.gapSec * fps))) last.end = Math.max(last.end, r.end);
+      else merged.push({ ...r });
     }
-    await ctx.applyOps(
-      [{ type: 'item.setKeyframes', itemId: music.id, property: 'volume', keyframes }],
-      ctx.actor,
-      'duckMusic',
-    );
-    return { applied: true, duckedSpans: spans.length, level: input.level };
+    const clipped = merged.filter((r) => r.end > 0 && r.start < music.durationFrames);
+    if (clipped.length === 0) {
+      throw new Error('No speech found over the music to duck under (music is never treated as speech; pass speechItemIds to name voice items).');
+    }
+
+    // the envelope is relative to the item's own volume, and keyframe frames are item-local
+    const hi = music.volume;
+    const lo = hi * input.level;
+    const keyframes: { frame: number; value: number; easing: 'linear' }[] = [];
+    const push = (frame: number, value: number) => {
+      if (frame > music.durationFrames) return;
+      const f = Math.max(0, frame);
+      const last = keyframes[keyframes.length - 1];
+      if (last && f <= last.frame) {
+        if (f === last.frame) last.value = value;
+        return;
+      }
+      keyframes.push({ frame: f, value, easing: 'linear' });
+    };
+    const spans = clipped.slice(0, 100);
+    for (const r of spans) {
+      push(r.start - ramp, hi);
+      push(r.start, lo);
+      push(r.end, lo);
+      push(r.end + ramp, hi);
+    }
+    await ctx.applyOps([{ type: 'item.setKeyframes', itemId: music.id, property: 'volume', keyframes }], ctx.actor, 'duckMusic');
+    return { applied: true, duckedSpans: spans.length, level: input.level, volumeUnder: Number(lo.toFixed(3)), volumeClear: hi, speechItems: sources.length };
   },
 };
 

@@ -22,6 +22,11 @@ export interface ToolContext {
   listExportPresets(): Promise<unknown>;
   /** Beat detection for an audio asset (computed + cached on demand). */
   analyzeBeats(assetId: string): Promise<{ bpm: number; beatsMs: number[]; downbeatsMs: number[]; sections: { startMs: number; endMs: number; label: string; energy: number }[] }>;
+  /** Silent stretches of an asset's audio, measured from the waveform (null = no audio). Optional: tools fall back to transcript gaps. */
+  getSilences?(assetId: string): Promise<{ startMs: number; endMs: number }[] | null>;
+  /** Undo / redo up to `steps` history groups (UI and agent edits share one history). */
+  undo(steps: number): Promise<{ steps: number; labels: (string | null)[]; canUndo: boolean; canRedo: boolean }>;
+  redo(steps: number): Promise<{ steps: number; labels: (string | null)[]; canUndo: boolean; canRedo: boolean }>;
   /** Static sandbox-policy check for generated motion-graphic code. */
   validateMotion(code: string): { ok: boolean; error?: string };
   /** Reference-style analysis (computed + cached on demand). */

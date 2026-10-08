@@ -28,6 +28,16 @@ const itemAddLoose = z.discriminatedUnion('type', [
 const opSchemaBase = z.discriminatedUnion('type', [
   z.object({ type: z.literal('project.rename'), name: z.string().min(1) }),
   z.object({ type: z.literal('project.setCanvas'), width: frameSchema.positive(), height: frameSchema.positive() }),
+  z.object({
+    type: z.literal('project.setFps'),
+    fps: z.number().int().min(1).max(120),
+  }).describe('Change the frame rate; every item, keyframe and marker is rescaled so it keeps its time in seconds'),
+  z.object({
+    type: z.literal('project.restoreTimeline'),
+    fps: z.number().int().min(1).max(120),
+    items: z.array(itemAddLoose),
+    markers: z.array(markerSchema),
+  }).describe('Internal: the exact inverse of project.setFps'),
   z.object({ type: z.literal('project.setStyleConfig'), styleConfig: styleConfigSchema }),
   z.object({
     type: z.literal('project.setReference'),

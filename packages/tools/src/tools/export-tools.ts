@@ -6,14 +6,12 @@ import type { ToolDef } from '../registry.ts';
 export const exportVideo: ToolDef = {
   name: 'exportVideo',
   description:
-    'Start an export with a platform preset (TikTok / Reels / Shorts, YouTube 1080p, Square 1080, 1440p, WebM 1080p). Returns an exportId; poll getExportStatus. Frame-accurate: output matches captureFrame.',
+    'Start an export with a preset: a platform preset (TikTok / Reels / Shorts, YouTube 1080p, Square 1080, 1440p, WebM 1080p) or a quality tier "720p", "1080p", "1440p" (short side of the canvas; add " WebM" for WebM). Returns an exportId; poll getExportStatus. Frame-accurate: output matches captureFrame.',
   input: z.object({
-    preset: z.string().default('YouTube 1080p').describe('Preset name from listExportPresets'),
+    preset: z.string().default('YouTube 1080p').describe('Preset name from listExportPresets, e.g. "720p"'),
   }),
   mutates: false,
   async handler(input, ctx) {
-    const snap = (await ctx.getSnapshot()) as { startExport?: unknown };
-    void snap;
     const row = (await ctx.startExport(input.preset)) as { id: string; status: string };
     return { exportId: row.id, status: row.status, note: 'Poll getExportStatus with this exportId.' };
   },

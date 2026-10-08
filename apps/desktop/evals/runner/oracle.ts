@@ -1,8 +1,6 @@
 import { newId, type Item, type Op } from '@cutboard/schema';
 import { projectService } from '../../src/main/project-service.ts';
 import { callTool } from '../../src/main/tools-bridge.ts';
-import { exportService } from '../../src/main/export-service.ts';
-import { resolveExport } from '../../src/shared/export-options.ts';
 import { editorContextCache } from '../../src/main/editor-context.ts';
 import { TraceRecorder } from '../lib/trace.ts';
 import { captionItems } from '../lib/checks.ts';
@@ -86,7 +84,7 @@ const SCRIPTS: Record<string, Script> = {
   },
 
   'vertical-reels': async (e) => {
-    await e.call('batchEdit', { label: 'vertical 9:16', ops: [{ type: 'project.setCanvas', width: 1080, height: 1920 }] });
+    await e.call('setProjectSettings', { aspect: '9:16' });
   },
 
   'add-captions': async (e) => {
@@ -94,9 +92,7 @@ const SCRIPTS: Record<string, Script> = {
   },
 
   'remove-pauses': async (e) => {
-    // removeSilences works from ASR word gaps, and Whisper stretches word ends across pauses
-    // (see the report), so cut the real silences from the fixture ground truth instead
-    await cutSourceSpans(e, interviewItem(e).id, e.ctx.manifest.fixtures['interview.mp4'].pauses);
+    await e.call('removeSilences', { thresholdSec: 0.5 });
   },
 
   'remove-retake': async (e) => {
@@ -109,64 +105,35 @@ const SCRIPTS: Record<string, Script> = {
   },
 
   'music-under-speech': async (e) => {
-    const truth = e.ctx.manifest.fixtures['interview.mp4'];
     await e.call('addAudio', { assetId: e.asset('music.mp3'), startFrame: 0, volume: 0.4 });
     const music = e.items().find((i) => i.assetId === e.asset('music.mp3'))!;
-    // duckMusic ducks one flat span per item (see the report): write the envelope from the speech runs
-    const runs: { start: number; end: number }[] = [];
-    for (const s of truth.segments.filter((x) => x.kind !== 'pause')) {
-      const last = runs[runs.length - 1];
-      if (last && s.startSec - last.end < 0.5) last.end = s.endSec;
-      else runs.push({ start: s.startSec, end: s.endSec });
-    }
-    const hi = 0.4;
-    const lo = 0.12;
-    const ramp = 5;
-    const kf: { frame: number; value: number; easing: 'linear' }[] = [];
-    for (const r of runs) {
-      const s0 = e.frames(r.start);
-      const s1 = e.frames(r.end);
-      if (s0 - ramp > (kf[kf.length - 1]?.frame ?? -1)) kf.push({ frame: s0 - ramp, value: hi, easing: 'linear' });
-      kf.push({ frame: Math.max(s0, (kf[kf.length - 1]?.frame ?? -1) + 1), value: lo, easing: 'linear' }, { frame: s1, value: lo, easing: 'linear' }, { frame: s1 + ramp, value: hi, easing: 'linear' });
-    }
-    await e.call('setKeyframes', { itemId: music.id, property: 'volume', keyframes: kf });
+    await e.call('duckMusic', { musicItemId: music.id });
   },
 
   'cut-to-beat': async (e) => {
-    // beatSync uses the detector's grid (121 BPM, ~0.2 s late; see the report), so place the cuts on
-    // the true 120 BPM grid: a new shot every 2 s (4 beats), cycling through the three clips
-    const shots: [string, number][] = [['a', 0], ['b', 0], ['c', 0], ['a', 2], ['b', 2], ['c', 2], ['b', 4], ['c', 4]];
-    const SHOT_SEC = 2;
-    for (const [i, [clip, srcSec]] of shots.entries()) {
-      await e.call('addClip', { assetId: e.asset(`broll-${clip}.mp4`), startFrame: e.frames(i * SHOT_SEC), sourceInFrame: e.frames(srcSec), durationFrames: e.frames(SHOT_SEC) });
-    }
+    const music = e.items().find((i) => i.assetId === e.asset('music.mp3'))!;
+    await e.call('analyzeBeats', { assetId: e.asset('music.mp3') });
+    await e.call('beatSync', { musicItemId: music.id });
   },
 
   'captions-bigger-undo': async (e, turn) => {
     if (turn === 0) {
       await e.call('addCaptions', {});
     } else if (turn === 1) {
-      for (const c of captionItems(projectService.doc)) {
-        await e.call('updateItem', { itemId: c.id, patch: { props: { ...c.props, style: { ...c.props.style, fontSize: Math.round(c.props.style.fontSize * 1.4) } } } });
-      }
+      // one batch = one history step, so the next turn's single undo reverts all of it
+      const ops: Op[] = captionItems(projectService.doc).map((c) => ({
+        type: 'item.update',
+        itemId: c.id,
+        patch: { props: { ...c.props, style: { ...c.props.style, fontSize: Math.round(c.props.style.fontSize * 1.4) } } },
+      }));
+      await e.call('batchEdit', { label: 'bigger captions', ops });
     } else {
-      // the agent has no undo tool: undoing means putting the previous values back
-      for (const c of captionItems(projectService.doc)) {
-        await e.call('updateItem', { itemId: c.id, patch: { props: { ...c.props, style: { ...c.props.style, fontSize: Math.round(c.props.style.fontSize / 1.4) } } } });
-      }
+      await e.call('undo', { steps: 1 });
     }
   },
 
   'export-720p': async (e) => {
-    const presets = (await e.call('listExportPresets', {})) as unknown as { name: string; height: number }[];
-    const tool = presets.find((p) => p.height === 720);
-    if (tool) {
-      await e.call('exportVideo', { preset: tool.name });
-      return;
-    }
-    // no agent-reachable 720p preset (see the report): take the editor's own export path
-    const { width, height } = projectService.doc.project;
-    await exportService.start(resolveExport('720p', 'mp4', width, height));
+    await e.call('exportVideo', { preset: '720p' });
   },
 
   'customer-teaser': async (e) => {
@@ -177,8 +144,7 @@ const SCRIPTS: Record<string, Script> = {
   },
 
   'compound-edit': async (e) => {
-    const truth = e.ctx.manifest.fixtures['interview.mp4'];
-    await cutSourceSpans(e, interviewItem(e).id, [...truth.pauses, truth.retake.abandoned]);
+    await e.call('buildRoughCut', {});
     await e.call('addCaptions', {});
     await e.call('addAudio', { assetId: e.asset('music.mp3'), startFrame: 0, durationFrames: durationFrames(e), volume: 0.3 });
     await e.call('addText', { text: 'Launch Day', startFrame: 0, durationFrames: e.frames(3) });

@@ -414,6 +414,9 @@ const TOOL_LABELS: Record<string, string> = {
   beatSync: 'Beat sync',
   createMotionGraphic: 'Create motion graphic',
   exportVideo: 'Export',
+  undo: 'Undo',
+  redo: 'Redo',
+  setProjectSettings: 'Change project settings',
 };
 
 function plural(n: number, one: string, many = `${one}s`): string {

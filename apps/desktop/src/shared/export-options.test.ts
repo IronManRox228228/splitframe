@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateBytes, formatBytes, resolveExport, sanitizeFileName } from './export-options.ts';
+import { estimateBytes, findPreset, listPresets, formatBytes, resolveExport, sanitizeFileName } from './export-options.ts';
 
 describe('resolveExport', () => {
   it('matches the platform presets at 1080p', () => {
@@ -28,5 +28,17 @@ describe('estimates and names', () => {
     expect(sanitizeFileName('CON')).toBe('_CON');
     expect(sanitizeFileName('..hidden')).toBe('hidden');
     expect(sanitizeFileName('x'.repeat(300)).length).toBe(120);
+  });
+});
+
+describe('agent-visible presets', () => {
+  it('lists a 720p tier resolved against the canvas, same as the dialog', () => {
+    const names = listPresets(1920, 1080).map((p) => p.name);
+    expect(names).toContain('720p MP4');
+    expect(names).toContain('YouTube 1080p');
+    expect(findPreset('720p', 1920, 1080)).toMatchObject({ width: 1280, height: 720, format: 'mp4' });
+    expect(findPreset('720P WEBM', 1920, 1080)).toMatchObject({ height: 720, format: 'webm' });
+    expect(findPreset('720p', 1080, 1920)).toMatchObject({ width: 720, height: 1280 });
+    expect(findPreset('nope', 1920, 1080)).toBeUndefined();
   });
 });

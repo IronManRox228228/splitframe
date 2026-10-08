@@ -11,6 +11,7 @@ import { detectScenes, extractKeyframe, keyframePath } from './analysis/scenes.t
 import { describeKeyframe, getVlmConfig } from './analysis/vlm.ts';
 import { indexTranscriptWords, indexScene, removeAssetIndex, removeSceneVectors } from './analysis/search.ts';
 import { computeFootageNotes, type FootageNotes } from './analysis/footage-notes.ts';
+import { computeSilenceMap, SILENCE_MAP_VERSION, type SilenceInterval } from './analysis/silence.ts';
 import { getSettings } from './settings.ts';
 import { Asset, AssetKind, assetSchema, newId } from '@cutboard/schema';
 
@@ -263,6 +264,18 @@ function registerIngestHandler(): void {
     saveAsset(asset);
     if (ctx.signal.aborted) return;
 
+    // ---- silence map (non-fatal): the real pauses, which transcript word gaps cannot show ----
+    if (asset.hasAudio) {
+      db.prepare(`DELETE FROM silence_maps WHERE asset_id=?`).run(assetId);
+      try {
+        await getSilenceMap(assetId, ctx.signal);
+      } catch (err) {
+        process.stderr.write(`[ingest] silence map skipped for ${assetId}: ${err instanceof Error ? err.message : String(err)}
+`);
+      }
+      if (ctx.signal.aborted) return;
+    }
+
     // ---- scene detection + keyframes (video only) ----
     if (asset.kind === 'video') {
       ctx.progress(0.68, 'scenes');
@@ -351,6 +364,26 @@ export function getFootageNotes(assetId: string): FootageNotes | null {
   }
 }
 
+/** Silence intervals of an asset's audio (cached; computed on demand for assets imported before the map existed). Null when there is no audio. */
+export async function getSilenceMap(assetId: string, signal?: AbortSignal): Promise<SilenceInterval[] | null> {
+  const db = getDb();
+  const row = db.prepare(`SELECT version, silences FROM silence_maps WHERE asset_id=?`).get(assetId) as { version: number; silences: string } | undefined;
+  if (row && row.version === SILENCE_MAP_VERSION) {
+    try {
+      return JSON.parse(row.silences) as SilenceInterval[];
+    } catch {
+      /* recompute */
+    }
+  }
+  const asset = getAsset(assetId);
+  if (!asset || !asset.hasAudio) return null;
+  const silences = await computeSilenceMap(asset.path, asset.durationMs, signal);
+  if (!signal?.aborted) {
+    db.prepare(`INSERT OR REPLACE INTO silence_maps (asset_id, version, silences) VALUES (?, ?, ?)`).run(assetId, SILENCE_MAP_VERSION, JSON.stringify(silences));
+  }
+  return silences;
+}
+
 export function getAssets(projectId: string): Asset[] {
   const db = getDb();
   const rows = db.prepare(`SELECT * FROM assets WHERE project_id=? ORDER BY created_at`).all(projectId) as Record<string, unknown>[];
@@ -429,6 +462,7 @@ export function removeAsset(assetId: string): void {
   db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM beat_maps WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM footage_notes WHERE asset_id=?`).run(assetId);
+  db.prepare(`DELETE FROM silence_maps WHERE asset_id=?`).run(assetId);
   removeAssetIndex(assetId, scenes.map((s) => s.id));
   // the asset is gone for good, so undoing the clip removal must not restore clips pointing at it
   projectService.forgetAsset(assetId);

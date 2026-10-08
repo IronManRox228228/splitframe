@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS beat_maps (
   sections TEXT NOT NULL DEFAULT '[]'
 );
 
+CREATE TABLE IF NOT EXISTS silence_maps (
+  asset_id TEXT PRIMARY KEY,
+  version INTEGER NOT NULL,
+  silences TEXT NOT NULL DEFAULT '[]'
+);
+
 CREATE TABLE IF NOT EXISTS footage_notes (
   asset_id TEXT PRIMARY KEY,
   version INTEGER NOT NULL,
@@ -115,7 +121,21 @@ export function getDb(): Database.Database {
   const { dbPath } = getPaths();
   db = new Database(dbPath);
   db.exec(SCHEMA);
+  invalidateStaleAnalysis(db);
   return db;
+}
+
+/**
+ * Bump when a detector's output changes, and drop its cached rows here; they are recomputed
+ * on demand. 1: beat detector rewrite (old maps were 1 BPM off with a drifting grid).
+ */
+const ANALYSIS_CACHE_VERSION = 1;
+
+function invalidateStaleAnalysis(db: Database.Database): void {
+  const version = db.pragma('user_version', { simple: true }) as number;
+  if (version >= ANALYSIS_CACHE_VERSION) return;
+  if (version < 1) db.exec(`DELETE FROM beat_maps`);
+  db.pragma(`user_version = ${ANALYSIS_CACHE_VERSION}`);
 }
 
 export function closeDb(): void {
