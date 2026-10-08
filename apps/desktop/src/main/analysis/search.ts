@@ -126,6 +126,18 @@ export function removeAssetIndex(assetId: string, sceneIds: string[] = []): void
   removeSceneVectors(sceneIds);
 }
 
+/** Duplicate scene embeddings under new scene ids (used when a project is copied). */
+export function copySceneVectors(pairs: { from: string; to: string }[]): void {
+  if (!vectorSearchEnabled || pairs.length === 0) return;
+  const db = getDb();
+  const read = db.prepare(`SELECT embedding FROM scene_vec WHERE scene_id=?`);
+  const ins = db.prepare(`INSERT INTO scene_vec (scene_id, embedding) VALUES (?, ?)`);
+  for (const { from, to } of pairs) {
+    const row = read.get(from) as { embedding: Buffer } | undefined;
+    if (row) ins.run(to, row.embedding);
+  }
+}
+
 export function removeSceneVectors(sceneIds: string[]): void {
   if (!vectorSearchEnabled || sceneIds.length === 0) return;
   const del = getDb().prepare(`DELETE FROM scene_vec WHERE scene_id=?`);

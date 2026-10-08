@@ -145,3 +145,30 @@ describe('undo roundtrip over a full edit sequence', () => {
     expect(restored.tracks).toEqual(doc.tracks);
   });
 });
+
+describe('History.dropReferences', () => {
+  const group = (id: string, ref?: string) => ({
+    ops: [{ type: 'project.rename', name: id + (ref ?? '') } as never],
+    inverses: [{ type: 'project.rename', name: 'x' } as never],
+    label: id,
+  });
+
+  it('drops the referencing undo group and older ones, keeps newer, and trims the redo tail', () => {
+    const h = new History();
+    h.push(group('a').ops, group('a').inverses, 'a');
+    h.push(group('b', 'ast_1').ops, group('b').inverses, 'b');
+    h.push(group('c').ops, group('c').inverses, 'c');
+    h.push(group('d', 'ast_1').ops, group('d').inverses, 'd');
+    h.push(group('e').ops, group('e').inverses, 'e');
+    h.undo(); // e
+    h.undo(); // d: now in the redo tail with e
+    h.dropReferences('ast_1');
+    // undo side: b referenced it, so a and b are gone; c stays
+    expect(h.undo()?.label).toBe('c');
+    expect(h.undo()).toBeNull();
+    // redo side: d referenced it, so d and e are gone
+    expect(h.canRedo).toBe(true); // c itself is redoable now
+    expect(h.redo()?.label).toBe('c');
+    expect(h.redo()).toBeNull();
+  });
+});

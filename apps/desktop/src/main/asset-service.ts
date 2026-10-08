@@ -390,6 +390,8 @@ export function removeAsset(assetId: string): void {
   db.prepare(`DELETE FROM scenes WHERE asset_id=?`).run(assetId);
   db.prepare(`DELETE FROM beat_maps WHERE asset_id=?`).run(assetId);
   removeAssetIndex(assetId, scenes.map((s) => s.id));
+  // the asset is gone for good, so undoing the clip removal must not restore clips pointing at it
+  projectService.forgetAsset(assetId);
   // best-effort cleanup of generated files; never touches the original or anything outside this project's folder
   const keyframes = scenes.flatMap((s) => {
     try {

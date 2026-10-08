@@ -115,6 +115,34 @@ export class History {
     return this.index < this.stack.length;
   }
 
+  /**
+   * Forget history that would bring back references to `needle` (an id that no longer exists,
+   * e.g. a deleted asset). Undo drops the newest referencing group and everything older, since
+   * those groups can no longer be reached without passing through it; redo drops the first
+   * referencing group and everything after it. Groups in between stay valid: they apply to the
+   * current doc, which never contained the removed thing.
+   */
+  dropReferences(needle: string): void {
+    const refs = (g: UndoGroup) => JSON.stringify(g.ops).includes(needle) || JSON.stringify(g.inverses).includes(needle);
+    if (this.openGroup) this.commitGroup();
+    let lastUndo = -1;
+    for (let i = this.index - 1; i >= 0; i--) {
+      if (refs(this.stack[i]!)) {
+        lastUndo = i;
+        break;
+      }
+    }
+    let firstRedo = this.stack.length;
+    for (let i = this.index; i < this.stack.length; i++) {
+      if (refs(this.stack[i]!)) {
+        firstRedo = i;
+        break;
+      }
+    }
+    this.stack = this.stack.slice(lastUndo + 1, firstRedo);
+    this.index -= lastUndo + 1;
+  }
+
   clear(): void {
     this.stack = [];
     this.index = 0;

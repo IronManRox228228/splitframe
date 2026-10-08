@@ -19,7 +19,7 @@ import {
   type LibDb,
   type ProjectSummary,
 } from './project-library.ts';
-import { removeAssetIndex } from './analysis/search.ts';
+import { copySceneVectors, indexTranscriptWords, removeAssetIndex } from './analysis/search.ts';
 import { jobs } from './jobs.ts';
 
 /**
@@ -53,6 +53,18 @@ function dirOf(id: string, name: string): string {
   return projectDir(root, id, name);
 }
 
+
+/** Rebuild search rows for freshly copied assets: transcript words and scene embeddings. */
+function reindexCopiedAssets(
+  copies: { fromAssetId: string; toAssetId: string; sceneIds: { from: string; to: string }[] }[],
+): void {
+  const db = getDb();
+  for (const c of copies) {
+    const row = db.prepare(`SELECT words FROM transcripts WHERE asset_id=?`).get(c.toAssetId) as { words: string } | undefined;
+    if (row) indexTranscriptWords(c.toAssetId, JSON.parse(row.words));
+    copySceneVectors(c.sceneIds);
+  }
+}
 
 export class ProjectService {
   private current: { id: string; doc: TimelineDoc; dir: string } | null = null;
@@ -95,6 +107,8 @@ export class ProjectService {
       projectsRoot: getPaths().projectsRoot,
       projectId,
       dirFor: (id, name) => projectDir(getPaths().projectsRoot, id, name),
+      // the copy has new asset ids, so its transcript words and scene vectors need their own index rows
+      onAssetsCopied: reindexCopiedAssets,
     });
     return { id: res.id, name: res.name, updatedAt: new Date().toISOString() };
   }
@@ -248,6 +262,11 @@ export class ProjectService {
       current.doc = result.doc;
       return { applied: group.ops, label: group.label ?? null };
     });
+  }
+
+  /** An asset was deleted for good: undo/redo must not bring back clips that point at it. */
+  forgetAsset(assetId: string): void {
+    this.history.dropReferences(assetId);
   }
 
   get historyLabels(): { canUndo: boolean; canRedo: boolean; undoLabel: string | null } {

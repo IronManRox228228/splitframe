@@ -193,6 +193,8 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
     'assets:remove',
     (_e, assetId: string) => {
       removeAsset(assetId_.parse(assetId));
+      // history was trimmed: nudge the editor to refresh its undo/redo state
+      broadcast('event', { type: 'doc:changed', payload: { doc: projectService.doc, label: null } });
       return true;
     },
   );

@@ -7,6 +7,7 @@ import type { MediaPool } from '../lib/media.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { CommandBar } from './CommandBar.tsx';
 import { latestOnly, needsResync, planAudio, planVideo } from '../lib/playback-plan.ts';
+import { upsertKeyframe } from './canvas/geometry.ts';
 import { CanvasOverlay, type LiveMap, type OverlayRect } from './canvas/CanvasOverlay.tsx';
 import { PlayheadTimecode, usePlayheadEffect } from './playhead.tsx';
 import type { TimelineDoc } from '@cutboard/schema';
@@ -38,7 +39,7 @@ export function PreviewPane() {
   const [rect, setRect] = useState<OverlayRect | null>(null);
   const [sizeTick, setSizeTick] = useState(0);
 
-  const overlayDoc = useMemo(() => (doc ? withLive(doc, live, false) : null), [doc, live]);
+  const overlayDoc = useMemo(() => (doc ? withLive(doc, live, false, Math.round(useEditor.getState().playhead)) : null), [doc, live]);
 
   const drawNow = async ({ frame, live }: { frame: number; live: boolean }) => {
     const canvas = canvasRef.current;
@@ -51,7 +52,7 @@ export function PreviewPane() {
     const h = Math.max(1, state.doc.project.height);
     if (canvas.width !== w) canvas.width = w;
     if (canvas.height !== h) canvas.height = h;
-    await compositorRef.current.draw(canvas, withLive(state.doc, liveRef.current, true), frame, pool, {
+    await compositorRef.current.draw(canvas, withLive(state.doc, liveRef.current, true, Math.round(frame)), frame, pool, {
       showSafeZones,
     });
     if (!live) setSizeTick((n) => n + 1);
@@ -274,7 +275,7 @@ function applyMute(pool: MediaPool | null, muted: boolean): void {
 }
 
 /** The doc with in-flight drag transforms merged in (opacity only when drawing, so a hidden item keeps its box). */
-function withLive(doc: TimelineDoc, live: LiveMap | null, includeOpacity: boolean): TimelineDoc {
+function withLive(doc: TimelineDoc, live: LiveMap | null, includeOpacity: boolean, frame: number): TimelineDoc {
   if (!live) return doc;
   return {
     ...doc,
@@ -283,7 +284,16 @@ function withLive(doc: TimelineDoc, live: LiveMap | null, includeOpacity: boolea
       if (!t) return item;
       const { opacity, ...rest } = t;
       const merged = { ...item.transform, ...rest, ...(includeOpacity && opacity !== undefined ? { opacity } : {}) };
-      return { ...item, transform: merged };
+      // a keyframed x/y would override the static value, so the drag edits its keyframe at the playhead
+      let keyframes = item.keyframes;
+      for (const key of ['x', 'y'] as const) {
+        const kfs = item.keyframes[`transform.${key}`];
+        const value = rest[key];
+        if (kfs && kfs.length > 0 && value !== undefined) {
+          keyframes = { ...keyframes, [`transform.${key}`]: upsertKeyframe(kfs, frame - item.startFrame, value) };
+        }
+      }
+      return { ...item, transform: merged, keyframes };
     }),
   };
 }

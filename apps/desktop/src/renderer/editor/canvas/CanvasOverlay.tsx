@@ -5,6 +5,7 @@ import { useEditor } from '../../store.ts';
 import { measureText } from './measure.ts';
 import {
   boxExtent,
+  liveTransformOps,
   rotateAboutCenter,
   scaleFromCorner,
   snapAxis,
@@ -48,8 +49,6 @@ type Drag =
 const DRAG_THRESHOLD_PX = 3;
 const SNAP_PX = 6;
 const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
-
-const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 /** Pointer + keyboard editing layer over the preview canvas. DOM only; never drawn into frames. */
 export function CanvasOverlay({ doc, frame, canvasW, canvasH, rect, sizeTick, mediaSize, onLive }: Props) {
@@ -102,14 +101,7 @@ export function CanvasOverlay({ doc, frame, canvasW, canvasH, rect, sizeTick, me
     for (const [itemId, t] of Object.entries(live)) {
       const item = itemOf(itemId);
       if (!item) continue;
-      const patch: Record<string, number> = {};
-      for (const key of ['x', 'y', 'scale', 'scaleX', 'scaleY', 'rotation'] as const) {
-        const value = t[key];
-        if (value === undefined) continue;
-        const v = round2(value);
-        if (round2(item.transform[key]) !== v) patch[key] = v;
-      }
-      if (Object.keys(patch).length > 0) ops.push({ type: 'item.update', itemId, patch: { transform: patch } } as Op);
+      ops.push(...liveTransformOps(item, t, frame));
     }
     await useEditor.getState().applyOps(ops, label);
   };
@@ -117,7 +109,7 @@ export function CanvasOverlay({ doc, frame, canvasW, canvasH, rect, sizeTick, me
   const beginMove = (p: Pt, pointerId: number, ids: string[]) => {
     const items = ids
       .map((id) => byId.get(id))
-      .filter((b): b is ItemBounds => Boolean(b) && !b!.locked && !b!.animated)
+      .filter((b): b is ItemBounds => Boolean(b) && !b!.locked)
       .map((b) => ({ bounds: b, transform: itemOf(b.itemId)!.transform }));
     if (items.length === 0) return;
     dragRef.current = { kind: 'move', start: p, items, moved: false, pointerId };
@@ -197,7 +189,7 @@ export function CanvasOverlay({ doc, frame, canvasW, canvasH, rect, sizeTick, me
       }
       setGuides({ x: gx, y: gy });
       const live: LiveMap = {};
-      for (const i of drag.items) live[i.bounds.itemId] = { x: i.transform.x + dx, y: i.transform.y + dy };
+      for (const i of drag.items) live[i.bounds.itemId] = { x: i.bounds.anchorX - i.bounds.baseX + dx, y: i.bounds.anchorY - i.bounds.baseY + dy };
       emit(live);
     } else if (drag.kind === 'scale') {
       const type = drag.item.bounds.type;
@@ -245,15 +237,14 @@ export function CanvasOverlay({ doc, frame, canvasW, canvasH, rect, sizeTick, me
     };
     const d = dir[e.key];
     if (!d || e.ctrlKey || e.metaKey || e.altKey || dragRef.current) return;
-    const targets = selected.filter((b) => !b.animated);
+    const targets = selected;
     if (targets.length === 0) return; // nothing to nudge: the timeline's frame-step shortcut runs
     e.preventDefault();
     e.stopPropagation(); // keep the global arrow shortcuts (frame step) from also firing
     const step = e.shiftKey ? 10 : 1;
     const live: LiveMap = {};
     for (const b of targets) {
-      const t = itemOf(b.itemId)?.transform;
-      if (t) live[b.itemId] = { x: t.x + d.x * step, y: t.y + d.y * step };
+      live[b.itemId] = { x: b.anchorX - b.baseX + d.x * step, y: b.anchorY - b.baseY + d.y * step };
     }
     void commit(live, 'Nudge');
   };
@@ -270,7 +261,7 @@ export function CanvasOverlay({ doc, frame, canvasW, canvasH, rect, sizeTick, me
 
   const hover = hoverId && !dragging && !editing && !selection.includes(hoverId) ? byId.get(hoverId) : null;
   const over = !dragging && hoverId ? byId.get(hoverId) : null;
-  const cursor = dragging ? 'grabbing' : over && !over.animated ? 'move' : 'default';
+  const cursor = dragging ? 'grabbing' : over ? 'move' : 'default';
   const editingBounds = editing ? byId.get(editing) : undefined;
 
   return (

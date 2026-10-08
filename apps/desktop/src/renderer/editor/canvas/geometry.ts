@@ -1,4 +1,5 @@
 import type { ItemBounds } from '@cutboard/renderer';
+import type { Item, Keyframe, Op } from '@cutboard/schema';
 
 /** Pure math for on-canvas editing (canvas pixel space). */
 
@@ -136,4 +137,42 @@ export function rotateAboutCenter(
     x: b.cx + rel.x - b.baseX,
     y: b.cy + rel.y - b.baseY,
   };
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Insert or overwrite the keyframe at `localFrame`, keeping the list sorted. */
+export function upsertKeyframe(kfs: Keyframe[], localFrame: number, value: number): Keyframe[] {
+  const existing = kfs.find((k) => k.frame === localFrame);
+  const next = existing
+    ? kfs.map((k) => (k === existing ? { ...k, value } : k))
+    : [...kfs, { frame: localFrame, value, easing: 'linear' as const }];
+  return next.sort((a, b) => a.frame - b.frame);
+}
+
+/**
+ * Turn a live transform into ops for `item`. A keyframed property (x/y) gets a keyframe added or
+ * updated at the playhead, the conventional NLE behaviour; everything else is a plain transform
+ * patch. Values that already match are skipped.
+ */
+export function liveTransformOps(item: Item, live: LiveTransform, frame: number): Op[] {
+  const ops: Op[] = [];
+  const patch: Record<string, number> = {};
+  for (const key of ['x', 'y', 'scale', 'scaleX', 'scaleY', 'rotation'] as const) {
+    const value = live[key];
+    if (value === undefined) continue;
+    const v = round2(value);
+    const kfs = item.keyframes[`transform.${key}`];
+    if (kfs && kfs.length > 0 && (key === 'x' || key === 'y')) {
+      const localFrame = frame - item.startFrame;
+      const at = kfs.find((k) => k.frame === localFrame);
+      if (at ? round2(at.value) !== v : true) {
+        ops.push({ type: 'item.setKeyframes', itemId: item.id, property: `transform.${key}`, keyframes: upsertKeyframe(kfs, localFrame, v) } as Op);
+      }
+    } else if (round2(item.transform[key]) !== v) {
+      patch[key] = v;
+    }
+  }
+  if (Object.keys(patch).length > 0) ops.unshift({ type: 'item.update', itemId: item.id, patch: { transform: patch } } as Op);
+  return ops;
 }

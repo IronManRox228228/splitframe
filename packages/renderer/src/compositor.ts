@@ -90,13 +90,18 @@ async function drawItem(
   ctx.save();
   ctx.globalAlpha = alpha;
   try {
-    if (item.masks.length > 0) applyMasks(ctx, item, canvasW, canvasH);
+    const isMedia = item.type === 'video' || item.type === 'image';
+    const media = isMedia
+      ? await safeResolve(resolver, item.assetId!, sourceFrameAt(item, frame), item)
+      : null;
+    if (item.masks.length > 0) {
+      const local = maskLocalSize(ctx, item, media, canvasW, canvasH);
+      applyMasks(ctx, item, canvasW, canvasH, { cx, cy, sx: scale * scaleX, sy: scale * scaleY, rotation, ...local });
+    }
 
-    if (item.type === 'video' || item.type === 'image') {
+    if (isMedia) {
       const filter = effectsToFilter(item.effects);
       if (filter !== 'none') ctx.filter = filter;
-      const sourceFrame = sourceFrameAt(item, frame);
-      const media = await safeResolve(resolver, item.assetId!, sourceFrame, item);
       if (media) {
         drawFitted(ctx, media, cx, cy, scale * scaleX, scale * scaleY, rotation);
       } else {
@@ -518,32 +523,82 @@ async function drawSceneTree(
   }
 }
 
-function applyMasks(ctx: Ctx2D, item: Item, canvasW: number, canvasH: number): void {
-  // v1: rect/ellipse masks clip to the item's fitted box; path masks use absolute points.
+/** The item's own unscaled size (centered on its anchor), used as the rect/ellipse mask box. */
+function maskLocalSize(
+  ctx: Ctx2D,
+  item: Item,
+  media: DrawableSource | null,
+  canvasW: number,
+  canvasH: number,
+): { w: number; h: number } {
+  if (item.type === 'video' || item.type === 'image') {
+    const size = media ? drawableSize(media) : { width: 0, height: 0 };
+    if (size.width > 0 && size.height > 0) {
+      const fit = Math.min(canvasW / size.width, canvasH / size.height);
+      return { w: size.width * fit, h: size.height * fit };
+    }
+  } else if (item.type === 'shape') {
+    const p = item.props as { width: number; height: number };
+    return { w: p.width, h: p.height };
+  } else if (item.type === 'text') {
+    const { text, style } = item.props as { text: string; style: TextStyle };
+    ctx.font = `${style.fontWeight} ${style.fontSize}px ${style.fontFamily}, Geist, system-ui, sans-serif`;
+    const lines = text.split('\n').map((l) => (style.uppercase ? l.toUpperCase() : l));
+    const widest = Math.max(0,...lines.map((l) => ctx.measureText(l).width));
+    const pad = style.backgroundColor ? style.padding : 0;
+    return { w: widest + pad * 2, h: lines.length * style.fontSize * style.lineHeight + pad };
+  }
+  // captions, motion graphics, and missing media lay out against the full canvas
+  return { w: canvasW, h: canvasH };
+}
+
+interface MaskTarget {
+  cx: number;
+  cy: number;
+  sx: number;
+  sy: number;
+  rotation: number;
+  /** unscaled item size */
+  w: number;
+  h: number;
+}
+
+/**
+ * Clip to the item's masks. Rect/ellipse masks cover the item's own box (positioned, scaled
+ * and rotated with it); path masks use absolute canvas points. `invert` clips to everything
+ * outside the shape.
+ */
+export function applyMasks(
+  ctx: Ctx2D,
+  item: Item,
+  canvasW: number,
+  canvasH: number,
+  target: MaskTarget,
+): void {
   for (const mask of item.masks) {
     if (mask.shape === 'path' && mask.path && mask.path.length > 1) {
       ctx.beginPath();
       ctx.moveTo(mask.path[0]!.x, mask.path[0]!.y);
       for (const p of mask.path.slice(1)) ctx.lineTo(p.x, p.y);
       ctx.closePath();
-      if (mask.invert) {
-        ctx.rect(0, 0, canvasW, canvasH);
-      }
-      ctx.clip(mask.invert ? 'evenodd' : 'nonzero');
-    } else {
-      const box = itemBox(canvasW, canvasH);
+    } else if (mask.shape !== 'path') {
+      const base = ctx.getTransform();
       ctx.beginPath();
+      ctx.translate(target.cx, target.cy);
+      if (target.rotation !== 0) ctx.rotate((target.rotation * Math.PI) / 180);
+      ctx.scale(target.sx, target.sy);
       if (mask.shape === 'ellipse') {
-        ctx.ellipse(box.x + box.w / 2, box.y + box.h / 2, box.w / 2, box.h / 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, target.w / 2, target.h / 2, 0, 0, Math.PI * 2);
       } else {
-        ctx.rect(box.x, box.y, box.w, box.h);
+        ctx.rect(-target.w / 2, -target.h / 2, target.w, target.h);
       }
-      ctx.clip();
-      if (mask.invert) {
-        // approximate inverse via a second full-canvas pass is not possible with a single
-        // clip; documented limitation for v1 (feather+invert arrive with the mask tooling).
-      }
+      // the path keeps the coordinates it was built with; drop the item transform again
+      ctx.setTransform(base);
+    } else {
+      continue;
     }
+    if (mask.invert) ctx.rect(0, 0, canvasW, canvasH);
+    ctx.clip(mask.invert ? 'evenodd' : 'nonzero');
   }
 }
 

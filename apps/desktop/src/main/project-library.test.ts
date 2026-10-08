@@ -166,6 +166,17 @@ describe('duplicateProject', () => {
     expect(existsSync(asset.thumb)).toBe(true);
   });
 
+  it('reports each copied asset and its scene mapping so search can be re-indexed', () => {
+    const p = addProject('Reel');
+    const asset = addAsset(p.id, p.dir);
+    const seen: { fromAssetId: string; toAssetId: string; sceneIds: { from: string; to: string }[] }[] = [];
+    const copy = duplicateProject(db, { projectsRoot: root, projectId: p.id, dirFor: copyDirFor, onAssetsCopied: (c) => seen.push(...c) });
+    const copyAsset = db.prepare(`SELECT id FROM assets WHERE project_id=?`).get(copy.id) as { id: string };
+    const copyScene = db.prepare(`SELECT id FROM scenes WHERE asset_id=?`).get(copyAsset.id) as { id: string };
+    const origScene = db.prepare(`SELECT id FROM scenes WHERE asset_id=?`).get(asset.id) as { id: string };
+    expect(seen).toEqual([{ fromAssetId: asset.id, toAssetId: copyAsset.id, sceneIds: [{ from: origScene.id, to: copyScene.id }] }]);
+  });
+
   it('deleting the original leaves the copy intact', () => {
     const p = addProject('Reel');
     addAsset(p.id, p.dir);

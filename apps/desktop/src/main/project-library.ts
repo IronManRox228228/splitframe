@@ -131,7 +131,14 @@ const insertRow = (db: LibDb, table: string, row: Record<string, unknown>) => {
  */
 export function duplicateProject(
   db: LibDb,
-  opts: { projectsRoot: string; projectId: string; dirFor(projectId: string, name: string): string; now?: string },
+  opts: {
+    projectsRoot: string;
+    projectId: string;
+    dirFor(projectId: string, name: string): string;
+    now?: string;
+    /** After the copy commits: each copied asset with its scene id mapping, for search re-indexing. */
+    onAssetsCopied?(copies: { fromAssetId: string; toAssetId: string; sceneIds: { from: string; to: string }[] }[]): void;
+  },
 ): { id: string; name: string } {
   const { projectsRoot, projectId } = opts;
   const now = opts.now ?? new Date().toISOString();
@@ -153,6 +160,7 @@ export function duplicateProject(
   doc.project.updatedAt = now;
 
   const assetIdMap = new Map<string, string>();
+  const copies: { fromAssetId: string; toAssetId: string; sceneIds: { from: string; to: string }[] }[] = [];
   const run = db.transaction(() => {
     const assets = db.prepare(`SELECT * FROM assets WHERE project_id=?`).all(projectId) as Record<string, unknown>[];
     for (const a of assets) assetIdMap.set(a.id as string, newId('ast'));
@@ -172,13 +180,22 @@ export function duplicateProject(
       if (transcript) insertRow(db, 'transcripts', { ...transcript, asset_id: newAsset });
       const beatMap = db.prepare(`SELECT * FROM beat_maps WHERE asset_id=?`).get(a.id) as Record<string, unknown> | undefined;
       if (beatMap) insertRow(db, 'beat_maps', { ...beatMap, asset_id: newAsset });
+      const sceneIds: { from: string; to: string }[] = [];
       for (const s of db.prepare(`SELECT * FROM scenes WHERE asset_id=?`).all(a.id) as Record<string, unknown>[]) {
         const frames = (JSON.parse((s.keyframe_paths as string) || '[]') as string[]).map((p) => remapPath(p, srcDir, dstDir));
-        insertRow(db, 'scenes', { ...s, id: newId('scn'), asset_id: newAsset, keyframe_paths: JSON.stringify(frames) });
+        const sceneId = newId('scn');
+        insertRow(db, 'scenes', { ...s, id: sceneId, asset_id: newAsset, keyframe_paths: JSON.stringify(frames) });
+        sceneIds.push({ from: s.id as string, to: sceneId });
       }
+      copies.push({ fromAssetId: a.id as string, toAssetId: newAsset, sceneIds });
     }
   });
   run();
+  try {
+    opts.onAssetsCopied?.(copies);
+  } catch {
+    /* search index rebuild is best effort */
+  }
   return { id: newProjectId, name };
 }
 
