@@ -8,6 +8,7 @@ import { Icon } from '../ui/Icon.tsx';
 import { CommandBar } from './CommandBar.tsx';
 import { latestOnly, needsResync, planAudio, planVideo } from '../lib/playback-plan.ts';
 import { CanvasOverlay, type LiveMap, type OverlayRect } from './canvas/CanvasOverlay.tsx';
+import { PlayheadTimecode, usePlayheadEffect } from './playhead.tsx';
 import type { TimelineDoc } from '@cutboard/schema';
 
 /**
@@ -17,7 +18,6 @@ import type { TimelineDoc } from '@cutboard/schema';
  */
 export function PreviewPane() {
   const doc = useEditor((s) => s.doc);
-  const playhead = useEditor((s) => s.playhead);
   const playing = useEditor((s) => s.playing);
   const setPlaying = useEditor((s) => s.setPlaying);
   const setPlayhead = useEditor((s) => s.setPlayhead);
@@ -38,14 +38,19 @@ export function PreviewPane() {
   const [rect, setRect] = useState<OverlayRect | null>(null);
   const [sizeTick, setSizeTick] = useState(0);
 
+  const overlayDoc = useMemo(() => (doc ? withLive(doc, live, false) : null), [doc, live]);
+
   const drawNow = async ({ frame, live }: { frame: number; live: boolean }) => {
     const canvas = canvasRef.current;
     const state = useEditor.getState();
     const pool = state.mediaPool;
     if (!canvas || !state.doc || !pool) return;
     // project resolution, like export, so x/y/font sizes mean the same thing in both
-    canvas.width = Math.max(1, state.doc.project.width);
-    canvas.height = Math.max(1, state.doc.project.height);
+    // assigning a canvas size reallocates and clears it even when unchanged, so only on change
+    const w = Math.max(1, state.doc.project.width);
+    const h = Math.max(1, state.doc.project.height);
+    if (canvas.width !== w) canvas.width = w;
+    if (canvas.height !== h) canvas.height = h;
     await compositorRef.current.draw(canvas, withLive(state.doc, liveRef.current, true), frame, pool, {
       showSafeZones,
     });
@@ -58,11 +63,13 @@ export function PreviewPane() {
   const runDraw = useMemo(() => latestOnly((arg: { frame: number; live: boolean }) => drawNowRef.current(arg)), []);
   const renderFrame = useCallback((frame: number, live: boolean) => runDraw({ frame, live }), [runDraw]);
 
-  // paused / scrub rendering (exact frames via seeks)
-  useEffect(() => {
-    if (playing) return;
-    void renderFrame(playhead, false);
-  }, [doc, playhead, live, playing, showSafeZones, renderFrame]);
+  // paused / scrub rendering (exact frames via seeks); playback draws from its own loop
+  usePlayheadEffect(
+    (playhead) => {
+      if (!useEditor.getState().playing) void renderFrame(playhead, false);
+    },
+    [doc, live, playing, showSafeZones, renderFrame],
+  );
 
   // keep the overlay glued to the canvas as the layout or aspect changes
   const hasDoc = doc !== null;
@@ -178,9 +185,8 @@ export function PreviewPane() {
           style={{ boxShadow: '0 0 0 1px rgba(236,238,236,0.10), 0 40px 100px -30px rgba(0,0,0,0.9)' }}
         />
         {!empty && rect && (
-          <CanvasOverlay
-            doc={withLive(doc, live, false)}
-            frame={Math.round(playhead)}
+          <OverlayAtPlayhead
+            doc={overlayDoc}
             canvasW={doc.project.width}
             canvasH={doc.project.height}
             rect={rect}
@@ -202,7 +208,7 @@ export function PreviewPane() {
           </div>
         )}
       </div>
-      <div className="glass flex items-center gap-1 p-[5px] rounded-full">
+      <div className="relative glass flex items-center gap-1 p-[5px] rounded-full">
         <button className="icon-btn-sm" aria-label="Previous frame" title="Previous frame (Left)" onClick={() => stepFrames(-1)}>
           <Icon name="skipStart" size={16} />
         </button>
@@ -218,7 +224,7 @@ export function PreviewPane() {
           <Icon name="skipEnd" size={16} />
         </button>
         <span className="px-3 font-mono text-xs text-fg tabular-nums whitespace-nowrap">
-          {formatTimecode(Math.round(playhead), fps)} <span className="text-fg-faint">/ {formatTimecode(total, fps)}</span>
+          <PlayheadTimecode fps={fps} /> <span className="text-fg-faint">/ {formatTimecode(total, fps)}</span>
         </span>
         <button
           className="icon-btn-sm"
@@ -252,6 +258,13 @@ export function PreviewPane() {
       </div>
     </main>
   );
+}
+
+/** The canvas overlay at the current whole frame, so it re-renders at most once per frame. */
+function OverlayAtPlayhead(props: Omit<React.ComponentProps<typeof CanvasOverlay>, 'frame' | 'doc'> & { doc: TimelineDoc | null }) {
+  const frame = useEditor((s) => Math.round(s.playhead));
+  if (!props.doc) return null;
+  return <CanvasOverlay {...props} doc={props.doc} frame={frame} />;
 }
 
 function applyMute(pool: MediaPool | null, muted: boolean): void {

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, memo, type ReactNode } from 'react';
 
 /**
  * A deliberately small markdown renderer for assistant replies. It builds React elements
@@ -121,7 +121,7 @@ export function parseBlocks(src: string): Block[] {
   return blocks;
 }
 
-export function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const blocks = parseBlocks(text);
   return (
     <div className="flex flex-col gap-2 min-w-0">
@@ -202,4 +202,4 @@ export function Markdown({ text }: { text: string }) {
       })}
     </div>
   );
-}
+});

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useEditor } from '../store.ts';
 import { Item, Track, TimelineDoc, formatTimecode } from '@cutboard/schema';
 import { docDurationFrames, itemEnd, trackAllowsItem, getSnapCandidates, snapFrame } from '@cutboard/editor-core';
 import { mediaUrl } from '../lib/url.ts';
+import { PlayheadMarker, PlayheadTimecode, usePlayheadEffect } from './playhead.tsx';
 import {
   HEADER_W,
   ROW_PAD,
@@ -69,7 +70,6 @@ function itemLabel(item: Item, assetName: string | undefined): string {
 
 export function Timeline() {
   const doc = useEditor((s) => s.doc);
-  const playhead = useEditor((s) => s.playhead);
   const playing = useEditor((s) => s.playing);
   const pxPerFrame = useEditor((s) => s.pxPerFrame);
   const fitNonce = useEditor((s) => s.fitNonce);
@@ -138,14 +138,17 @@ export function Timeline() {
   }, [pxPerFrame, fitNonce]);
 
   // ---- keep the playhead visible (playback, keyboard navigation) ----
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const x = HEADER_W + playhead * pxPerFrame;
-    if (x < el.scrollLeft + HEADER_W || x > el.scrollLeft + el.clientWidth - 8) {
-      el.scrollLeft = Math.max(0, x - HEADER_W - 32);
-    }
-  }, [playhead, pxPerFrame, playing]);
+  usePlayheadEffect(
+    (playhead) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const x = HEADER_W + playhead * pxPerFrame;
+      if (x < el.scrollLeft + HEADER_W || x > el.scrollLeft + el.clientWidth - 8) {
+        el.scrollLeft = Math.max(0, x - HEADER_W - 32);
+      }
+    },
+    [pxPerFrame, playing],
+  );
 
   // ---- wheel: Ctrl/Cmd zooms around the pointer, Shift scrolls sideways ----
   const hasDoc = doc !== null;
@@ -275,6 +278,13 @@ export function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag?.itemId, drag?.kind, drag?.pointerId]);
 
+  // clips are memoized, so they get one stable handler that forwards to the current startDrag
+  const startDragRef = useRef<(e: React.PointerEvent, item: Item, kind: DragState['kind']) => void>(() => {});
+  const onItemPointerDown = useCallback(
+    (e: React.PointerEvent, item: Item, kind: DragState['kind']) => startDragRef.current(e, item, kind),
+    [],
+  );
+
   if (!doc) return null;
   const total = docDurationFrames(doc);
   const fps = doc.project.fps;
@@ -332,6 +342,7 @@ export function Timeline() {
     dragRef.current = next;
     setDrag(next);
   };
+  startDragRef.current = startDrag;
 
   // ---- ruler scrubbing ----
   const onRulerPointerDown = (e: React.PointerEvent) => {
@@ -499,7 +510,7 @@ export function Timeline() {
         <ToggleButton icon="ripple" label="Ripple" active={rippleEnabled} onClick={toggleRipple} title="Ripple delete and trims close the gap" />
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-fg-muted mr-3 tabular-nums" aria-label="Playhead time">
-          {formatTimecode(Math.round(playhead), fps)}
+          <PlayheadTimecode fps={fps} />
         </span>
         <button className="icon-btn-sm !w-7 !h-7" aria-label="Zoom out" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
           <Icon name="minus" size={14} />
@@ -546,12 +557,9 @@ export function Timeline() {
                     ))}
                 </div>
               ))}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 -ml-px bg-accent pointer-events-none z-10"
-                style={{ left: playhead * pxPerFrame }}
-              >
+              <PlayheadMarker pxPerFrame={pxPerFrame} className="absolute top-0 bottom-0 w-0.5 -ml-px bg-accent pointer-events-none z-10">
                 <span className="absolute -left-[5px] top-0 w-3 h-3 rounded-full bg-accent" />
-              </div>
+              </PlayheadMarker>
             </div>
           </div>
 
@@ -611,7 +619,7 @@ export function Timeline() {
                             trimming={isPrimary && drag?.kind !== 'move' && drag?.ghostFrame !== undefined}
                             pxPerFrame={pxPerFrame}
                             fps={fps}
-                            onPointerDown={(e, kind) => startDrag(e, item, kind)}
+                            onPointerDown={onItemPointerDown}
                           />
                         );
                       })}
@@ -643,9 +651,10 @@ export function Timeline() {
             )}
 
             {/* playhead */}
-            <div
+            <PlayheadMarker
+              pxPerFrame={pxPerFrame}
+              offset={HEADER_W}
               className="absolute top-0 bottom-0 w-0.5 -ml-px bg-accent pointer-events-none z-10"
-              style={{ left: HEADER_W + playhead * pxPerFrame }}
             />
           </div>
         </div>
@@ -755,7 +764,7 @@ const TYPE_BG: Record<string, string> = {
   motionGraphic: 'bg-[#252B33]',
 };
 
-function ItemBlock({
+const ItemBlock = memo(function ItemBlock({
   item,
   rowHeight,
   startFrame,
@@ -779,7 +788,7 @@ function ItemBlock({
   trimming: boolean;
   pxPerFrame: number;
   fps: number;
-  onPointerDown: (e: React.PointerEvent, kind: DragState['kind']) => void;
+  onPointerDown: (e: React.PointerEvent, item: Item, kind: DragState['kind']) => void;
 }) {
   const asset = useEditor((s) => s.assets.find((a) => a.id === item.assetId));
   const width = Math.max(4, durationFrames * pxPerFrame);
@@ -798,7 +807,7 @@ function ItemBlock({
         trimming ? 'opacity-70' : ''
       }`}
       style={{ left, width, top: ROW_PAD, height: rowHeight - ROW_PAD * 2 }}
-      onPointerDown={(e) => onPointerDown(e, 'move')}
+      onPointerDown={(e) => onPointerDown(e, item, 'move')}
       title={`${label} · ${formatTimecode(startFrame, fps)} → ${formatTimecode(startFrame + durationFrames, fps)}`}
     >
       <div className="absolute inset-0 rounded-[10px] overflow-hidden shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]">
@@ -836,14 +845,14 @@ function ItemBlock({
           <div
             className="group/h absolute left-0 top-0 bottom-0 cursor-w-resize flex items-stretch justify-start"
             style={{ width: hw }}
-            onPointerDown={(e) => onPointerDown(e, 'trim-in')}
+            onPointerDown={(e) => onPointerDown(e, item, 'trim-in')}
           >
             <span className="w-[3px] rounded-l-[10px] bg-fg/0 group-hover/h:bg-fg/70 transition-colors" />
           </div>
           <div
             className="group/h absolute right-0 top-0 bottom-0 cursor-e-resize flex items-stretch justify-end"
             style={{ width: hw }}
-            onPointerDown={(e) => onPointerDown(e, 'trim-out')}
+            onPointerDown={(e) => onPointerDown(e, item, 'trim-out')}
           >
             <span className="w-[3px] rounded-r-[10px] bg-fg/0 group-hover/h:bg-fg/70 transition-colors" />
           </div>
@@ -857,4 +866,4 @@ function ItemBlock({
       )}
     </div>
   );
-}
+});
