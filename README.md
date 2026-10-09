@@ -7,7 +7,7 @@
 **Drop in raw footage. Describe the edit. Watch the real timeline update — cuts, captions,
 beat sync, motion graphics — while your files never leave your machine.**
 
-[MIT License](LICENSE) · macOS / Windows / Linux · Electron + React + ffmpeg
+[GPL-3.0-or-later](LICENSE) · macOS / Windows / Linux · Electron + React + ffmpeg
 
 </div>
 
@@ -157,6 +157,7 @@ the machine unless the user explicitly configured a cloud provider for that capa
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The wordmark embeds
+GPL-3.0-or-later — see [LICENSE](LICENSE). Code inherited from openCardboard is also
+available under MIT; see [NOTICE.md](NOTICE.md). The wordmark embeds
 [Montserrat](https://fonts.google.com/specimen/Montserrat) (SIL OFL 1.1) as outlines.
 Not affiliated with any commercial product.
