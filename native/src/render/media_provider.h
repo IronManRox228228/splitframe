@@ -12,6 +12,7 @@
 #include <QString>
 
 #include <map>
+#include <optional>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -71,7 +72,10 @@ public:
 
   // Starts opening every video asset (the packet scan is the slow part: do it before the first play)
   void openAll();
-  const AssetTable& assets() const { return assets_; }
+  AssetTable assets() const;
+  // Replaces the asset table (media imported, removed or relinked while the project is open). Thread-safe;
+  // decoders of files that changed are closed and open again on demand.
+  void setAssets(AssetTable assets);
   // "h264 (d3d11va), hevc (software)": what the opened video assets decode with
   QString decoderSummary();
 
@@ -79,7 +83,10 @@ private:
   AssetId assetFor(const QString& assetId); // opens on first use; 0 = unknown/failed
   std::optional<qint64> sourceIndex(AssetId id, const VideoStreamInfo& info, Frame sourceFrame, double fps);
 
+  std::optional<AssetRef> assetRef(const QString& assetId) const;
+
   FrameService& service_;
+  mutable std::mutex am_; // guards assets_ (the UI thread replaces it while the render thread reads)
   AssetTable assets_;
   Mode mode_;
   ImageStore images_;

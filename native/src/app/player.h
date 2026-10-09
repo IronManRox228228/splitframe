@@ -19,12 +19,19 @@
 
 namespace sf::app {
 
-// Everything the renderer needs for one opened document. Replaced wholesale on open; the render
-// thread holds a shared_ptr snapshot, so an open never pulls the rug from under a frame in flight.
-struct Session {
-  TimelineDoc doc;
+// The decoders and frame cache behind a document. Shared between the successive sessions of one
+// project: an edit swaps the document without reopening any media.
+struct Media {
   std::unique_ptr<FrameService> service;
   std::unique_ptr<render::FrameServiceProvider> provider;
+};
+
+// Everything the renderer needs for one state of the document. Replaced wholesale on every edit and
+// on open; the render thread holds a shared_ptr snapshot, so a change never pulls the rug from
+// under a frame in flight.
+struct Session {
+  TimelineDoc doc;
+  std::shared_ptr<Media> media;
 };
 
 class Player : public QObject {
@@ -35,26 +42,25 @@ class Player : public QObject {
   Q_PROPERTY(bool loaded READ loaded NOTIFY sessionChanged)
   Q_PROPERTY(bool playing READ playing NOTIFY transportChanged)
   Q_PROPERTY(qint64 frame READ frame NOTIFY transportChanged)
+  // the clock runs one frame past the last clip so the playhead can rest on the end
   Q_PROPERTY(qint64 durationFrames READ durationFrames NOTIFY sessionChanged)
   Q_PROPERTY(double fps READ fps NOTIFY sessionChanged)
   Q_PROPERTY(double rate READ rate NOTIFY transportChanged)
   Q_PROPERTY(bool loop READ loop WRITE setLoop NOTIFY transportChanged)
   Q_PROPERTY(QString timecode READ timecode NOTIFY transportChanged)
   Q_PROPERTY(QString durationTimecode READ durationTimecode NOTIFY sessionChanged)
-  Q_PROPERTY(QString title READ title NOTIFY sessionChanged)
-  Q_PROPERTY(QString summary READ summary NOTIFY sessionChanged)
-  Q_PROPERTY(QString error READ error NOTIFY sessionChanged)
   Q_PROPERTY(QString stats READ stats NOTIFY statsChanged)
 
 public:
   explicit Player(QObject* parent = nullptr);
   ~Player() override;
 
-  // A project JSON (ProjectBundle or bare TimelineDoc) or a single media file wrapped as a one-clip
-  // document. False with error() set when it can't be opened.
-  Q_INVOKABLE bool open(const QString& path);
-  Q_INVOKABLE bool openProject(const QString& path);
-  Q_INVOKABLE bool openMedia(const QString& path);
+  // A new project: fresh decoders for `assets`, the playhead back at the start.
+  void loadProject(TimelineDoc doc, render::AssetTable assets);
+  // The document changed (an edit, undo/redo): show it from the next frame on. The playhead stays.
+  void setDocument(TimelineDoc doc);
+  // Media imported, removed or relinked.
+  void setAssets(render::AssetTable assets);
 
   Q_INVOKABLE void play();
   Q_INVOKABLE void pause();
@@ -67,6 +73,8 @@ public:
   void setLoop(bool loop);
   // Zero-copy GPU video (default) or decode-download-upload; takes effect for the next open.
   void setZeroCopy(bool on) { zeroCopy_ = on; }
+  // Software decoding only (no hardware decoder sessions at all); takes effect for the next open.
+  void setSoftwareDecode(bool on) { softwareDecode_ = on; }
 
   bool loaded() const { return static_cast<bool>(session_); }
   bool playing() const { return clock_.playing(); }
@@ -77,9 +85,6 @@ public:
   bool loop() const { return loop_; }
   QString timecode() const;
   QString durationTimecode() const;
-  QString title() const { return title_; }
-  QString summary() const { return summary_; }
-  QString error() const { return error_; }
   QString stats() const { return stats_; }
   // Frames composited / skipped (the clock moved on before the presenter got to them) since the last open
   qint64 presentedFrames() const;
@@ -103,10 +108,9 @@ signals:
   void mediaReady();      // a decoded frame arrived
 
 private:
-  void install(std::shared_ptr<Session> s, const QString& title, const QString& summary);
   void refreshTransport();
   void updateStats();
-  void fail(const QString& message);
+  void publish(std::shared_ptr<Session> s);
 
   mutable std::mutex m_;
   std::shared_ptr<Session> session_;
@@ -116,7 +120,8 @@ private:
   bool wasPlaying_ = false;
   bool loop_ = false;
   bool zeroCopy_ = true;
-  QString title_, summary_, error_, stats_;
+  bool softwareDecode_ = false;
+  QString stats_;
   std::atomic<qint64> renderedFrame_{-1};
   std::atomic<bool> renderedComplete_{false};
   std::atomic<int> gpuLayers_{0}, cpuLayers_{0};

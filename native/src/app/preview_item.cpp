@@ -45,8 +45,8 @@ public:
     const bool fresh = session_ != composited_ || frame_ != compositedFrame_ || !compositedComplete_;
     if (fresh) {
       const int dir = playing_ ? (rate_ < 0 ? -1 : 1) : 0;
-      session_->provider->prepare(session_->doc, frame_, dir);
-      const render::RenderStats stats = compositor_->render(cb, session_->doc, frame_, *session_->provider);
+      session_->media->provider->prepare(session_->doc, frame_, dir);
+      const render::RenderStats stats = compositor_->render(cb, session_->doc, frame_, *session_->media->provider);
       composited_ = session_;
       compositedFrame_ = frame_;
       compositedComplete_ = stats.complete();

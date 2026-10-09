@@ -2,16 +2,9 @@
 
 #include "core/error.h"
 #include "core/timeline_doc.h"
-#include "media/probe.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QImageReader>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QThread>
 #include <QTimer>
 
@@ -22,22 +15,21 @@ namespace sf::app {
 
 namespace {
 
-// FrameService is a QObject with a thread pool: always tear a session down on the UI thread, even
+// FrameService is a QObject with a thread pool: always tear the media down on the UI thread, even
 // when the render thread happens to drop the last reference.
-std::shared_ptr<Session> makeSession() {
-  return std::shared_ptr<Session>(new Session, [](Session* s) {
+std::shared_ptr<Media> makeMedia() {
+  return std::shared_ptr<Media>(new Media, [](Media* m) {
     if (QThread::currentThread() == QCoreApplication::instance()->thread()) {
-      delete s;
+      delete m;
     } else {
-      QMetaObject::invokeMethod(QCoreApplication::instance(), [s] { delete s; }, Qt::QueuedConnection);
+      QMetaObject::invokeMethod(QCoreApplication::instance(), [m] { delete m; }, Qt::QueuedConnection);
     }
   });
 }
 
-bool isStill(const QString& path) {
-  const QByteArray suffix = QFileInfo(path).suffix().toLower().toUtf8();
-  return QImageReader::supportedImageFormats().contains(suffix);
-}
+// The clock covers one frame past the last clip, so the playhead can sit on the very end
+// (where a new clip is appended, or a split-at-end is refused) and an empty project has a frame 0.
+Frame clockFrames(const TimelineDoc& doc) { return docDurationFrames(doc) + 1; }
 
 } // namespace
 
@@ -62,20 +54,31 @@ std::shared_ptr<Session> Player::session() const {
   return session_;
 }
 
-void Player::fail(const QString& message) {
-  error_ = message;
-  emit sessionChanged();
+void Player::publish(std::shared_ptr<Session> s) {
+  const std::lock_guard lock(m_);
+  session_ = std::move(s);
 }
 
-bool Player::open(const QString& path) {
-  return QFileInfo(path).suffix().compare(QLatin1String("json"), Qt::CaseInsensitive) == 0 ? openProject(path) : openMedia(path);
-}
+void Player::loadProject(TimelineDoc doc, render::AssetTable assets) {
+  auto media = makeMedia();
+  FrameService::Options o;
+  o.gpuFrames = zeroCopy_;
+  if (softwareDecode_) o.hw = HwMode::Off;
+  media->service = std::make_unique<FrameService>(o);
+  const bool few = assets.size() <= 8;
+  media->provider = std::make_unique<render::FrameServiceProvider>(*media->service, std::move(assets));
+  // the packet scan is the slow part and belongs before play; a library of dozens of clips opens on demand instead
+  if (few) media->provider->openAll();
+  connect(media->service.get(), &FrameService::frameReady, this, [this] { emit mediaReady(); }, Qt::QueuedConnection);
+  // a decoder that finished opening can now be asked for the picture the paused playhead is waiting on
+  connect(media->service.get(), &FrameService::assetOpened, this, [this] { emit mediaReady(); }, Qt::QueuedConnection);
 
-void Player::install(std::shared_ptr<Session> s, const QString& title, const QString& summary) {
-  connect(s->service.get(), &FrameService::frameReady, this, [this] { emit mediaReady(); }, Qt::QueuedConnection);
+  auto s = std::make_shared<Session>();
+  s->media = std::move(media);
   clock_.pause();
-  clock_.setTimeline(static_cast<double>(s->doc.project.fps), docDurationFrames(s->doc));
+  clock_.setTimeline(static_cast<double>(doc.project.fps), clockFrames(doc));
   clock_.seek(0);
+  s->doc = std::move(doc);
   {
     const std::lock_guard lock(m_);
     session_ = std::move(s);
@@ -83,9 +86,6 @@ void Player::install(std::shared_ptr<Session> s, const QString& title, const QSt
   }
   renderedFrame_ = -1;
   renderedComplete_ = false;
-  title_ = title;
-  summary_ = summary;
-  error_.clear();
   frame_ = 0;
   wasPlaying_ = false;
   emit sessionChanged();
@@ -93,113 +93,26 @@ void Player::install(std::shared_ptr<Session> s, const QString& title, const QSt
   emit renderRequested();
 }
 
-bool Player::openProject(const QString& path) {
-  QFile f(path);
-  if (!f.open(QIODevice::ReadOnly)) {
-    fail(QStringLiteral("Can't read %1: %2").arg(path, f.errorString()));
-    return false;
-  }
-  const QByteArray json = f.readAll();
-  try {
-    const QJsonDocument parsed = QJsonDocument::fromJson(json);
-    auto s = makeSession();
-    render::AssetTable assets;
-    if (parsed.isObject() && parsed.object().contains(QStringLiteral("doc"))) {
-      ProjectBundle bundle = parseProjectBundleJson(json);
-      const QDir base = QFileInfo(path).absoluteDir();
-      for (const Asset& a : bundle.assets) {
-        // paths are absolute when the Electron app wrote them; a relative one is relative to the project file
-        const QString p = QFileInfo(a.path).isAbsolute() ? a.path : base.absoluteFilePath(a.path);
-        assets[a.id] = {p, a.kind};
-      }
-      s->doc = std::move(bundle.doc);
-    } else {
-      s->doc = parseTimelineDocJson(json); // bare document: no asset table, media shows as unavailable
-    }
-    FrameService::Options o;
-    o.gpuFrames = zeroCopy_;
-    s->service = std::make_unique<FrameService>(o);
-    s->provider = std::make_unique<render::FrameServiceProvider>(*s->service, std::move(assets));
-    // open every video asset up front: the packet scan is the slow part and belongs before play
-    s->provider->openAll();
-    const QString name = s->doc.project.name.isEmpty() ? QFileInfo(path).completeBaseName() : s->doc.project.name;
-    const QString summary = QStringLiteral("%1×%2 · %3 fps · %4 items on %5 tracks")
-                                .arg(s->doc.project.width).arg(s->doc.project.height).arg(s->doc.project.fps).arg(s->doc.items.size()).arg(s->doc.tracks.size());
-    install(std::move(s), name, summary);
-    return true;
-  } catch (const std::exception& e) {
-    fail(QStringLiteral("%1: %2").arg(path, QString::fromUtf8(e.what())));
-    return false;
-  }
+void Player::setDocument(TimelineDoc doc) {
+  const auto current = session();
+  if (!current) return;
+  auto s = std::make_shared<Session>();
+  s->media = current->media;
+  clock_.setTimeline(static_cast<double>(doc.project.fps), clockFrames(doc));
+  s->doc = std::move(doc);
+  publish(std::move(s));
+  refreshTransport();
+  emit sessionChanged();
+  emit renderRequested();
 }
 
-bool Player::openMedia(const QString& path) {
-  if (!QFileInfo::exists(path)) {
-    fail(QStringLiteral("No such file: %1").arg(path));
-    return false;
-  }
-  try {
-    auto s = makeSession();
-    render::AssetTable assets;
-    const QString asset = QStringLiteral("ast_media");
-    Frame duration;
-    EmptyDocInit init;
-    init.id = QStringLiteral("prj_media");
-    init.name = QFileInfo(path).completeBaseName();
-    QString summary;
-    ItemType type = ItemType::Video;
-    if (isStill(path)) {
-      QImageReader r(path);
-      r.setAutoTransform(true);
-      const QSize size = r.size().isValid() ? r.size() : QSize(1920, 1080);
-      init.width = size.width();
-      init.height = size.height();
-      init.fps = 30;
-      duration = 5 * 30;
-      type = ItemType::Image;
-      assets[asset] = {path, AssetKind::Image};
-      summary = QStringLiteral("image · %1×%2").arg(size.width()).arg(size.height());
-    } else {
-      QString err;
-      const auto info = probeMedia(path, &err);
-      if (!info || !info->hasVideo) {
-        fail(info ? QStringLiteral("%1 has no video").arg(path) : err);
-        return false;
-      }
-      const double rate = info->avgFps > 0 ? info->avgFps : (info->fps > 0 ? info->fps : 30.0);
-      init.fps = std::clamp<std::int64_t>(jsRound(rate), 1, 240);
-      init.width = info->displayWidth > 0 ? info->displayWidth : info->width;
-      init.height = info->displayHeight > 0 ? info->displayHeight : info->height;
-      duration = std::max<Frame>(1, msToFrames(info->durationMs, static_cast<double>(init.fps)));
-      assets[asset] = {path, AssetKind::Video};
-      summary = QStringLiteral("%1 · %2×%3 · %4 fps · %5")
-                    .arg(info->videoCodec).arg(info->width).arg(info->height).arg(info->avgFps > 0 ? info->avgFps : info->fps, 0, 'f', 2)
-                    .arg(formatTimecode(duration, static_cast<double>(init.fps)));
-    }
-    s->doc = createEmptyDoc(init);
-    s->doc.project.styleConfig.backgroundColor = QStringLiteral("#000000");
-    ItemInit item;
-    item.id = QStringLiteral("itm_media");
-    for (const Track& t : s->doc.tracks) {
-      if (t.kind == TrackKind::Video) item.trackId = t.id;
-    }
-    item.assetId = asset;
-    item.startFrame = 0;
-    item.durationFrames = duration;
-    if (type == ItemType::Video) item.sourceInFrame = 0;
-    s->doc.items.push_back(createItem(type, item));
-
-    FrameService::Options o;
-    o.gpuFrames = zeroCopy_;
-    s->service = std::make_unique<FrameService>(o);
-    s->provider = std::make_unique<render::FrameServiceProvider>(*s->service, std::move(assets));
-    s->provider->openAll();
-    install(std::move(s), QFileInfo(path).fileName(), summary);
-    return true;
-  } catch (const std::exception& e) {
-    fail(QStringLiteral("%1: %2").arg(path, QString::fromUtf8(e.what())));
-    return false;
-  }
+void Player::setAssets(render::AssetTable assets) {
+  const auto current = session();
+  if (!current) return;
+  const bool few = assets.size() <= 8;
+  current->media->provider->setAssets(std::move(assets));
+  if (few) current->media->provider->openAll();
+  emit renderRequested();
 }
 
 void Player::refreshTransport() {
@@ -263,7 +176,7 @@ void Player::setLoop(bool loop) {
 void Player::clockChanged() { QMetaObject::invokeMethod(this, &Player::refreshTransport, Qt::QueuedConnection); }
 
 QString Player::timecode() const { return formatTimecode(frame_, std::max(1.0, clock_.fps())); }
-QString Player::durationTimecode() const { return formatTimecode(clock_.duration(), std::max(1.0, clock_.fps())); }
+QString Player::durationTimecode() const { return formatTimecode(std::max<qint64>(0, clock_.duration() - 1), std::max(1.0, clock_.fps())); }
 
 void Player::notePresented(qint64 frame, bool complete, int gpuLayers, int cpuLayers, bool playing, double rate) {
   renderedFrame_ = frame;
@@ -306,7 +219,7 @@ void Player::updateStats() {
   }
   presentedAtLastStats_ = presented;
   lastStatsMs_ = now;
-  const QString decoders = s->provider ? s->provider->decoderSummary() : QString();
+  const QString decoders = s->media->provider ? s->media->provider->decoderSummary() : QString();
   QString text = decoders.isEmpty() ? QStringLiteral("no video") : decoders;
   text += QStringLiteral(" · %1").arg(gpuLayers_ > 0 ? QStringLiteral("zero-copy GPU") : (cpuLayers_ > 0 ? QStringLiteral("CPU upload") : QStringLiteral("no video layer")));
   if (clock_.playing()) {

@@ -33,16 +33,54 @@ std::shared_ptr<const QImage> ImageStore::load(const QString& path) {
 FrameServiceProvider::FrameServiceProvider(FrameService& service, AssetTable assets, Mode mode)
     : service_(service), assets_(std::move(assets)), mode_(mode) {}
 
+std::optional<AssetRef> FrameServiceProvider::assetRef(const QString& assetId) const {
+  const std::lock_guard lock(am_);
+  const auto it = assets_.find(assetId);
+  if (it == assets_.end()) return std::nullopt;
+  return it->second;
+}
+
+AssetTable FrameServiceProvider::assets() const {
+  const std::lock_guard lock(am_);
+  return assets_;
+}
+
+void FrameServiceProvider::setAssets(AssetTable assets) {
+  AssetTable old;
+  {
+    const std::lock_guard lock(am_);
+    old = std::move(assets_);
+    assets_ = std::move(assets);
+  }
+  const AssetTable now = this->assets();
+  const std::lock_guard lock(m_);
+  for (auto it = ids_.begin(); it != ids_.end();) {
+    const auto before = old.find(it->first);
+    const auto after = now.find(it->first);
+    // changed or removed file: drop the decoder; an entry that was "unavailable" gets another look
+    const bool stale = after == now.end() || before == old.end() || before->second.path != after->second.path || it->second == 0;
+    if (!stale) {
+      ++it;
+      continue;
+    }
+    if (it->second != 0) {
+      service_.closeAsset(it->second);
+      lastShown_.erase(it->second);
+    }
+    it = ids_.erase(it);
+  }
+}
+
 AssetId FrameServiceProvider::assetFor(const QString& assetId) {
-  const auto ref = assets_.find(assetId);
-  if (ref == assets_.end() || ref->second.kind != AssetKind::Video) return 0;
+  const auto ref = assetRef(assetId);
+  if (!ref || ref->kind != AssetKind::Video) return 0;
   const std::lock_guard lock(m_);
   if (const auto it = ids_.find(assetId); it != ids_.end()) return it->second;
-  if (!QFileInfo::exists(ref->second.path)) {
+  if (!QFileInfo::exists(ref->path)) {
     ids_[assetId] = 0;
     return 0;
   }
-  const AssetId id = service_.openAsset(ref->second.path);
+  const AssetId id = service_.openAsset(ref->path);
   ids_[assetId] = id;
   return id;
 }
@@ -55,17 +93,17 @@ std::optional<qint64> FrameServiceProvider::sourceIndex(AssetId id, const VideoS
 Visual FrameServiceProvider::visual(const Item& item, Frame sourceFrame, double fps) {
   Visual v;
   if (!item.assetId) return v;
-  const auto ref = assets_.find(*item.assetId);
-  if (ref == assets_.end()) return v;
+  const auto ref = assetRef(*item.assetId);
+  if (!ref) return v;
 
-  if (ref->second.kind == AssetKind::Image) {
-    v.image = images_.load(ref->second.path);
+  if (ref->kind == AssetKind::Image) {
+    v.image = images_.load(ref->path);
     if (!v.image) return v;
     v.size = v.image->size();
     v.state = Visual::State::Ready;
     return v;
   }
-  if (ref->second.kind != AssetKind::Video) return v;
+  if (ref->kind != AssetKind::Video) return v;
 
   const AssetId id = assetFor(*item.assetId);
   if (id == 0) return v;
@@ -113,7 +151,7 @@ Visual FrameServiceProvider::visual(const Item& item, Frame sourceFrame, double 
 }
 
 void FrameServiceProvider::openAll() {
-  for (const auto& [id, ref] : assets_) {
+  for (const auto& [id, ref] : assets()) {
     if (ref.kind == AssetKind::Video) assetFor(id);
   }
 }

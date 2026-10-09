@@ -31,7 +31,8 @@ hosts the local model server.
 | `src/audio` | Mixer, effects, meters, output device. | core, media |
 | `src/export` | Render + encode (NVENC/AMF/QSV/software) to file. | render, audio |
 | `src/agent` | Harness v1 port: router, facade tools, plans, verifier, modes. llama-server over HTTP. | core |
-| `src/app` | Qt Quick UI: media pool, timeline, preview, inspector, chat. | everything |
+| `src/editor` | Editing logic without Qt Quick: `Project` (document, undo history, selection, save/open/autosave/recovery), `MediaPool`, timeline models, `TimelineController` (drag/trim/split/delete as ops), `Inspector`. | core, media |
+| `src/app` | Qt Quick UI: window, QML panels, painted `TimelineView`, `Editor` facade, `Player`. | everything |
 | `tests` | QtTest, one executable per area; `ctest` runs all. | |
 
 ## Rules
