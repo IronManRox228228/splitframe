@@ -1,0 +1,38 @@
+{
+  "name": "empty",
+  "input": {
+    "project": {
+      "id": "prj_0000000003",
+      "name": "",
+      "fps": 60,
+      "width": 3840,
+      "height": 2160,
+      "templateId": "tpl_a",
+      "createdAt": "",
+      "updatedAt": ""
+    },
+    "tracks": [],
+    "items": [],
+    "markers": []
+  },
+  "expected": {
+    "project": {
+      "id": "prj_0000000003",
+      "name": "",
+      "fps": 60,
+      "width": 3840,
+      "height": 2160,
+      "templateId": "tpl_a",
+      "styleConfig": {
+        "fonts": [],
+        "primaryColor": "#fbbf24",
+        "backgroundColor": "#0a0a0a"
+      },
+      "createdAt": "",
+      "updatedAt": ""
+    },
+    "tracks": [],
+    "items": [],
+    "markers": []
+  }
+}

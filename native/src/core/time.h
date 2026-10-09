@@ -16,6 +16,9 @@ double framesToSeconds(Frame frames, double fps);
 Ms framesToMs(Frame frames, double fps);
 Frame msToFrames(Ms ms, double fps);
 
+// JavaScript Math.round: ties go toward +infinity, and 0.49999999999999994 stays 0
+std::int64_t jsRound(double v);
+
 // "00:07.2" / "01:02:03.0"; rounds to tenths first so 59.96 s prints 01:00.0, not 00:60.0
 QString formatTimecode(Frame frames, double fps);
 

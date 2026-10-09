@@ -1,0 +1,957 @@
+[
+  {
+    "name": "no project name",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "project.name"
+  },
+  {
+    "name": "fractional fps",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "fps": 29.97
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "project.fps"
+  },
+  {
+    "name": "zero width",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "width": 0
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "project.width"
+  },
+  {
+    "name": "track kind",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "sideways",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "tracks[0].kind"
+  },
+  {
+    "name": "duration zero",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 0,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].durationFrames"
+  },
+  {
+    "name": "negative start",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": -1,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].startFrame"
+  },
+  {
+    "name": "speed too high",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          },
+          "speed": 17
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].speed"
+  },
+  {
+    "name": "scale zero",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 0,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].transform.scale"
+  },
+  {
+    "name": "opacity high",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 2
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].transform.opacity"
+  },
+  {
+    "name": "bad easing",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          },
+          "keyframes": {
+            "transform.x": [
+              {
+                "frame": 0,
+                "value": 1,
+                "easing": "wobbly"
+              }
+            ]
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].keyframes.transform.x[0].easing"
+  },
+  {
+    "name": "items not array",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": "x",
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items"
+  },
+  {
+    "name": "null assetId",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": null,
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[0].assetId"
+  },
+  {
+    "name": "fade not int",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 1.5
+          }
+        }
+      ],
+      "markers": [],
+      "extraTopLevel": true
+    },
+    "path": "items[1].props.fadeInFrames"
+  },
+  {
+    "name": "marker negative",
+    "input": {
+      "project": {
+        "id": "prj_0000000002",
+        "name": "Sparse",
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z"
+      },
+      "tracks": [
+        {
+          "id": "trk_0000000001",
+          "kind": "video",
+          "name": "V"
+        },
+        {
+          "id": "trk_0000000002",
+          "kind": "audio",
+          "name": "A",
+          "locked": true
+        }
+      ],
+      "items": [
+        {
+          "id": "itm_0000000001",
+          "trackId": "trk_0000000001",
+          "type": "video",
+          "startFrame": 5,
+          "durationFrames": 10,
+          "assetId": "ast_x",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {},
+          "futureField": {
+            "nested": 1
+          }
+        },
+        {
+          "id": "itm_0000000002",
+          "trackId": "trk_0000000002",
+          "type": "audio",
+          "startFrame": 0,
+          "durationFrames": 30,
+          "assetId": "ast_y",
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "props": {
+            "fadeInFrames": 5
+          }
+        }
+      ],
+      "markers": [
+        {
+          "id": "m",
+          "frame": -3,
+          "label": "x"
+        }
+      ],
+      "extraTopLevel": true
+    },
+    "path": "markers[0].frame"
+  }
+]

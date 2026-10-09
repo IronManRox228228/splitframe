@@ -1,0 +1,791 @@
+{
+  "name": "rich",
+  "input": {
+    "project": {
+      "id": "prj_0000000001",
+      "name": "Golden",
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "styleConfig": {
+        "fonts": [
+          "Inter",
+          "Anton"
+        ],
+        "primaryColor": "#123456",
+        "backgroundColor": "#000000",
+        "captionStyle": {
+          "fontFamily": "Inter",
+          "fontSize": 64,
+          "fontWeight": 700,
+          "color": "#ffffff",
+          "strokeWidth": 0,
+          "align": "center",
+          "lineHeight": 1.2,
+          "letterSpacing": 0,
+          "uppercase": false,
+          "padding": 0,
+          "borderRadius": 0,
+          "highlight": "none",
+          "highlightColor": "#fff",
+          "placementY": 0.9,
+          "maxCharsPerLine": 30
+        },
+        "titleStyle": {
+          "fontFamily": "Inter",
+          "fontSize": 120,
+          "fontWeight": 700,
+          "color": "#ffffff",
+          "strokeWidth": 0,
+          "align": "center",
+          "lineHeight": 1.2,
+          "letterSpacing": 0,
+          "uppercase": false,
+          "padding": 0,
+          "borderRadius": 0
+        }
+      },
+      "referenceAssetId": "ast_ref",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    "tracks": [
+      {
+        "id": "prj_0000000001_text",
+        "kind": "text",
+        "name": "Text & Graphics",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_main",
+        "kind": "video",
+        "name": "Main Video",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_audio",
+        "kind": "audio",
+        "name": "Music",
+        "locked": false,
+        "muted": true,
+        "hidden": false
+      }
+    ],
+    "items": [
+      {
+        "id": "itm_0000000001",
+        "trackId": "prj_0000000001_main",
+        "startFrame": 0,
+        "durationFrames": 90,
+        "assetId": "ast_video",
+        "sourceInFrame": 12,
+        "speed": 0.4,
+        "timeRemap": [
+          {
+            "frame": 0,
+            "sourceFrame": 12
+          },
+          {
+            "frame": 90,
+            "sourceFrame": 300
+          }
+        ],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 0.8,
+        "muted": true,
+        "effects": [
+          {
+            "id": "fx_1",
+            "type": "blur",
+            "params": {
+              "amount": 4.5,
+              "mode": "gauss",
+              "on": true
+            }
+          }
+        ],
+        "masks": [
+          {
+            "id": "mask_1",
+            "shape": "path",
+            "path": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 100,
+                "y": 0
+              },
+              {
+                "x": 50,
+                "y": 80
+              }
+            ],
+            "feather": 3,
+            "invert": true,
+            "keyframes": {
+              "feather": [
+                {
+                  "frame": 0,
+                  "value": 0,
+                  "easing": "easeIn"
+                }
+              ]
+            },
+            "tracking": {
+              "assetId": "ast_video",
+              "status": "done",
+              "positions": [
+                {
+                  "frame": 0,
+                  "x": 1,
+                  "y": 2
+                }
+              ]
+            }
+          }
+        ],
+        "keyframes": {
+          "transform.x": [
+            {
+              "frame": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "frame": 30,
+              "value": 5,
+              "easing": "hold"
+            }
+          ]
+        },
+        "labels": {
+          "name": "Intro",
+          "color": "#f00"
+        },
+        "type": "video",
+        "props": {
+          "fadeInFrames": 0,
+          "fadeOutFrames": 0
+        }
+      },
+      {
+        "id": "itm_0000000002",
+        "trackId": "prj_0000000001_audio",
+        "startFrame": 0,
+        "durationFrames": 180,
+        "assetId": "ast_music",
+        "sourceInFrame": 0,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 0.35,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "audio",
+        "props": {
+          "fadeInFrames": 0,
+          "fadeOutFrames": 0
+        }
+      },
+      {
+        "id": "itm_0000000003",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 10,
+        "durationFrames": 60,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "text",
+        "props": {
+          "text": "Héllo 日本語 🎬",
+          "style": {
+            "fontFamily": "Inter",
+            "fontSize": 64,
+            "fontWeight": 900,
+            "color": "#ffffff",
+            "strokeColor": "#000",
+            "strokeWidth": 2,
+            "backgroundColor": "#112233",
+            "align": "left",
+            "lineHeight": 1.5,
+            "letterSpacing": 1.5,
+            "uppercase": true,
+            "padding": 8,
+            "borderRadius": 4
+          }
+        }
+      },
+      {
+        "id": "itm_0000000004",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 70,
+        "durationFrames": 90,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "caption",
+        "props": {
+          "words": [
+            {
+              "w": "one",
+              "startMs": 0,
+              "endMs": 900,
+              "conf": 0.97,
+              "speaker": "A"
+            },
+            {
+              "w": "two",
+              "startMs": 1000,
+              "endMs": 1900
+            }
+          ],
+          "style": {
+            "fontFamily": "Inter",
+            "fontSize": 64,
+            "fontWeight": 700,
+            "color": "#ffffff",
+            "strokeWidth": 0,
+            "align": "center",
+            "lineHeight": 1.2,
+            "letterSpacing": 0,
+            "uppercase": false,
+            "padding": 0,
+            "borderRadius": 0,
+            "highlight": "word-bg",
+            "highlightColor": "#00ff00",
+            "placementY": 0.5,
+            "maxCharsPerLine": 20
+          },
+          "mode": "word",
+          "maxWordsPerCard": 3
+        }
+      },
+      {
+        "id": "itm_0000000005",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 0,
+        "durationFrames": 30,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 12.5,
+          "y": -4,
+          "scale": 1.5,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 45,
+          "opacity": 0.75
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "shape",
+        "props": {
+          "shape": "triangle",
+          "fill": "#abcdef",
+          "stroke": "#000",
+          "strokeWidth": 3,
+          "radius": 2,
+          "width": 200.5,
+          "height": 100
+        }
+      },
+      {
+        "id": "itm_0000000006",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 30,
+        "durationFrames": 30,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "motionGraphic",
+        "props": {
+          "code": "export default function X() { return null }",
+          "inputProps": {
+            "title": "T",
+            "n": [
+              1,
+              2,
+              {
+                "deep": true
+              }
+            ],
+            "nothing": null
+          }
+        }
+      }
+    ],
+    "markers": [
+      {
+        "id": "mrk_0000000001",
+        "frame": 45,
+        "label": "Beat",
+        "color": "#f0f"
+      }
+    ]
+  },
+  "expected": {
+    "project": {
+      "id": "prj_0000000001",
+      "name": "Golden",
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "styleConfig": {
+        "fonts": [
+          "Inter",
+          "Anton"
+        ],
+        "primaryColor": "#123456",
+        "backgroundColor": "#000000",
+        "captionStyle": {
+          "fontFamily": "Inter",
+          "fontSize": 64,
+          "fontWeight": 700,
+          "color": "#ffffff",
+          "strokeWidth": 0,
+          "align": "center",
+          "lineHeight": 1.2,
+          "letterSpacing": 0,
+          "uppercase": false,
+          "padding": 0,
+          "borderRadius": 0,
+          "highlight": "none",
+          "highlightColor": "#fff",
+          "placementY": 0.9,
+          "maxCharsPerLine": 30
+        },
+        "titleStyle": {
+          "fontFamily": "Inter",
+          "fontSize": 120,
+          "fontWeight": 700,
+          "color": "#ffffff",
+          "strokeWidth": 0,
+          "align": "center",
+          "lineHeight": 1.2,
+          "letterSpacing": 0,
+          "uppercase": false,
+          "padding": 0,
+          "borderRadius": 0
+        }
+      },
+      "referenceAssetId": "ast_ref",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    "tracks": [
+      {
+        "id": "prj_0000000001_text",
+        "kind": "text",
+        "name": "Text & Graphics",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_main",
+        "kind": "video",
+        "name": "Main Video",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_audio",
+        "kind": "audio",
+        "name": "Music",
+        "locked": false,
+        "muted": true,
+        "hidden": false
+      }
+    ],
+    "items": [
+      {
+        "id": "itm_0000000001",
+        "trackId": "prj_0000000001_main",
+        "startFrame": 0,
+        "durationFrames": 90,
+        "assetId": "ast_video",
+        "sourceInFrame": 12,
+        "speed": 0.4,
+        "timeRemap": [
+          {
+            "frame": 0,
+            "sourceFrame": 12
+          },
+          {
+            "frame": 90,
+            "sourceFrame": 300
+          }
+        ],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 0.8,
+        "muted": true,
+        "effects": [
+          {
+            "id": "fx_1",
+            "type": "blur",
+            "params": {
+              "amount": 4.5,
+              "mode": "gauss",
+              "on": true
+            }
+          }
+        ],
+        "masks": [
+          {
+            "id": "mask_1",
+            "shape": "path",
+            "path": [
+              {
+                "x": 0,
+                "y": 0
+              },
+              {
+                "x": 100,
+                "y": 0
+              },
+              {
+                "x": 50,
+                "y": 80
+              }
+            ],
+            "feather": 3,
+            "invert": true,
+            "keyframes": {
+              "feather": [
+                {
+                  "frame": 0,
+                  "value": 0,
+                  "easing": "easeIn"
+                }
+              ]
+            },
+            "tracking": {
+              "assetId": "ast_video",
+              "status": "done",
+              "positions": [
+                {
+                  "frame": 0,
+                  "x": 1,
+                  "y": 2
+                }
+              ]
+            }
+          }
+        ],
+        "keyframes": {
+          "transform.x": [
+            {
+              "frame": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "frame": 30,
+              "value": 5,
+              "easing": "hold"
+            }
+          ]
+        },
+        "labels": {
+          "name": "Intro",
+          "color": "#f00"
+        },
+        "type": "video",
+        "props": {
+          "fadeInFrames": 0,
+          "fadeOutFrames": 0
+        }
+      },
+      {
+        "id": "itm_0000000002",
+        "trackId": "prj_0000000001_audio",
+        "startFrame": 0,
+        "durationFrames": 180,
+        "assetId": "ast_music",
+        "sourceInFrame": 0,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 0.35,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "audio",
+        "props": {
+          "fadeInFrames": 0,
+          "fadeOutFrames": 0
+        }
+      },
+      {
+        "id": "itm_0000000003",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 10,
+        "durationFrames": 60,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "text",
+        "props": {
+          "text": "Héllo 日本語 🎬",
+          "style": {
+            "fontFamily": "Inter",
+            "fontSize": 64,
+            "fontWeight": 900,
+            "color": "#ffffff",
+            "strokeColor": "#000",
+            "strokeWidth": 2,
+            "backgroundColor": "#112233",
+            "align": "left",
+            "lineHeight": 1.5,
+            "letterSpacing": 1.5,
+            "uppercase": true,
+            "padding": 8,
+            "borderRadius": 4
+          }
+        }
+      },
+      {
+        "id": "itm_0000000004",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 70,
+        "durationFrames": 90,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "caption",
+        "props": {
+          "words": [
+            {
+              "w": "one",
+              "startMs": 0,
+              "endMs": 900,
+              "conf": 0.97,
+              "speaker": "A"
+            },
+            {
+              "w": "two",
+              "startMs": 1000,
+              "endMs": 1900
+            }
+          ],
+          "style": {
+            "fontFamily": "Inter",
+            "fontSize": 64,
+            "fontWeight": 700,
+            "color": "#ffffff",
+            "strokeWidth": 0,
+            "align": "center",
+            "lineHeight": 1.2,
+            "letterSpacing": 0,
+            "uppercase": false,
+            "padding": 0,
+            "borderRadius": 0,
+            "highlight": "word-bg",
+            "highlightColor": "#00ff00",
+            "placementY": 0.5,
+            "maxCharsPerLine": 20
+          },
+          "mode": "word",
+          "maxWordsPerCard": 3
+        }
+      },
+      {
+        "id": "itm_0000000005",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 0,
+        "durationFrames": 30,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 12.5,
+          "y": -4,
+          "scale": 1.5,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 45,
+          "opacity": 0.75
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "shape",
+        "props": {
+          "shape": "triangle",
+          "fill": "#abcdef",
+          "stroke": "#000",
+          "strokeWidth": 3,
+          "radius": 2,
+          "width": 200.5,
+          "height": 100
+        }
+      },
+      {
+        "id": "itm_0000000006",
+        "trackId": "prj_0000000001_text",
+        "startFrame": 30,
+        "durationFrames": 30,
+        "speed": 1,
+        "timeRemap": [],
+        "transform": {
+          "x": 0,
+          "y": 0,
+          "scale": 1,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotation": 0,
+          "opacity": 1
+        },
+        "volume": 1,
+        "muted": false,
+        "effects": [],
+        "masks": [],
+        "keyframes": {},
+        "labels": {},
+        "type": "motionGraphic",
+        "props": {
+          "code": "export default function X() { return null }",
+          "inputProps": {
+            "title": "T",
+            "n": [
+              1,
+              2,
+              {
+                "deep": true
+              }
+            ],
+            "nothing": null
+          }
+        }
+      }
+    ],
+    "markers": [
+      {
+        "id": "mrk_0000000001",
+        "frame": 45,
+        "label": "Beat",
+        "color": "#f0f"
+      }
+    ]
+  }
+}

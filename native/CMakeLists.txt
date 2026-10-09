@@ -43,3 +43,4 @@ add_subdirectory(src/app)
 
 enable_testing()
 add_subdirectory(tests)
+add_subdirectory(bench)

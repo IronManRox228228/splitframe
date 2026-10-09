@@ -1,0 +1,2331 @@
+{
+  "name": "caption_split",
+  "initial": {
+    "project": {
+      "id": "prj_0000000001",
+      "name": "Golden",
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "styleConfig": {
+        "fonts": [],
+        "primaryColor": "#fbbf24",
+        "backgroundColor": "#0a0a0a"
+      },
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    "tracks": [
+      {
+        "id": "prj_0000000001_text",
+        "kind": "text",
+        "name": "Text & Graphics",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_main",
+        "kind": "video",
+        "name": "Main Video",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_audio",
+        "kind": "audio",
+        "name": "Audio 1",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      }
+    ],
+    "items": [],
+    "markers": []
+  },
+  "steps": [
+    {
+      "op": {
+        "type": "item.add",
+        "item": {
+          "id": "itm_0000000001",
+          "trackId": "prj_0000000001_text",
+          "startFrame": 100,
+          "durationFrames": 90,
+          "speed": 1,
+          "timeRemap": [],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "volume": 1,
+          "muted": false,
+          "effects": [],
+          "masks": [],
+          "keyframes": {
+            "transform.y": [
+              {
+                "frame": 10,
+                "value": 1,
+                "easing": "linear"
+              },
+              {
+                "frame": 70,
+                "value": 2,
+                "easing": "linear"
+              }
+            ]
+          },
+          "labels": {},
+          "type": "caption",
+          "props": {
+            "words": [
+              {
+                "w": "one",
+                "startMs": 0,
+                "endMs": 900,
+                "conf": 0.9
+              },
+              {
+                "w": "two",
+                "startMs": 1000,
+                "endMs": 1900
+              },
+              {
+                "w": "three",
+                "startMs": 2000,
+                "endMs": 2900,
+                "speaker": "B"
+              }
+            ],
+            "style": {
+              "fontFamily": "Inter",
+              "fontSize": 64,
+              "fontWeight": 700,
+              "color": "#ffffff",
+              "strokeWidth": 0,
+              "align": "center",
+              "lineHeight": 1.2,
+              "letterSpacing": 0,
+              "uppercase": false,
+              "padding": 0,
+              "borderRadius": 0,
+              "highlight": "active-word",
+              "highlightColor": "#fbbf24",
+              "placementY": 0.82,
+              "maxCharsPerLine": 28
+            },
+            "mode": "phrase",
+            "maxWordsPerCard": 5
+          }
+        }
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 100,
+            "durationFrames": 90,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                },
+                {
+                  "frame": 70,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                },
+                {
+                  "w": "two",
+                  "startMs": 1000,
+                  "endMs": 1900
+                },
+                {
+                  "w": "three",
+                  "startMs": 2000,
+                  "endMs": 2900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000001"
+          ],
+          "ripple": false
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.split",
+        "itemId": "itm_0000000001",
+        "atFrame": 130,
+        "newItemId": "itm_0000000002"
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 100,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 130,
+            "durationFrames": 60,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 40,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                },
+                {
+                  "w": "three",
+                  "startMs": 1000,
+                  "endMs": 1900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000002"
+          ],
+          "ripple": false
+        },
+        {
+          "type": "item.update",
+          "itemId": "itm_0000000001",
+          "patch": {
+            "durationFrames": 90,
+            "timeRemap": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                },
+                {
+                  "frame": 70,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                },
+                {
+                  "w": "two",
+                  "startMs": 1000,
+                  "endMs": 1900
+                },
+                {
+                  "w": "three",
+                  "startMs": 2000,
+                  "endMs": 2900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 100,
+            "durationFrames": 90,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                },
+                {
+                  "frame": 70,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                },
+                {
+                  "w": "two",
+                  "startMs": 1000,
+                  "endMs": 1900
+                },
+                {
+                  "w": "three",
+                  "startMs": 2000,
+                  "endMs": 2900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.split",
+        "itemId": "itm_0000000002",
+        "atFrame": 160,
+        "newItemId": "itm_0000000003"
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 100,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 130,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": []
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 160,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "three",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000003"
+          ],
+          "ripple": false
+        },
+        {
+          "type": "item.update",
+          "itemId": "itm_0000000002",
+          "patch": {
+            "durationFrames": 60,
+            "timeRemap": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 40,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                },
+                {
+                  "w": "three",
+                  "startMs": 1000,
+                  "endMs": 1900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 100,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 130,
+            "durationFrames": 60,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 40,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                },
+                {
+                  "w": "three",
+                  "startMs": 1000,
+                  "endMs": 1900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "project.setFps",
+        "fps": 24
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 24,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 80,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 104,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": []
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 128,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "three",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "project.restoreTimeline",
+          "fps": 30,
+          "items": [
+            {
+              "id": "itm_0000000001",
+              "trackId": "prj_0000000001_text",
+              "startFrame": 100,
+              "durationFrames": 30,
+              "speed": 1,
+              "timeRemap": [],
+              "transform": {
+                "x": 0,
+                "y": 0,
+                "scale": 1,
+                "scaleX": 1,
+                "scaleY": 1,
+                "rotation": 0,
+                "opacity": 1
+              },
+              "volume": 1,
+              "muted": false,
+              "effects": [],
+              "masks": [],
+              "keyframes": {
+                "transform.y": [
+                  {
+                    "frame": 10,
+                    "value": 1,
+                    "easing": "linear"
+                  }
+                ]
+              },
+              "labels": {},
+              "type": "caption",
+              "props": {
+                "words": [
+                  {
+                    "w": "one",
+                    "startMs": 0,
+                    "endMs": 900,
+                    "conf": 0.9
+                  }
+                ],
+                "style": {
+                  "fontFamily": "Inter",
+                  "fontSize": 64,
+                  "fontWeight": 700,
+                  "color": "#ffffff",
+                  "strokeWidth": 0,
+                  "align": "center",
+                  "lineHeight": 1.2,
+                  "letterSpacing": 0,
+                  "uppercase": false,
+                  "padding": 0,
+                  "borderRadius": 0,
+                  "highlight": "active-word",
+                  "highlightColor": "#fbbf24",
+                  "placementY": 0.82,
+                  "maxCharsPerLine": 28
+                },
+                "mode": "phrase",
+                "maxWordsPerCard": 5
+              }
+            },
+            {
+              "id": "itm_0000000002",
+              "trackId": "prj_0000000001_text",
+              "startFrame": 130,
+              "durationFrames": 30,
+              "speed": 1,
+              "timeRemap": [],
+              "transform": {
+                "x": 0,
+                "y": 0,
+                "scale": 1,
+                "scaleX": 1,
+                "scaleY": 1,
+                "rotation": 0,
+                "opacity": 1
+              },
+              "volume": 1,
+              "muted": false,
+              "effects": [],
+              "masks": [],
+              "keyframes": {
+                "transform.y": []
+              },
+              "labels": {},
+              "type": "caption",
+              "props": {
+                "words": [
+                  {
+                    "w": "two",
+                    "startMs": 0,
+                    "endMs": 900
+                  }
+                ],
+                "style": {
+                  "fontFamily": "Inter",
+                  "fontSize": 64,
+                  "fontWeight": 700,
+                  "color": "#ffffff",
+                  "strokeWidth": 0,
+                  "align": "center",
+                  "lineHeight": 1.2,
+                  "letterSpacing": 0,
+                  "uppercase": false,
+                  "padding": 0,
+                  "borderRadius": 0,
+                  "highlight": "active-word",
+                  "highlightColor": "#fbbf24",
+                  "placementY": 0.82,
+                  "maxCharsPerLine": 28
+                },
+                "mode": "phrase",
+                "maxWordsPerCard": 5
+              }
+            },
+            {
+              "id": "itm_0000000003",
+              "trackId": "prj_0000000001_text",
+              "startFrame": 160,
+              "durationFrames": 30,
+              "speed": 1,
+              "timeRemap": [],
+              "transform": {
+                "x": 0,
+                "y": 0,
+                "scale": 1,
+                "scaleX": 1,
+                "scaleY": 1,
+                "rotation": 0,
+                "opacity": 1
+              },
+              "volume": 1,
+              "muted": false,
+              "effects": [],
+              "masks": [],
+              "keyframes": {
+                "transform.y": [
+                  {
+                    "frame": 10,
+                    "value": 2,
+                    "easing": "linear"
+                  }
+                ]
+              },
+              "labels": {},
+              "type": "caption",
+              "props": {
+                "words": [
+                  {
+                    "w": "three",
+                    "startMs": 0,
+                    "endMs": 900,
+                    "speaker": "B"
+                  }
+                ],
+                "style": {
+                  "fontFamily": "Inter",
+                  "fontSize": 64,
+                  "fontWeight": 700,
+                  "color": "#ffffff",
+                  "strokeWidth": 0,
+                  "align": "center",
+                  "lineHeight": 1.2,
+                  "letterSpacing": 0,
+                  "uppercase": false,
+                  "padding": 0,
+                  "borderRadius": 0,
+                  "highlight": "active-word",
+                  "highlightColor": "#fbbf24",
+                  "placementY": 0.82,
+                  "maxCharsPerLine": 28
+                },
+                "mode": "phrase",
+                "maxWordsPerCard": 5
+              }
+            }
+          ],
+          "markers": []
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 100,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 130,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": []
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 160,
+            "durationFrames": 30,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 10,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "three",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.split",
+        "itemId": "itm_0000000003",
+        "atFrame": 150,
+        "newItemId": "itm_0000000005"
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 24,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 80,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 104,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": []
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 128,
+            "durationFrames": 22,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "three",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000005",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 150,
+            "durationFrames": 2,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": []
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000005"
+          ],
+          "ripple": false
+        },
+        {
+          "type": "item.update",
+          "itemId": "itm_0000000003",
+          "patch": {
+            "durationFrames": 24,
+            "timeRemap": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "props": {
+              "words": [
+                {
+                  "w": "three",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 24,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 80,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 1,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "one",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "conf": 0.9
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 104,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": []
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "two",
+                  "startMs": 0,
+                  "endMs": 900
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_text",
+            "startFrame": 128,
+            "durationFrames": 24,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {
+              "transform.y": [
+                {
+                  "frame": 8,
+                  "value": 2,
+                  "easing": "linear"
+                }
+              ]
+            },
+            "labels": {},
+            "type": "caption",
+            "props": {
+              "words": [
+                {
+                  "w": "three",
+                  "startMs": 0,
+                  "endMs": 900,
+                  "speaker": "B"
+                }
+              ],
+              "style": {
+                "fontFamily": "Inter",
+                "fontSize": 64,
+                "fontWeight": 700,
+                "color": "#ffffff",
+                "strokeWidth": 0,
+                "align": "center",
+                "lineHeight": 1.2,
+                "letterSpacing": 0,
+                "uppercase": false,
+                "padding": 0,
+                "borderRadius": 0,
+                "highlight": "active-word",
+                "highlightColor": "#fbbf24",
+                "placementY": 0.82,
+                "maxCharsPerLine": 28
+              },
+              "mode": "phrase",
+              "maxWordsPerCard": 5
+            }
+          }
+        ],
+        "markers": []
+      }
+    }
+  ]
+}

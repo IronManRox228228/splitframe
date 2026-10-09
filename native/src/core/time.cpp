@@ -5,8 +5,12 @@
 
 namespace sf {
 
-// JavaScript's Math.round (half toward +infinity), so frame numbers match the TS app exactly
-static std::int64_t jsRound(double v) { return static_cast<std::int64_t>(std::floor(v + 0.5)); }
+// Math.round semantics (half toward +infinity), so frame numbers match the TS app exactly. Not
+// floor(v + 0.5): that rounds 0.49999999999999994 up.
+std::int64_t jsRound(double v) {
+  const double f = std::floor(v);
+  return static_cast<std::int64_t>(v - f >= 0.5 ? f + 1.0 : f);
+}
 
 Frame secondsToFrames(double seconds, double fps) { return jsRound(seconds * fps); }
 

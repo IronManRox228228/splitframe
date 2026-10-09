@@ -1,0 +1,1930 @@
+{
+  "name": "ripple_overlap_and_tracks",
+  "initial": {
+    "project": {
+      "id": "prj_0000000001",
+      "name": "Golden",
+      "fps": 30,
+      "width": 1920,
+      "height": 1080,
+      "styleConfig": {
+        "fonts": [],
+        "primaryColor": "#fbbf24",
+        "backgroundColor": "#0a0a0a"
+      },
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    "tracks": [
+      {
+        "id": "prj_0000000001_text",
+        "kind": "text",
+        "name": "Text & Graphics",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_main",
+        "kind": "video",
+        "name": "Main Video",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      },
+      {
+        "id": "prj_0000000001_audio",
+        "kind": "audio",
+        "name": "Audio 1",
+        "locked": false,
+        "muted": false,
+        "hidden": false
+      }
+    ],
+    "items": [],
+    "markers": []
+  },
+  "steps": [
+    {
+      "op": {
+        "type": "track.add",
+        "trackId": "trk_00000000b2",
+        "kind": "video",
+        "name": "B"
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "track.remove",
+          "trackId": "trk_00000000b2"
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.add",
+        "item": {
+          "id": "itm_0000000001",
+          "trackId": "prj_0000000001_main",
+          "startFrame": 0,
+          "durationFrames": 100,
+          "assetId": "ast_video",
+          "sourceInFrame": 0,
+          "speed": 1,
+          "timeRemap": [],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "volume": 1,
+          "muted": false,
+          "effects": [],
+          "masks": [],
+          "keyframes": {},
+          "labels": {},
+          "type": "video",
+          "props": {
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0
+          }
+        }
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000001"
+          ],
+          "ripple": false
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.add",
+        "item": {
+          "id": "itm_0000000002",
+          "trackId": "trk_00000000b2",
+          "startFrame": 50,
+          "durationFrames": 100,
+          "assetId": "ast_v",
+          "sourceInFrame": 0,
+          "speed": 1,
+          "timeRemap": [],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "volume": 1,
+          "muted": false,
+          "effects": [],
+          "masks": [],
+          "keyframes": {},
+          "labels": {},
+          "type": "video",
+          "props": {
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0
+          }
+        }
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000002"
+          ],
+          "ripple": false
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.add",
+        "item": {
+          "id": "itm_0000000003",
+          "trackId": "prj_0000000001_main",
+          "startFrame": 60,
+          "durationFrames": 20,
+          "assetId": "ast_video",
+          "sourceInFrame": 0,
+          "speed": 1,
+          "timeRemap": [],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "volume": 1,
+          "muted": false,
+          "effects": [],
+          "masks": [],
+          "keyframes": {},
+          "labels": {},
+          "type": "video",
+          "props": {
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0
+          }
+        }
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 60,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000003"
+          ],
+          "ripple": false
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.add",
+        "item": {
+          "id": "itm_0000000004",
+          "trackId": "prj_0000000001_main",
+          "startFrame": 100,
+          "durationFrames": 40,
+          "assetId": "ast_video",
+          "sourceInFrame": 0,
+          "speed": 1,
+          "timeRemap": [],
+          "transform": {
+            "x": 0,
+            "y": 0,
+            "scale": 1,
+            "scaleX": 1,
+            "scaleY": 1,
+            "rotation": 0,
+            "opacity": 1
+          },
+          "volume": 1,
+          "muted": false,
+          "effects": [],
+          "masks": [],
+          "keyframes": {},
+          "labels": {},
+          "type": "video",
+          "props": {
+            "fadeInFrames": 0,
+            "fadeOutFrames": 0
+          }
+        }
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 60,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000004",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 100,
+            "durationFrames": 40,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.remove",
+          "itemIds": [
+            "itm_0000000004"
+          ],
+          "ripple": false
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 60,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.remove",
+        "itemIds": [
+          "itm_0000000001"
+        ],
+        "ripple": true
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000004",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 40,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.add",
+          "item": {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        },
+        {
+          "type": "item.update",
+          "itemId": "itm_0000000003",
+          "patch": {
+            "startFrame": 60
+          }
+        },
+        {
+          "type": "item.update",
+          "itemId": "itm_0000000004",
+          "patch": {
+            "startFrame": 100
+          }
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 60,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000004",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 100,
+            "durationFrames": 40,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000001",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 100,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      }
+    },
+    {
+      "op": {
+        "type": "item.remove",
+        "itemIds": [
+          "itm_0000000004",
+          "itm_0000000002"
+        ],
+        "ripple": true
+      },
+      "ok": true,
+      "doc": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      },
+      "inverse": [
+        {
+          "type": "item.add",
+          "item": {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        },
+        {
+          "type": "item.add",
+          "item": {
+            "id": "itm_0000000004",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 40,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        },
+        {
+          "type": "item.update",
+          "itemId": "itm_0000000003",
+          "patch": {
+            "startFrame": 0
+          }
+        }
+      ],
+      "undone": {
+        "project": {
+          "id": "prj_0000000001",
+          "name": "Golden",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080,
+          "styleConfig": {
+            "fonts": [],
+            "primaryColor": "#fbbf24",
+            "backgroundColor": "#0a0a0a"
+          },
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        "tracks": [
+          {
+            "id": "prj_0000000001_text",
+            "kind": "text",
+            "name": "Text & Graphics",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_main",
+            "kind": "video",
+            "name": "Main Video",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "prj_0000000001_audio",
+            "kind": "audio",
+            "name": "Audio 1",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          },
+          {
+            "id": "trk_00000000b2",
+            "kind": "video",
+            "name": "B",
+            "locked": false,
+            "muted": false,
+            "hidden": false
+          }
+        ],
+        "items": [
+          {
+            "id": "itm_0000000003",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 20,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000002",
+            "trackId": "trk_00000000b2",
+            "startFrame": 50,
+            "durationFrames": 100,
+            "assetId": "ast_v",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          },
+          {
+            "id": "itm_0000000004",
+            "trackId": "prj_0000000001_main",
+            "startFrame": 0,
+            "durationFrames": 40,
+            "assetId": "ast_video",
+            "sourceInFrame": 0,
+            "speed": 1,
+            "timeRemap": [],
+            "transform": {
+              "x": 0,
+              "y": 0,
+              "scale": 1,
+              "scaleX": 1,
+              "scaleY": 1,
+              "rotation": 0,
+              "opacity": 1
+            },
+            "volume": 1,
+            "muted": false,
+            "effects": [],
+            "masks": [],
+            "keyframes": {},
+            "labels": {},
+            "type": "video",
+            "props": {
+              "fadeInFrames": 0,
+              "fadeOutFrames": 0
+            }
+          }
+        ],
+        "markers": []
+      }
+    }
+  ]
+}

@@ -13,9 +13,12 @@ private slots:
     QCOMPARE(sf::framesToSeconds(60, 24), 2.5);
   }
 
+  void roundTripsWholeFrames() { QCOMPARE(sf::msToFrames(sf::framesToMs(90, 30), 30), 90); }
+
   void roundsHalfUpLikeJavaScript() {
     QCOMPARE(sf::secondsToFrames(0.5 / 30, 30), 1); // exactly half a frame
     QCOMPARE(sf::secondsToFrames(-0.5 / 30, 30), 0); // Math.round(-0.5) is -0, not -1
+    QCOMPARE(sf::jsRound(0.49999999999999994), 0);   // floor(v + 0.5) would say 1
   }
 
   void timecode_data() {
