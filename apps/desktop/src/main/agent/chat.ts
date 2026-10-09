@@ -10,7 +10,7 @@ import { broadcast } from '../events.ts';
 import { editorContextCache } from '../editor-context.ts';
 import { buildMessages, formatEditorContext, type ChatTurn } from './messages.ts';
 import { splitImageResult, stripImageData } from './tool-output.ts';
-import { harnessSupported, runHarnessTurn } from './harness/index.ts';
+import { harnessSupported, runHarnessPlanTurn, runHarnessTurn } from './harness/index.ts';
 
 /**
  * Built-in agent (addendum §2, main prompt §6): Vercel AI SDK streaming with the shared
@@ -64,7 +64,7 @@ function providerModel(provider: string, model: string, key: string, ai: AiSetti
 
 const aborts = new Map<string, AbortController>();
 
-export async function sendChatMessage(chatId: string, userMessage: string, history: ChatTurn[] = []): Promise<void> {
+export async function sendChatMessage(chatId: string, userMessage: string, history: ChatTurn[] = [], opts: { revise?: boolean } = {}): Promise<void> {
   // everything below runs inside the try: a failure while setting up (bad settings, an
   // invalid server URL) must still end the turn in the UI instead of leaving it spinning
   aborts.get(chatId)?.abort();
@@ -74,7 +74,7 @@ export async function sendChatMessage(chatId: string, userMessage: string, histo
     const settings = await getSettings();
     // classic stays available; v1 needs an OpenAI-compatible provider, otherwise fall back to it
     if ((settings.ai?.harness ?? DEFAULT_HARNESS) === 'v1' && (await harnessSupported())) {
-      await runHarnessTurn(chatId, userMessage, history, controller, broadcastSink(chatId));
+      await runHarnessTurn(chatId, userMessage, history, controller, broadcastSink(chatId), { revise: opts.revise });
     } else {
       await runChatTurn(chatId, userMessage, history, controller);
     }
@@ -86,12 +86,26 @@ export async function sendChatMessage(chatId: string, userMessage: string, histo
   }
 }
 
+/** The user pressed Run on the plan card (harness v1 only: the classic harness makes no plans). */
+export async function runStoredPlanTurn(chatId: string): Promise<void> {
+  aborts.get(chatId)?.abort();
+  const controller = new AbortController();
+  aborts.set(chatId, controller);
+  try {
+    await runHarnessPlanTurn(controller, broadcastSink(chatId));
+  } catch (err) {
+    broadcastChat(chatId, 'chat:done', { error: err instanceof Error ? err.message : String(err) });
+  } finally {
+    if (aborts.get(chatId) === controller) aborts.delete(chatId);
+  }
+}
+
 /**
  * Where a turn reports to. The chat UI gets the broadcast sink; the eval harness passes its own
  * to record a trace of the very same turn.
  */
 export interface ChatSink {
-  emit(type: 'chat:delta' | 'chat:tool' | 'chat:done', payload: Record<string, unknown>): void;
+  emit(type: 'chat:delta' | 'chat:tool' | 'chat:done' | 'chat:plan' | 'chat:confirm', payload: Record<string, unknown>): void;
   /** each model step as the AI SDK reports it (tool calls, including invalid ones, and finish reason) */
   onStep?(step: unknown): void;
 }

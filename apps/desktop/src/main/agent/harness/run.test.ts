@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Llm, ToolCallOut } from './llm.ts';
-import { composeReply, mechanicalCall, runHarness } from './run.ts';
+import { composeReply, mechanicalCall, runHarness, runStoredPlan } from './run.ts';
 import { FakeBackend, fixtureSnapshot, speechTranscript } from './test-fixtures.ts';
 
 /** A scripted model: each call pops the next scripted answer, so tests also prove calls are sequential. */
@@ -120,7 +120,7 @@ describe('harness run', () => {
     const video = b.doc.tracks.find((t) => t.kind === 'video')!.id;
     b.doc.items = [{ ...b.doc.items[0]!, id: 'itm_i', trackId: video, assetId: 'ast_int', startFrame: 0, durationFrames: 240, sourceInFrame: 0 } as never];
     const m = script([{ json: draft }]);
-    const r = await runHarness('Make this ready to post: add captions, put the music quietly underneath, and add a title that says "Launch Day" for the first 3 seconds.', [], { backend: b, planner: m.llm, executor: m.llm, sink: sink() as never });
+    const r = await runHarness('Make this ready to post: add captions, put the music quietly underneath, and add a title that says "Launch Day" for the first 3 seconds.', [], { backend: b, planner: m.llm, executor: m.llm, sink: sink() as never, mode: 'auto' });
     expect(m.left()).toBe(0); // no executor call: every step was mechanical
     expect(b.doc.items.some((i) => i.type === 'caption')).toBe(true);
     expect(b.doc.items.some((i) => i.type === 'audio' && i.volume === 0.2)).toBe(true);
@@ -139,7 +139,7 @@ describe('harness run', () => {
     const b = new FakeBackend(snap);
     const plan = { summary: 'A short teaser', steps: [{ kind: 'assemble', goal: 'bakery teaser', params: { topic: 'bakery story', targetSec: 6 }, accept: [] }] };
     const m = script([{ json: plan }, { json: { picks: [{ first_sentence: 2, last_sentence: 4 }] } }]);
-    const r = await runHarness('Make a 6-second teaser about the bakery story only.', [], { backend: b, planner: m.llm, executor: m.llm, sink: sink() as never });
+    const r = await runHarness('Make a 6-second teaser about the bakery story only.', [], { backend: b, planner: m.llm, executor: m.llm, sink: sink() as never, mode: 'auto', confirm: async () => 'apply' });
     expect(m.seen[1]).toContain('[2] ');
     const items = b.doc.items.filter((i) => i.assetId === 'ast_int');
     const total = items.reduce((a, i) => a + i.durationFrames, 0) / 30;
@@ -173,5 +173,121 @@ describe('plan to calls and replies', () => {
     expect(mixed).toContain('Fixed it');
     expect(mixed).toContain('I could not finish "b": nothing found');
     expect(mixed).not.toContain('no clip');
+  });
+});
+
+describe('agent modes in a run', () => {
+  const run = (msg: string, b: FakeBackend, m: ReturnType<typeof script>, extra: Partial<Parameters<typeof runHarness>[2]> = {}) => {
+    const s = sink();
+    return runHarness(msg, [], { backend: b, planner: m.llm, executor: m.llm, sink: s as never, ...extra }).then((r) => ({ r, s }));
+  };
+  const trim = { tools: [{ name: 'trimClip', args: { clip: 'broll-c', from: 0, to: 4 } }] };
+  const clipC = (b: FakeBackend) => b.doc.items.find((i) => i.id === 'itm_c')!.durationFrames;
+
+  it('Default applies a small single-step request immediately, with no confirmation', async () => {
+    const b = new FakeBackend();
+    const asked: unknown[] = [];
+    const { r } = await run('Trim broll-c so that only its first 4 seconds play.', b, script([trim]), { mode: 'default', confirm: async (q) => (asked.push(q), 'apply') });
+    expect(clipC(b)).toBe(120);
+    expect(asked).toHaveLength(0);
+    expect(r.confirmations).toBeUndefined();
+  });
+
+  it('Ask shows a preview first; Skip changes nothing, Apply applies', async () => {
+    const b = new FakeBackend();
+    const asked: { line: string; affectedIds: string[] }[] = [];
+    const skip = await run('Trim broll-c so that only its first 4 seconds play.', b, script([trim]), { mode: 'ask', confirm: async (q) => (asked.push(q), 'skip') });
+    expect(clipC(b)).toBe(180);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.line).toContain('broll-c');
+    expect(asked[0]!.affectedIds).toContain('itm_c');
+    expect(skip.r.reply).toContain('Skipped');
+    expect(skip.s.events.some((e) => e.type === 'chat:confirm' && e.payload['phase'] === 'ask')).toBe(true);
+    expect(b.history).toHaveLength(0);
+
+    const ok = await run('Trim broll-c so that only its first 4 seconds play.', b, script([trim]), { mode: 'ask', confirm: async () => 'apply' });
+    expect(clipC(b)).toBe(120);
+    expect(ok.r.confirmations).toEqual({ asked: 1, applied: 1 });
+  });
+
+  it('with no way to answer, a confirmation counts as Skip (never a silent edit)', async () => {
+    const b = new FakeBackend();
+    await run('Trim broll-c so that only its first 4 seconds play.', b, script([trim]), { mode: 'ask' });
+    expect(clipC(b)).toBe(180);
+  });
+
+  it('the destructive guard asks even in Auto, and Skip keeps the timeline', async () => {
+    const b = new FakeBackend();
+    const del = { tools: [{ name: 'deleteClips', args: { clips: ['V1·1', 'V1·2', 'V1·3'] } }] };
+    const asked: { reasons: string[] }[] = [];
+    const { r } = await run('Delete all three clips', b, script([del]), { mode: 'auto', confirm: async (q) => (asked.push(q), 'skip') });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]!.reasons[0]).toContain('most of the timeline');
+    expect(b.doc.items.filter((i) => i.type === 'video')).toHaveLength(3);
+    expect(r.reply).toContain('Skipped');
+  });
+
+  it('Plan mode: a single request becomes a plan card, nothing changes, Run executes it', async () => {
+    const b = new FakeBackend();
+    const draft = { summary: 'Trim the last clip', steps: [{ kind: 'clip_edit', goal: 'keep the first 4 s of broll-c', params: {}, accept: [] }] };
+    const m = script([{ json: draft }]);
+    const before = JSON.stringify(b.doc);
+    const { r, s } = await run('Trim broll-c so that only its first 4 seconds play.', b, m, { mode: 'plan' });
+    expect(r.waiting).toBe(true);
+    expect(JSON.stringify(b.doc)).toBe(before);
+    expect(b.groups).toHaveLength(0);
+    const card = s.events.filter((e) => e.type === 'chat:plan').pop()!.payload as { state: string; steps: { status: string }[] };
+    expect(card.state).toBe('proposed');
+    expect(card.steps[0]!.status).toBe('pending');
+    expect(b.plan).not.toBeNull();
+
+    const m2 = script([trim]);
+    const s2 = sink();
+    const done = await runStoredPlan({ backend: b, planner: m2.llm, executor: m2.llm, sink: s2 as never, mode: 'plan' });
+    expect(clipC(b)).toBe(120);
+    expect(done.reply).toContain('Done (1/1 steps)');
+    expect((s2.events.filter((e) => e.type === 'chat:plan').pop()!.payload as { state: string }).state).toBe('done');
+  });
+
+  it('Plan mode refuses undo and export instead of doing them', async () => {
+    const b = new FakeBackend();
+    const { r } = await run('Undo that', b, script([]), { mode: 'plan' });
+    expect(r.reply).toContain('Plan mode');
+    expect(b.calls).toHaveLength(0);
+  });
+
+  it('Default shows the plan card for a multi-step job and waits; Auto runs it', async () => {
+    const draft = {
+      summary: 'Title and a square canvas',
+      steps: [
+        { kind: 'title', goal: 'title', params: { text: 'Summer Sale', startSec: 0, durationSec: 3 }, accept: [] },
+        { kind: 'canvas', goal: 'square', params: { aspect: '1:1' }, accept: [] },
+      ],
+    };
+    const msg = 'Add a title that says "Summer Sale" and make the canvas square.';
+    const b = new FakeBackend();
+    const { r, s } = await run(msg, b, script([{ json: draft }]), { mode: 'default' });
+    expect(r.waiting).toBe(true);
+    expect(b.doc.items.filter((i) => i.type === 'text')).toHaveLength(1);
+    const card = s.events.filter((e) => e.type === 'chat:plan').pop()!.payload as { steps: { preview?: string }[] };
+    expect(card.steps.map((x) => x.preview)).toHaveLength(2);
+    expect(card.steps.map((x) => x.preview).join(' | ')).toContain('Summer Sale');
+
+    const b2 = new FakeBackend();
+    const auto = await run(msg, b2, script([{ json: draft }]), { mode: 'auto' });
+    expect(auto.r.waiting).toBeUndefined();
+    expect(b2.doc.items.filter((i) => i.type === 'text')).toHaveLength(2);
+  });
+
+  it('a revision goes to the planner and replaces the stored plan', async () => {
+    const b = new FakeBackend();
+    const first = { summary: 'Title', steps: [{ kind: 'title', goal: 'title', params: { text: 'Launch Day' }, accept: [] }] };
+    await run('Add a title that says "Launch Day"', b, script([{ json: first }]), { mode: 'plan' });
+    const second = { summary: 'Title and square', steps: [{ kind: 'title', goal: 'title', params: { text: 'Launch Day' }, accept: [] }, { kind: 'canvas', goal: 'square', params: { aspect: '1:1' }, accept: [] }] };
+    const m = script([{ json: second }]);
+    const { r } = await run('also make it square', b, m, { mode: 'plan', revise: true });
+    expect(m.seen[0]).toContain('CURRENT PLAN');
+    expect(r.waiting).toBe(true);
+    expect((b.plan as { steps: unknown[] }).steps).toHaveLength(2);
   });
 });

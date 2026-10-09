@@ -37,6 +37,7 @@ export class TraceRecorder {
   private finishReason: string | undefined;
   private error: string | undefined;
   private note: string | undefined;
+  private confirmations: { line: string; reasons: string[] }[] = [];
 
   constructor(private readonly message: string) {}
 
@@ -62,6 +63,8 @@ export class TraceRecorder {
           this.open.delete(key!);
         }
       }
+    } else if (type === 'chat:confirm') {
+      if (payload['phase'] === 'ask') this.confirmations.push({ line: String(payload['line'] ?? ''), reasons: (payload['reasons'] as string[] | undefined) ?? [] });
     } else if (type === 'chat:done') {
       if (payload['finishReason'] !== undefined) this.finishReason = String(payload['finishReason']);
       if (payload['error'] !== undefined) this.error = String(payload['error']);
@@ -109,6 +112,7 @@ export class TraceRecorder {
       wallMs: Date.now() - this.started,
       ...(error ? { error } : {}),
       ...(this.note ? { note: this.note } : {}),
+      ...(this.confirmations.length > 0 ? { confirmations: this.confirmations } : {}),
       ...(extra.timedOut ? { timedOut: true } : {}),
     };
   }

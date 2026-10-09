@@ -21,6 +21,19 @@ describe('router', () => {
     if (intents.length === 1) expect(got).toEqual(intents);
   });
 
+  it('a duration next to a cutting word is a clip edit, not a new cut from footage', () => {
+    expect(routeByRules('Shorten broll-c to 4 seconds from its start.')).toEqual(['clips']);
+    expect(routeByRules('Chop the last 5 seconds off the end of the interview.')).toEqual(['clips']);
+    expect(routeByRules('Cut a 15-second highlight from the talk about the bakery.')).toContain('assemble');
+    expect(routeByRules('Make a 30-second teaser from the talk.')).toContain('assemble');
+  });
+
+  it('a slow-down next to another job keeps the clip tools', () => {
+    const got = routeByRules('Slow broll-b down to half speed, and add a title that says "Hi".');
+    expect(got).toContain('clips');
+    expect(got).toContain('title');
+  });
+
   it('plans compound and judgment requests only', () => {
     const compound = 'Make this interview ready to post: cut out the long pauses and the repeated take, add captions, put the music track quietly underneath, and add a title that says "Launch Day".';
     expect(needsPlan(routeByRules(compound))).toBe(true);

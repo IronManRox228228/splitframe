@@ -70,6 +70,25 @@ describe('clip tools', () => {
   });
 });
 
+describe('speed changes ripple', () => {
+  const starts = (b: FakeBackend) => ['itm_a', 'itm_b', 'itm_c'].map((id) => item(b, id).startFrame);
+
+  it('slowing a clip pushes the clips after it right, so nothing overlaps', async () => {
+    const b = new FakeBackend();
+    const r = await run(b, 'setClipProps', { clip: 'V1·2', speed: 0.5 });
+    expect(r.ok).toBe(true);
+    expect(item(b, 'itm_b').durationFrames).toBe(360);
+    expect(starts(b)).toEqual([0, 180, 540]);
+  });
+
+  it('speeding one up closes the gap behind it', async () => {
+    const b = new FakeBackend();
+    const r = await run(b, 'setClipProps', { clip: 'V1·2', speed: 2 });
+    expect(r.ok).toBe(true);
+    expect(starts(b)).toEqual([0, 180, 270]);
+  });
+});
+
 describe('titles, canvas, export, undo', () => {
   it('addTitle supplies defaults: text track, 0 s, 3 s', async () => {
     const b = new FakeBackend(fixtureSnapshot());
@@ -79,6 +98,16 @@ describe('titles, canvas, export, undo', () => {
     const t = b.doc.items.find((i) => i.type === 'text')!;
     expect([t.startFrame, t.durationFrames]).toEqual([0, 90]);
     expect(b.doc.tracks.find((x) => x.id === t.trackId)!.kind).toBe('text');
+  });
+
+  it('addTitle does not add the same title twice', async () => {
+    const b = new FakeBackend(fixtureSnapshot());
+    b.doc.items = b.doc.items.filter((i) => i.type !== 'text');
+    await run(b, 'addTitle', { text: 'Launch Day' });
+    const again = await run(b, 'addTitle', { text: 'Launch Day' });
+    expect(again.ok).toBe(true);
+    expect(again.mutated).toBe(false);
+    expect(b.doc.items.filter((i) => i.type === 'text')).toHaveLength(1);
   });
 
   it('setCanvas switches to 9:16 and verifies', async () => {

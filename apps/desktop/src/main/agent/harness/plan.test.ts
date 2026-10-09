@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseStoredPlan, planJsonSchema, renderPlan, validatePlan } from './plan.ts';
+import { missingStepKinds, parseStoredPlan, planJsonSchema, renderPlan, validatePlan } from './plan.ts';
 import { fixtureSnapshot, speechTranscript } from './test-fixtures.ts';
 
 const snap = () => fixtureSnapshot({ transcripts: [speechTranscript('ast_int', ['Hello there my friends today.'])] });
@@ -53,5 +53,19 @@ describe('EditPlan', () => {
     expect(back).toEqual(v.plan);
     expect(parseStoredPlan({ junk: 1 })).toBeNull();
     expect(renderPlan(back!)).toContain('1. [ ] remove_pauses: do remove_pauses');
+  });
+});
+
+describe('plan coverage', () => {
+  const plan = (...kinds: string[]) => ({ steps: kinds.map((kind, i) => ({ id: i + 1, kind, goal: '', params: {}, accept: [], status: 'pending' })) }) as never;
+
+  it('names the steps the routed intents call for that the plan lacks', () => {
+    expect(missingStepKinds(plan('captions'), ['canvas', 'captions'])).toEqual(['canvas']);
+    expect(missingStepKinds(plan('captions', 'canvas'), ['canvas', 'captions'])).toEqual([]);
+    expect(missingStepKinds(plan('clip_edit'), ['pauses', 'fillers'])).toEqual(['remove_pauses', 'remove_fillers']);
+  });
+
+  it('clip and question intents need no particular step', () => {
+    expect(missingStepKinds(plan('title'), ['clips', 'title'])).toEqual([]);
   });
 });

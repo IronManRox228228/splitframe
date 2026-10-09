@@ -21,7 +21,11 @@ import { listModels, downloadModel, deleteModel, cancelModelDownload, onModelPro
 import { searchWords, groupWordHits, searchScenes, isVectorSearchEnabled } from './analysis/search.ts';
 import { groupHasAllTerms } from './analysis/search-query.ts';
 import { getVlmConfig, setVlmConfig } from './analysis/vlm.ts';
-import { sendChatMessage, abortChat, DEFAULT_HARNESS } from './agent/chat.ts';
+import { sendChatMessage, abortChat, runStoredPlanTurn, DEFAULT_HARNESS } from './agent/chat.ts';
+import { getProjectMode, setProjectMode } from './agent/mode-store.ts';
+import { AGENT_MODES } from './agent/harness/modes.ts';
+import { decide } from './agent/pending.ts';
+import { appBackend } from './agent/harness/backend.ts';
 
 /**
  * IPC is the security boundary (addendum §5.4): the renderer is untrusted, every
@@ -41,7 +45,13 @@ const chatSendInput = z.object({
     .max(200)
     .optional()
     .default([]),
+  /** the message revises the plan on the card instead of starting a new request */
+  revise: z.boolean().optional(),
 });
+
+const chatIdInput = z.string().min(4).max(80);
+const decideInput = z.object({ id: z.string().min(1).max(40), decision: z.enum(['apply', 'skip']) });
+const modeInput = z.enum(AGENT_MODES);
 
 // a sender without a window (closed mid-request) falls back to an app-modal dialog
 const showOpen = (win: BrowserWindow | null, options: Electron.OpenDialogOptions) =>
@@ -350,10 +360,34 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
   ipcMain.on('chat:send', (_e, input: unknown) => {
     const parsed = chatSendInput.safeParse(input);
     if (!parsed.success) return;
-    void sendChatMessage(parsed.data.chatId, parsed.data.message, parsed.data.history);
+    void sendChatMessage(parsed.data.chatId, parsed.data.message, parsed.data.history, { revise: parsed.data.revise });
   });
   ipcMain.on('chat:abort', (_e, chatId: unknown) => {
     if (typeof chatId === 'string') abortChat(chatId);
+  });
+  // plan card and confirmation cards: the renderer only answers what the harness asked
+  ipcMain.on('chat:runPlan', (_e, chatId: unknown) => {
+    const parsed = chatIdInput.safeParse(chatId);
+    if (parsed.success) void runStoredPlanTurn(parsed.data);
+  });
+  ipcMain.on('chat:decide', (_e, input: unknown) => {
+    const parsed = decideInput.safeParse(input);
+    if (parsed.success) decide(parsed.data.id, parsed.data.decision);
+  });
+  ipcMain.handle('chat:cancelPlan', () => {
+    if (projectService.isOpen) appBackend().savePlan(null);
+    return true;
+  });
+  // the agent mode: set only from here (the user's click or key), never by a tool
+  ipcMain.handle('agent:getMode', async () => {
+    const settings = await getSettings();
+    return { mode: getProjectMode(), harness: settings.ai?.harness ?? DEFAULT_HARNESS };
+  });
+  ipcMain.handle('agent:setMode', (_e, mode: unknown) => {
+    const parsed = modeInput.parse(mode);
+    setProjectMode(parsed);
+    broadcast('event', { type: 'agent:mode', payload: { mode: parsed } });
+    return { mode: parsed };
   });
 
   // ---------- models / analysis / search (Milestone 2) ----------

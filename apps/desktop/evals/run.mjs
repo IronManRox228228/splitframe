@@ -24,6 +24,7 @@ const tasks = opt('tasks', '') ? opt('tasks', '').split(',').filter(Boolean) : u
 const url = opt('url', 'http://127.0.0.1:8080');
 const driver = opt('driver', 'chat-v0');
 const model = opt('model', 'qwythos-9b-v2');
+const mode = opt('mode', 'auto'); // agent mode for harness-v1: evals run in auto so no card waits for a human
 
 // ---- electron binary (pnpm layout) ----
 function findElectron() {
@@ -80,7 +81,7 @@ const resultsPath = join(resultsDir, `${stamp}-${label}.json`);
 const configPath = join(work, 'run-config.json');
 writeFileSync(
   configPath,
-  JSON.stringify({ label, driver, tasks, runs, provider: 'llamacpp', model, llamacppUrl: url, evalsDir: HERE, resultsPath, taskTimeoutMs: 10 * 60_000 }, null, 2),
+  JSON.stringify({ label, driver, mode, tasks, runs, provider: 'llamacpp', model, llamacppUrl: url, evalsDir: HERE, resultsPath, taskTimeoutMs: 10 * 60_000 }, null, 2),
 );
 
 console.log(`profile ${profile}\nresults ${resultsPath}`);

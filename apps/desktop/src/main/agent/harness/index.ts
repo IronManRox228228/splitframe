@@ -2,7 +2,9 @@ import { getSettings, getSecret, getAgentKey } from '../../settings.ts';
 import type { ChatSink } from '../chat.ts';
 import { appBackend } from './backend.ts';
 import { createLlm, type Llm } from './llm.ts';
-import { runHarness, type HistoryTurn } from './run.ts';
+import { runHarness, runStoredPlan, type HarnessDeps, type HistoryTurn } from './run.ts';
+import { getProjectMode } from '../mode-store.ts';
+import { waitForDecision } from '../pending.ts';
 
 export { runHarness } from './run.ts';
 
@@ -36,11 +38,45 @@ export async function runHarnessTurn(
   history: HistoryTurn[],
   controller: AbortController,
   sink: ChatSink,
+  opts: { revise?: boolean; mode?: HarnessDeps['mode']; confirm?: HarnessDeps['confirm'] } = {},
 ): Promise<void> {
   const planner = await llmFor('planner');
   const executor = await llmFor('executor');
   try {
-    await runHarness(userMessage, history, { backend: appBackend(), planner, executor, sink, signal: controller.signal });
+    await runHarness(userMessage, history, {
+      backend: appBackend(),
+      planner,
+      executor,
+      sink,
+      signal: controller.signal,
+      mode: opts.mode ?? getProjectMode(),
+      confirm: opts.confirm ?? ((req) => waitForDecision(req.id, controller.signal)),
+      revise: opts.revise,
+    });
+    sink.emit('chat:done', { finishReason: 'stop' });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      sink.emit('chat:done', { finishReason: 'abort' });
+      return;
+    }
+    throw err;
+  }
+}
+
+/** The user pressed Run on the plan card. */
+export async function runHarnessPlanTurn(controller: AbortController, sink: ChatSink): Promise<void> {
+  const planner = await llmFor('planner');
+  const executor = await llmFor('executor');
+  try {
+    await runStoredPlan({
+      backend: appBackend(),
+      planner,
+      executor,
+      sink,
+      signal: controller.signal,
+      mode: getProjectMode(),
+      confirm: (req) => waitForDecision(req.id, controller.signal),
+    });
     sink.emit('chat:done', { finishReason: 'stop' });
   } catch (err) {
     if (controller.signal.aborted) {

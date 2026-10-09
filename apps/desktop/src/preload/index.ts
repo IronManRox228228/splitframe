@@ -91,8 +91,15 @@ export interface CutboardApi {
   searchQuery(query: string): Promise<{ words: unknown[]; scenes: unknown[]; vectorSearch: boolean }>;
   aiGetConfig(): Promise<unknown>;
   aiSetConfig(patch: Record<string, unknown>): Promise<boolean>;
-  sendChat(chatId: string, message: string, history?: { role: 'user' | 'assistant'; content: string }[]): void;
+  sendChat(chatId: string, message: string, history?: { role: 'user' | 'assistant'; content: string }[], opts?: { revise?: boolean }): void;
   abortChat(chatId: string): void;
+  /** run the plan stored for this project (the card's Run button); streams into `chatId` */
+  runPlan(chatId: string): void;
+  /** answer a confirmation card */
+  decideStep(id: string, decision: 'apply' | 'skip'): void;
+  cancelPlan(): Promise<boolean>;
+  getAgentMode(): Promise<{ mode: 'plan' | 'ask' | 'default' | 'auto'; harness: 'v1' | 'classic' }>;
+  setAgentMode(mode: 'plan' | 'ask' | 'default' | 'auto'): Promise<{ mode: 'plan' | 'ask' | 'default' | 'auto' }>;
   // hidden export-window helpers
   exportBundle(exportId: string): Promise<{ doc: unknown; mediaUrls: Record<string, string> }>;
   sendExportFrame(exportId: string, index: number, buffer: ArrayBuffer, width: number, height: number): void;
@@ -158,8 +165,13 @@ const api: CutboardApi = {
   searchQuery: (query) => ipcRenderer.invoke('search:query', query),
   aiGetConfig: () => ipcRenderer.invoke('ai:getConfig'),
   aiSetConfig: (patch) => ipcRenderer.invoke('ai:setConfig', patch),
-  sendChat: (chatId, message, history) => ipcRenderer.send('chat:send', { chatId, message, history }),
+  sendChat: (chatId, message, history, opts) => ipcRenderer.send('chat:send', { chatId, message, history, revise: opts?.revise }),
   abortChat: (chatId) => ipcRenderer.send('chat:abort', chatId),
+  runPlan: (chatId) => ipcRenderer.send('chat:runPlan', chatId),
+  decideStep: (id, decision) => ipcRenderer.send('chat:decide', { id, decision }),
+  cancelPlan: () => ipcRenderer.invoke('chat:cancelPlan'),
+  getAgentMode: () => ipcRenderer.invoke('agent:getMode'),
+  setAgentMode: (mode) => ipcRenderer.invoke('agent:setMode', mode),
   exportBundle: (exportId) => ipcRenderer.invoke('export:bundle', exportId),
   sendExportFrame: (exportId, index, buffer, width, height) => {
     ipcRenderer.send('export:window:frame', exportId, index, buffer, width, height);

@@ -36,7 +36,8 @@ export const harnessV1Driver: AgentDriver = {
     const abort = () => controller.abort();
     ctx.signal.addEventListener('abort', abort);
     try {
-      await runHarnessTurn(ctx.chatId, message, history, controller, { emit: recorder.emit, onStep: recorder.onStep });
+      // the stand-in user presses Apply on every confirmation (the trace records how many were shown)
+      await runHarnessTurn(ctx.chatId, message, history, controller, { emit: recorder.emit, onStep: recorder.onStep }, { mode: ctx.mode, confirm: async () => 'apply' });
       return recorder.finish();
     } catch (err) {
       return recorder.finish({ error: err instanceof Error ? err.message : String(err), timedOut: ctx.signal.aborted });

@@ -32,6 +32,8 @@ export interface Outcome {
   summary: string;
   findings: Finding[];
   mutated: boolean;
+  /** the user declined the change (Ask mode / a confirmation); nothing was done and nothing should be retried */
+  skipped?: boolean;
 }
 
 export interface FacadeTool {
@@ -39,6 +41,8 @@ export interface FacadeTool {
   description: string;
   input: z.ZodObject;
   mutates: boolean;
+  /** what the call would do beyond editing the timeline: the modes always ask before these */
+  risk?(args: Record<string, unknown>): { removesMedia?: boolean; costUsd?: number };
   run(args: Record<string, unknown>, backend: Backend): Promise<Outcome>;
 }
 
@@ -124,7 +128,7 @@ const clipArg = z.string().describe('Clip handle like "V1·2" (from the timeline
 export const trimClip = tool({
   name: 'trimClip',
   description:
-    'Keep only part of a clip: seconds from..to of the ORIGINAL media (the "src" range in the timeline listing). Example: to keep just the opening N seconds, from 0 to N. The clip stays where it is; later clips close up.',
+    'Keep only part of a clip: seconds from..to of the ORIGINAL media (the "src" range in the timeline listing); everything outside from..to is dropped. To keep just the opening N seconds: from 0 to N. To drop the first N seconds: from N to the clip\'s end. To cut a stretch OUT of the middle, use removeSection instead. The clip stays where it is; later clips close up.',
   input: z.object({ clip: clipArg, from: time.describe('start, seconds in the source'), to: time.describe('end, seconds in the source'), ripple: z.boolean().default(true) }),
   mutates: true,
   async run(a, c) {
@@ -253,10 +257,20 @@ export const setClipProps = tool({
     if (a.scale !== undefined) (transform['scale'] = a.scale), said.push(`scale ${a.scale}`);
     if (Object.keys(transform).length > 0) patch['transform'] = transform;
     if (Object.keys(patch).length === 0) return bad('Nothing to change: pass volume, speed, muted, opacity or scale.');
-    await c.backend.apply([{ type: 'item.update', itemId: item.id, patch: patch as never }], 'Edit clip');
+    const ops: Op[] = [{ type: 'item.update', itemId: item.id, patch: patch as never }];
+    const newDuration = patch['durationFrames'] as number | undefined;
+    if (newDuration !== undefined && newDuration !== item.durationFrames && (item.type === 'video' || item.type === 'audio')) {
+      const delta = newDuration - item.durationFrames;
+      const later = c.snap.doc.items.filter((i) => i.trackId === item.trackId && i.id !== item.id && i.startFrame >= item.startFrame + item.durationFrames).sort((x, y) => (delta > 0 ? y.startFrame - x.startFrame : x.startFrame - y.startFrame));
+      const moves: Op[] = later.map((i) => ({ type: 'item.move', itemId: i.id, startFrame: i.startFrame + delta }));
+      // growing: make room first; shrinking: close up after
+      if (delta > 0) ops.unshift(...moves);
+      else ops.push(...moves);
+    }
+    await c.backend.apply(ops, 'Edit clip');
     const after = await c.backend.snapshot();
     const now = after.doc.items.find((i) => i.id === item.id);
-    const f: Finding[] = [];
+    const f: Finding[] = [...(newDuration !== undefined ? V.newOverlaps(c.snap.doc, after.doc, ['video', 'audio']) : [])];
     if (!now) f.push({ level: 'fail', message: 'the clip disappeared' });
     else {
       if (a.volume !== undefined && Math.abs(now.volume - a.volume) > 0.001) f.push({ level: 'fail', message: `volume is ${now.volume}` });
@@ -268,7 +282,7 @@ export const setClipProps = tool({
 
 export const removeSection = tool({
   name: 'removeSection',
-  description: 'Cut a stretch out of the timeline (seconds from the start of the video) on every clip it touches; everything after slides left to close the gap.',
+  description: 'Cut a stretch OUT of the video (remove / delete / take out everything between two times; seconds from the start of the video) on every clip it touches; everything after slides left to close the gap. The rest of the video stays.',
   input: z.object({ fromSec: time, toSec: time }),
   mutates: true,
   async run(a, c) {
@@ -368,7 +382,14 @@ export const removeRetakes = tool({
 export const addCaptions = tool({
   name: 'addCaptions',
   description: 'Add captions (from the transcript) over the speech. Replaces captions already there. preset: karaoke (default, active word highlighted), bold, serif.',
-  input: z.object({ preset: z.enum(['karaoke', 'bold', 'serif']).default('karaoke'), wordsPerCard: z.number().int().min(1).max(12).default(4), clips: z.array(clipArg).optional() }),
+  input: z.object({
+    preset: z.enum(['karaoke', 'bold', 'serif']).default('karaoke'),
+    wordsPerCard: z.number().int().min(1).max(12).default(4),
+    clips: z.array(clipArg).optional(),
+    color: z.string().max(20).optional().describe('Text colour when the user asks for one, e.g. "yellow" or "#ffff00"'),
+    position: z.enum(['top', 'middle', 'bottom']).optional(),
+    sizeFactor: z.number().min(0.3).max(4).optional().describe('1.3 = 30% bigger'),
+  }),
   mutates: true,
   async run(a, c) {
     const pick = speechClips(c, a.clips);
@@ -376,8 +397,16 @@ export const addCaptions = tool({
     const old = c.snap.doc.items.filter((i) => i.type === 'caption').map((i) => i.id);
     if (old.length > 0) await c.backend.apply([{ type: 'item.remove', itemIds: old, ripple: false }], 'Replace captions');
     const res = (await c.backend.call('addCaptions', { itemIds: pick.items.map((i) => i.id), preset: a.preset, wordsPerCard: a.wordsPerCard })) as { captionCards?: number };
-    const after = await c.backend.snapshot();
-    return done(`added ${res.captionCards ?? '?'} caption cards (${a.preset}) from ${fmtTime(0)} to ${fmtTime(V.docLengthFrames(after.doc) / c.fps)}${old.length ? `, replacing ${old.length} old ones` : ''}`, V.captionCoverage(after.doc));
+    let after = await c.backend.snapshot();
+    const placementY = a.position === 'top' ? 0.12 : a.position === 'middle' ? 0.5 : a.position === 'bottom' ? 0.82 : undefined;
+    let styled = '';
+    if (a.color || placementY !== undefined || a.sizeFactor !== undefined) {
+      const fresh = after.doc.items.filter((i) => i.type === 'caption');
+      await c.backend.apply(captionStyleOps(fresh, { sizeFactor: a.sizeFactor, color: a.color, placementY }), 'Style captions');
+      after = await c.backend.snapshot();
+      styled = [a.color ? `colour ${a.color}` : '', a.position ? `at the ${a.position}` : '', a.sizeFactor ? `${a.sizeFactor}x size` : ''].filter(Boolean).join(', ');
+    }
+    return done(`added ${res.captionCards ?? '?'} caption cards (${a.preset}${styled ? `, ${styled}` : ''}) from ${fmtTime(0)} to ${fmtTime(V.docLengthFrames(after.doc) / c.fps)}${old.length ? `, replacing ${old.length} old ones` : ''}`, V.captionCoverage(after.doc));
   },
 });
 
@@ -412,6 +441,8 @@ export const addTitle = tool({
     const at = sec(a.atSec) ?? 0;
     const startFrame = toFrames(at, c.fps);
     const durationFrames = Math.max(1, toFrames(a.durationSec, c.fps));
+    const same = (i: Item) => i.type === 'text' && i.startFrame === startFrame && i.durationFrames === durationFrames && String((i.props as { text?: string }).text ?? '').trim() === a.text.trim();
+    if (c.snap.doc.items.some(same)) return done(`the title "${a.text}" is already at ${fmtTime(at)} for ${fmtDur(a.durationSec)}; nothing to add`, [], false);
     const style = { fontFamily: 'Geist', fontSize: Math.round(Math.min(c.snap.doc.project.width, c.snap.doc.project.height) / 15), fontWeight: 800, color: '#ffffff', strokeColor: '#000000', strokeWidth: 4, align: 'center', uppercase: false };
     await c.backend.call('addText', { text: a.text, startFrame, durationFrames, style });
     const after = await c.backend.snapshot();

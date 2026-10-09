@@ -3,6 +3,9 @@ import { useEditor } from '../store.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { Markdown } from './Markdown.tsx';
 import { AiSettings, PROVIDER_LABELS, type AiConfig } from './AiSettings.tsx';
+import { AgentModePill } from './AgentModePill.tsx';
+import { ConfirmCard, PlanCard } from './AgentCards.tsx';
+import { resolveConfirm, transitionPlan, upsertPlanCard, type ConfirmCardData, type PlanCardData } from '../../shared/agent-cards.ts';
 
 interface ToolCard {
   tool: string;
@@ -19,7 +22,9 @@ interface ChatTurn {
   text: string;
   tools: ToolCard[];
   /** text runs and tool calls in the order they streamed in; a tool part points into `tools` */
-  parts: ({ kind: 'text'; text: string } | { kind: 'tool'; index: number })[];
+  parts: ({ kind: 'text'; text: string } | { kind: 'tool'; index: number } | { kind: 'plan'; planId: string } | { kind: 'confirm'; index: number })[];
+  plans?: PlanCardData[];
+  confirms?: ConfirmCardData[];
   error?: string;
   note?: string;
   stopped?: boolean;
@@ -73,6 +78,7 @@ export function ChatTab() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [revising, setRevising] = useState(false);
   const [config, setConfig] = useState<AiConfig | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -121,7 +127,39 @@ export function ChatTab() {
           next[turnIdxRef.current] = { ...t, tools, parts };
           return next;
         });
+      } else if (envelope.type === 'chat:plan') {
+        const card = envelope.payload as PlanCardData & { chatId: string };
+        setTurns((prev) => {
+          const next = [...prev];
+          const t = next[turnIdxRef.current];
+          if (!t) return prev;
+          const plans = upsertPlanCard(t.plans ?? [], { planId: card.planId, summary: card.summary, state: card.state, steps: card.steps });
+          const parts = t.parts.some((x) => x.kind === 'plan' && x.planId === card.planId) ? t.parts : [...t.parts, { kind: 'plan' as const, planId: card.planId }];
+          next[turnIdxRef.current] = { ...t, plans, parts };
+          return next;
+        });
+      } else if (envelope.type === 'chat:confirm') {
+        const p = envelope.payload as { chatId: string; phase: 'ask' | 'result'; id: string; tool?: string; line?: string; counts?: string; reasons?: string[]; affectedIds?: string[]; decision?: 'apply' | 'skip' };
+        if (p.phase === 'ask') useEditor.getState().setPreviewHighlight(p.affectedIds ?? []);
+        else useEditor.getState().setPreviewHighlight([]);
+        setTurns((prev) => {
+          const next = [...prev];
+          const t = next[turnIdxRef.current];
+          if (!t) return prev;
+          const confirms = [...(t.confirms ?? [])];
+          let parts = t.parts;
+          if (p.phase === 'ask') {
+            confirms.push({ id: p.id, tool: p.tool ?? '', line: p.line ?? '', counts: p.counts ?? '', reasons: p.reasons ?? [], affectedIds: p.affectedIds ?? [], status: 'pending' });
+            parts = [...parts, { kind: 'confirm', index: confirms.length - 1 }];
+          } else {
+            const i = confirms.findIndex((c) => c.id === p.id);
+            if (i !== -1 && p.decision) confirms[i] = resolveConfirm(confirms[i]!, p.decision);
+          }
+          next[turnIdxRef.current] = { ...t, confirms, parts };
+          return next;
+        });
       } else if (envelope.type === 'chat:done') {
+        useEditor.getState().setPreviewHighlight([]);
         const p = envelope.payload as { chatId: string; error?: string; note?: string; finishReason?: string };
         setTurns((prev) => {
           const next = [...prev];
@@ -149,21 +187,50 @@ export function ChatTab() {
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
   }, [input]);
 
-  const sendFrom = useCallback((message: string, base: ChatTurn[]) => {
+  const sendFrom = useCallback((message: string, base: ChatTurn[], opts?: { revise?: boolean }) => {
     chatIdRef.current = newChatId();
     // the assistant bubble sits after the user bubble appended below
     turnIdxRef.current = base.length + 1;
     nearBottomRef.current = true;
     setTurns([...base, { role: 'user', text: message, tools: [], parts: [] }, { role: 'assistant', text: '', tools: [], parts: [] }]);
     setStreaming(true);
-    window.cutboard.sendChat(chatIdRef.current, message, historyOf(base));
+    window.cutboard.sendChat(chatIdRef.current, message, historyOf(base), opts);
   }, []);
 
   const send = (text?: string) => {
     const message = (text ?? input).trim();
     if (!message || streaming) return;
     setInput('');
-    sendFrom(message, turnsRef.current);
+    const revise = revising;
+    setRevising(false);
+    sendFrom(message, turnsRef.current, revise ? { revise: true } : undefined);
+  };
+
+  /** Plan card buttons. Run starts the stored plan in a new reply; Edit makes the next message a revision of it. */
+  const withPlan = (turns: ChatTurn[], planId: string, action: 'run' | 'cancel'): ChatTurn[] =>
+    turns.map((t) => (t.plans?.some((p) => p.planId === planId) ? { ...t, plans: t.plans.map((p) => (p.planId === planId ? { ...p, state: transitionPlan(p.state, action) } : p)) } : t));
+  const runPlan = (planId: string) => {
+    if (streamingRef.current) return;
+    const base = withPlan(turnsRef.current, planId, 'run');
+    chatIdRef.current = newChatId();
+    turnIdxRef.current = base.length;
+    nearBottomRef.current = true;
+    setTurns([...base, { role: 'assistant', text: '', tools: [], parts: [] }]);
+    setStreaming(true);
+    window.cutboard.runPlan(chatIdRef.current);
+  };
+  const editPlan = () => {
+    setRevising(true);
+    textareaRef.current?.focus();
+  };
+  const cancelPlan = (planId: string) => {
+    setTurns((prev) => withPlan(prev, planId, 'cancel'));
+    void window.cutboard.cancelPlan();
+  };
+  const decide = (id: string, decision: 'apply' | 'skip') => {
+    window.cutboard.decideStep(id, decision);
+    useEditor.getState().setPreviewHighlight([]);
+    setTurns((prev) => prev.map((t) => (t.confirms?.some((c) => c.id === id) ? { ...t, confirms: t.confirms.map((c) => (c.id === id ? resolveConfirm(c, decision) : c)) } : t)));
   };
 
   // messages typed into the "Ask SplitFrame" command bar
@@ -258,34 +325,44 @@ export function ChatTab() {
               config={config}
               onRetry={isLast ? retry : undefined}
               onSettings={() => setShowSettings(true)}
+              canAct={!streaming}
+              onRunPlan={runPlan}
+              onEditPlan={editPlan}
+              onCancelPlan={cancelPlan}
+              onDecide={decide}
             />
           );
         })}
       </div>
 
       <div className="px-4 pt-3 pb-4 flex flex-col gap-2">
-        {!streaming && (
-          <div className="flex gap-1.5 flex-wrap">
-            {SUGGESTIONS.map((s) => (
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <AgentModePill placement="up" />
+          {!streaming &&
+            SUGGESTIONS.map((s) => (
               <button key={s.label} className="pill" onClick={() => send(s.prompt)}>
                 {s.label}
               </button>
             ))}
-          </div>
-        )}
+        </div>
         <div className="flex items-end gap-2 pl-3 pr-2.5 py-2.5 bg-[rgba(8,10,9,0.4)] border border-line-strong rounded-[18px] focus-within:border-accent/60">
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === 'Tab' && e.shiftKey) {
+                e.preventDefault();
+                void useEditor.getState().cycleAgentMode();
+                return;
+              }
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
                 send();
               }
             }}
             aria-label="Message the assistant"
-            placeholder="Ask for an edit…"
+            placeholder={revising ? 'Tell me what to change in the plan…' : 'Ask for an edit…'}
             rows={1}
             className="flex-1 bg-transparent outline-none resize-none text-[13px] leading-[20px] text-fg placeholder:text-fg-faint py-[4px] max-h-[140px]"
           />
@@ -318,15 +395,25 @@ function AssistantTurn({
   config,
   onRetry,
   onSettings,
+  canAct,
+  onRunPlan,
+  onEditPlan,
+  onCancelPlan,
+  onDecide,
 }: {
   turn: ChatTurn;
   live: boolean;
   config: AiConfig | null;
   onRetry?: () => void;
   onSettings: () => void;
+  canAct: boolean;
+  onRunPlan(planId: string): void;
+  onEditPlan(): void;
+  onCancelPlan(planId: string): void;
+  onDecide(id: string, decision: 'apply' | 'skip'): void;
 }) {
   const err = turn.error ? friendlyError(turn.error, config) : null;
-  const empty = !turn.text && turn.tools.length === 0 && !turn.error;
+  const empty = !turn.text && turn.tools.length === 0 && !turn.error && !turn.plans?.length && !turn.confirms?.length;
   const copy = () => {
     void navigator.clipboard
       .writeText(turn.text)
@@ -338,6 +425,12 @@ function AssistantTurn({
       {turn.parts.map((part, j) =>
         part.kind === 'text' ? (
           part.text.trim() && <Markdown key={j} text={part.text} />
+        ) : part.kind === 'plan' ? (
+          turn.plans?.find((p) => p.planId === part.planId) && (
+            <PlanCard key={j} card={turn.plans.find((p) => p.planId === part.planId)!} canAct={canAct} onRun={() => onRunPlan(part.planId)} onEdit={onEditPlan} onCancel={() => onCancelPlan(part.planId)} />
+          )
+        ) : part.kind === 'confirm' ? (
+          turn.confirms?.[part.index] && <ConfirmCard key={j} card={turn.confirms[part.index]!} onDecide={(d) => onDecide(turn.confirms![part.index]!.id, d)} />
         ) : (
           turn.tools[part.index] && <ToolRow key={j} card={turn.tools[part.index]!} />
         ),

@@ -4,7 +4,7 @@ import type { Op, Transcript } from '@cutboard/schema';
 import { editorContextCache } from '../../editor-context.ts';
 import { getAssets, getFootageNotes, getSilenceMap, getTranscriptsForProject } from '../../asset-service.ts';
 import { projectService } from '../../project-service.ts';
-import { callTool } from '../../tools-bridge.ts';
+import { callTool, makeToolContext, registry } from '../../tools-bridge.ts';
 import type { AssetNotes, Backend } from './types.ts';
 
 /** The harness backend over the real project service and the classic tool registry. */
@@ -23,6 +23,31 @@ export function appBackend(actor: 'builtin-agent' = 'builtin-agent'): Backend {
       };
     },
     call: (tool, args) => callTool(tool, args, actor),
+    callOn(tool, args, io) {
+      // the real context, except that the document is a private copy and nothing leaves the machine
+      const real = makeToolContext(actor);
+      const ctx = {
+        ...real,
+        applyOps: async (ops: Op[], _a: unknown, label?: string) => {
+          io.applyOps(ops, label);
+          return { inverses: [], seq: 0 };
+        },
+        async getSnapshot() {
+          const snap = (await real.getSnapshot()) as Record<string, unknown>;
+          return { ...snap, doc: io.getDoc() };
+        },
+        startExport: async () => {
+          throw new Error('Exports are not previewed.');
+        },
+        undo: async () => {
+          throw new Error('History is not previewed.');
+        },
+        redo: async () => {
+          throw new Error('History is not previewed.');
+        },
+      };
+      return registry.call(tool, args, ctx);
+    },
     async apply(ops: Op[], label: string) {
       projectService.apply(ops, actor, label);
     },

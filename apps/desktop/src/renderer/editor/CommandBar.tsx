@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditor } from '../store.ts';
 import { Icon } from '../ui/Icon.tsx';
+import { AgentModePill } from './AgentModePill.tsx';
 
 /** Floating "Ask SplitFrame" bar. Ctrl/Cmd+K focuses it; Enter hands the text to the Assistant. */
 export function CommandBar() {
@@ -33,7 +34,8 @@ export function CommandBar() {
   };
 
   return (
-    <label className="absolute left-1/2 top-[2px] -translate-x-1/2 z-10 glass w-[440px] max-w-[calc(100%-32px)] h-[42px] flex items-center gap-2.5 pl-4 pr-2 rounded-full text-fg-muted focus-within:border-accent/60">
+    <div className="absolute left-1/2 top-[2px] -translate-x-1/2 z-10 flex items-center gap-2 max-w-[calc(100%-32px)]">
+    <label className="glass w-[440px] max-w-[calc(100%-32px)] h-[42px] flex items-center gap-2.5 pl-4 pr-2 rounded-full text-fg-muted focus-within:border-accent/60">
       <Icon name="sparkles" size={16} className="text-accent" />
       <input
         ref={inputRef}
@@ -52,5 +54,9 @@ export function CommandBar() {
       />
       <span className="kbd shrink-0">{platform === 'darwin' ? '⌘ K' : 'Ctrl K'}</span>
     </label>
+    <div className="glass rounded-full h-[42px] px-1.5 flex items-center">
+      <AgentModePill placement="down" compact />
+    </div>
+    </div>
   );
 }

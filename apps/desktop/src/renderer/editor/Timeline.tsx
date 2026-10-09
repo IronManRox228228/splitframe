@@ -76,6 +76,7 @@ export function Timeline() {
   const setPlayhead = useEditor((s) => s.setPlayhead);
   const setPlaying = useEditor((s) => s.setPlaying);
   const selection = useEditor((s) => s.selection);
+  const previewHighlight = useEditor((s) => s.previewHighlight);
   const select = useEditor((s) => s.select);
   const setSelection = useEditor((s) => s.setSelection);
   const applyOps = useEditor((s) => s.applyOps);
@@ -614,6 +615,7 @@ export function Timeline() {
                             startFrame={start}
                             durationFrames={duration}
                             selected={selection.includes(item.id)}
+                            previewed={previewHighlight.includes(item.id)}
                             locked={track.locked}
                             lifted={isPrimary || isGroupMember}
                             trimming={isPrimary && drag?.kind !== 'move' && drag?.ghostFrame !== undefined}
@@ -770,6 +772,7 @@ const ItemBlock = memo(function ItemBlock({
   startFrame,
   durationFrames,
   selected,
+  previewed,
   locked,
   lifted,
   trimming,
@@ -783,6 +786,8 @@ const ItemBlock = memo(function ItemBlock({
   startFrame: number;
   durationFrames: number;
   selected: boolean;
+  /** a pending confirmation in the chat would change this clip */
+  previewed: boolean;
   locked: boolean;
   lifted: boolean;
   trimming: boolean;
@@ -803,7 +808,7 @@ const ItemBlock = memo(function ItemBlock({
     <div
       className={`group/clip absolute rounded-[10px] select-none ${TYPE_BG[item.type] ?? TYPE_BG.video} ${
         locked ? 'cursor-default' : 'cursor-grab'
-      } ${selected ? 'outline outline-[1.5px] outline-accent z-[5]' : ''} ${lifted ? 'z-[6] opacity-90 shadow-lg shadow-black/50' : ''} ${
+      } ${selected ? 'outline outline-[1.5px] outline-accent z-[5]' : ''} ${previewed ? 'outline outline-2 outline-dashed outline-fg z-[5] animate-pulse' : ''} ${lifted ? 'z-[6] opacity-90 shadow-lg shadow-black/50' : ''} ${
         trimming ? 'opacity-70' : ''
       }`}
       style={{ left, width, top: ROW_PAD, height: rowHeight - ROW_PAD * 2 }}

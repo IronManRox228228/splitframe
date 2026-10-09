@@ -28,6 +28,8 @@ export interface RunConfig {
   resultsPath: string;
   /** default per-task wall-clock budget */
   taskTimeoutMs: number;
+  /** agent mode for the harness driver (default auto) */
+  mode?: 'plan' | 'ask' | 'default' | 'auto';
 }
 
 export interface TaskResult {
@@ -206,7 +208,7 @@ async function runTask(task: Task, run: number, cfg: RunConfig, driver: AgentDri
       let history: HistoryTurn[] = [];
       try {
         for (const [i, message] of task.messages.entries()) {
-          const trace = await driver.runTurn(message, history, { chatId: `eval-${task.id}-${run}-${i}`, signal: controller.signal, provider: cfg.provider, taskId: task.id, fps, manifest, assetIds });
+          const trace = await driver.runTurn(message, history, { chatId: `eval-${task.id}-${run}-${i}`, signal: controller.signal, provider: cfg.provider, taskId: task.id, fps, manifest, assetIds, mode: cfg.mode ?? 'auto' });
           turns.push(trace);
           docs.push(structuredClone(projectService.doc) as TimelineDoc);
           history = historyAfter(history, trace);

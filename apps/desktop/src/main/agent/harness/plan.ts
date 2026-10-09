@@ -82,7 +82,7 @@ export const planDraftSchema = z.object({
 });
 export type PlanDraft = z.infer<typeof planDraftSchema>;
 
-export type StepStatus = 'pending' | 'running' | 'done' | 'failed';
+export type StepStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
 
 export interface PlanStep {
   id: number;
@@ -93,6 +93,8 @@ export interface PlanStep {
   status: StepStatus;
   /** verified outcome or the failure, one line */
   note?: string;
+  /** dry-run summary shown on the plan card before the step runs */
+  preview?: string;
 }
 
 export interface EditPlan {
@@ -100,6 +102,27 @@ export interface EditPlan {
   summary: string;
   createdAt: string;
   steps: PlanStep[];
+}
+
+/** The plan step that carries out each routed intent (intents with no entry are handled by the general executor). */
+const STEP_FOR_INTENT: Record<string, StepKind> = {
+  captions: 'captions',
+  canvas: 'canvas',
+  pauses: 'remove_pauses',
+  fillers: 'remove_fillers',
+  retakes: 'remove_retakes',
+  music: 'music',
+  title: 'title',
+  beats: 'beat_cut',
+  export: 'export',
+  assemble: 'assemble',
+};
+
+/** Step kinds the request calls for (by its routed intents) that the plan does not have. */
+export function missingStepKinds(plan: Pick<EditPlan, 'steps'>, intents: string[]): StepKind[] {
+  const have = new Set(plan.steps.map((s) => s.kind));
+  const want = intents.map((i) => STEP_FOR_INTENT[i]).filter((k): k is StepKind => k !== undefined);
+  return [...new Set(want)].filter((k) => !have.has(k));
 }
 
 /** JSON schema for grammar-constrained decoding of the draft. */
@@ -174,8 +197,9 @@ export function parseStoredPlan(raw: unknown): EditPlan | null {
         goal: z.string(),
         params: stepParamsSchema,
         accept: z.array(z.string()),
-        status: z.enum(['pending', 'running', 'done', 'failed']),
+        status: z.enum(['pending', 'running', 'done', 'failed', 'skipped']),
         note: z.string().optional(),
+        preview: z.string().optional(),
       }),
     ),
   });
@@ -183,7 +207,7 @@ export function parseStoredPlan(raw: unknown): EditPlan | null {
   return r.success ? r.data : null;
 }
 
-const MARK: Record<StepStatus, string> = { pending: ' ', running: '>', done: 'x', failed: '!' };
+const MARK: Record<StepStatus, string> = { pending: ' ', running: '>', done: 'x', failed: '!', skipped: '-' };
 
 /** The plan as the state doc and the plan card show it. */
 export function renderPlan(plan: EditPlan): string {

@@ -221,6 +221,74 @@ const SCRIPTS: Record<string, Script> = {
     await e.call('deleteItems', { itemIds: [talk.id] });
     await e.call('addClip', { assetId: e.asset('talk.mp4'), startFrame: 0, sourceInFrame: e.frames(topic.startSec + 1), durationFrames: e.frames(15) });
   },
+
+  // ---- held-out set 2 ----
+  'h2-gaps': async (e) => {
+    await e.call('removeSilences', { thresholdSec: 0.5 });
+  },
+
+  'h2-fillers': async (e) => {
+    await cutSourceSpans(e, interviewItem(e).id, e.ctx.manifest.fixtures['interview.mp4'].fillers);
+  },
+
+  'h2-last-5s': async (e) => {
+    const total = e.ctx.manifest.fixtures['interview.mp4'].durationSec;
+    await cutSourceSpans(e, interviewItem(e).id, [{ startSec: total - 5, endSec: total }]);
+  },
+
+  'h2-drop-label-b': async (e) => {
+    const b = e.items().find((i) => i.assetId === e.asset('broll-b.mp4'))!;
+    await e.call('deleteItems', { itemIds: [b.id], ripple: true });
+  },
+
+  'h2-open-c': async (e) => {
+    await layOut(e, ['broll-c.mp4', 'broll-a.mp4', 'broll-b.mp4']);
+  },
+
+  'h2-yellow-captions': async (e) => {
+    await e.call('addCaptions', {});
+    const ops: Op[] = captionItems(projectService.doc).map((c) => ({
+      type: 'item.update',
+      itemId: c.id,
+      patch: { props: { ...c.props, style: { ...c.props.style, color: '#FFE600' } } },
+    }));
+    await e.call('batchEdit', { label: 'yellow captions', ops });
+  },
+
+  'h2-slow-title': async (e) => {
+    const b = e.items().find((i) => i.assetId === e.asset('broll-b.mp4'))!;
+    await e.call('updateItem', { itemId: b.id, patch: { speed: 0.5, durationFrames: b.durationFrames * 2 } });
+    await layOut(e, ['broll-a.mp4', 'broll-b.mp4', 'broll-c.mp4']);
+    await e.call('addText', { text: 'Summer Sale', startFrame: 0, durationFrames: e.frames(3) });
+  },
+
+  'h2-music-half': async (e) => {
+    const music = e.items().find((i) => i.assetId === e.asset('music.mp3'))!;
+    await e.call('updateItem', { itemId: music.id, patch: { volume: 0.4 } });
+  },
+
+  'h2-lose-2s': async (e) => {
+    const clip = e.items().find((i) => i.type === 'video')!;
+    await e.call('trimItem', { itemId: clip.id, edge: 'in', frame: clip.startFrame + e.frames(2) });
+    const trimmed = e.items().find((i) => i.id === clip.id)!;
+    if (trimmed.startFrame !== 0) await e.call('moveItem', { itemId: clip.id, startFrame: 0 });
+  },
+
+  'h2-vertical-captions': async (e) => {
+    await e.call('setProjectSettings', { aspect: '9:16' });
+    await e.call('addCaptions', {});
+  },
+
+  'h2-demo-20s': async (e) => {
+    const topic = e.ctx.manifest.fixtures['talk.mp4'].topics.find((t) => t.id === 'demo')!;
+    const talk = e.items().find((i) => i.assetId === e.asset('talk.mp4'))!;
+    await e.call('deleteItems', { itemIds: [talk.id] });
+    await e.call('addClip', { assetId: e.asset('talk.mp4'), startFrame: 0, sourceInFrame: e.frames(topic.startSec + 1), durationFrames: e.frames(20) });
+  },
+
+  'h2-cut-range': async (e) => {
+    await cutSourceSpans(e, interviewItem(e).id, [{ startSec: 10, endSec: 20 }]);
+  },
 };
 
 export const oracleDriver: AgentDriver = {

@@ -33,11 +33,21 @@ export interface Route {
 /** Intents that change the timeline in their own way; two or more of them make a compound job. */
 const JOBS: Intent[] = ['export', 'canvas', 'captions', 'title', 'pauses', 'fillers', 'retakes', 'music', 'beats', 'assemble'];
 
+/** Words that make a new cut out of footage on their own; a bare "N seconds from/of" does not. */
+const STRONG_ASSEMBLE = /\bteaser\b|\btrailer\b|\bhighlights?\b|\bfirst cut\b|\brough cut\b|\brecap\b|\bsizzle\b|\bsummary\b/i;
+/** Words for taking a part off or out of what is already on the timeline. */
+const CUTTING = /\b(trim|shorten|lose|chop|cut|drop|remove|delete|take (it |that |this )?(off|out)|get rid)\b/i;
+
 export function routeByRules(message: string): Intent[] {
-  const found = RULES.filter(([, re]) => re.test(message)).map(([i]) => i);
+  let found = RULES.filter(([, re]) => re.test(message)).map(([i]) => i);
+  // "cut the first 2 seconds of it" names a duration but is an edit of a clip, not a new cut from footage
+  if (found.includes('assemble') && !STRONG_ASSEMBLE.test(message) && CUTTING.test(message)) {
+    found = found.filter((i) => i !== 'assemble');
+    if (!found.includes('clips')) found.push('clips');
+  }
   // "captions bigger": the style words belong to captions, not to a clip edit
   const hasSpecific = found.some((i) => i !== 'clips');
-  return hasSpecific ? found.filter((i) => i !== 'clips' || /\b(trim|split|move|reorder|swap|delete|duplicate)\b/i.test(message)) : found;
+  return hasSpecific ? found.filter((i) => i !== 'clips' || /\b(trim|shorten|split|move|reorder|swap|delete|duplicate|slow|slower|speed|faster|mute)\b/i.test(message)) : found;
 }
 
 /** Words that alone do not make a clip edit ("first", "after" appear in all kinds of requests): such a match is not trusted. */
@@ -73,8 +83,20 @@ export function routeNoModel(message: string, recentText = ''): Route | null {
 }
 
 /** What the model must understand to pick intents when no rule fires. */
-export const ROUTER_PROMPT = `Classify the video-editing request into the intents it needs. Intents: ${INTENTS.join(', ')}.
-clips = trim, split, move, delete or change individual clips. assemble = build a new cut (teaser, highlights, summary) from footage. question = the user only asks something.`;
+export const ROUTER_PROMPT = `Classify the video-editing request into the intents it needs (up to three). Intents:
+- pauses: cut silences, dead air, awkward gaps where nobody is speaking
+- fillers: cut filler words (um, uh, you know)
+- retakes: drop a flubbed or repeated take
+- captions: add or restyle subtitles
+- title: add a title or text card
+- music: add background music or set how loud it is under speech
+- beats: cut the video to the beat of music
+- canvas: change the shape (vertical, square, 16:9) or frame rate
+- export: render or save the finished video
+- clips: any change to clips already on the timeline: trim or shorten a clip, cut the start or end off, cut a stretch out, split, delete, move, reorder, speed up or slow down, change the volume
+- assemble: ONLY building a new cut by choosing parts of the footage by what they are about (teaser, highlights, summary, "pull N seconds about X"); never for trimming or cutting a part off
+- undo / redo: take back or restore the last change
+- question: the user only asks something and wants no edit`;
 
 const TOOLSETS: Record<Intent, string[]> = {
   undo: ['undo', 'redo'],

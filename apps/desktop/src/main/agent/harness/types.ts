@@ -25,6 +25,10 @@ export interface Backend {
   snapshot(): Promise<Snapshot>;
   /** call an existing registry tool (frames and ids: the classic tool layer) */
   call(tool: string, args: unknown): Promise<unknown>;
+  /** run a registry tool against a private document instead of the project (dry runs); optional */
+  callOn?(tool: string, args: unknown, io: { getDoc(): TimelineDoc; applyOps(ops: Op[], label?: string): void }): Promise<unknown>;
+  /** would an export with this preset overwrite an existing file? (the app always picks a fresh name) */
+  exportWouldOverwrite?(preset: string): boolean;
   /** apply ops as one history entry */
   apply(ops: Op[], label: string): Promise<void>;
   silences(assetId: string): Promise<{ startMs: number; endMs: number }[] | null>;

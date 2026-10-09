@@ -12,6 +12,7 @@ import type { MediaPool } from './lib/media.ts';
 import type { ProjectSummary } from '../preload/index.ts';
 import { assetsToMap } from './lib/media.ts';
 import { HEADER_W } from './lib/timeline-math.ts';
+import { AGENT_MODE_IDS, type AgentModeId } from '../shared/agent-cards.ts';
 
 /**
  * Renderer state. The main process owns the timeline; this store mirrors the doc for
@@ -76,6 +77,16 @@ export interface EditorState {
   /** a message from the command bar waiting for the Assistant to send it */
   assistantOutbox: { text: string; nonce: number } | null;
   previewMuted: boolean;
+  /** how much the assistant may do without asking (per project, kept by the main process) */
+  agentMode: AgentModeId;
+  /** the classic harness ignores modes; the pill says so */
+  agentHarness: 'v1' | 'classic';
+  /** clips a pending confirmation would change: the timeline outlines them */
+  previewHighlight: string[];
+  loadAgentMode(): Promise<void>;
+  setAgentMode(mode: AgentModeId): Promise<void>;
+  cycleAgentMode(): Promise<void>;
+  setPreviewHighlight(ids: string[]): void;
   setLeftPanel(panel: LeftPanelId | null): void;
   sendToAssistant(text: string): void;
   clearAssistantOutbox(): void;
@@ -189,6 +200,34 @@ export const useEditor = create<EditorState>((set, get) => ({
   leftPanel: 'media',
   assistantOutbox: null,
   previewMuted: false,
+  agentMode: 'default',
+  agentHarness: 'v1',
+  previewHighlight: [],
+  async loadAgentMode() {
+    try {
+      const r = await window.cutboard.getAgentMode();
+      set({ agentMode: r.mode, agentHarness: r.harness });
+    } catch {
+      /* keep the last known mode */
+    }
+  },
+  async setAgentMode(mode) {
+    set({ agentMode: mode });
+    try {
+      await window.cutboard.setAgentMode(mode);
+    } catch {
+      void get().loadAgentMode();
+    }
+  },
+  async cycleAgentMode() {
+    const i = AGENT_MODE_IDS.indexOf(get().agentMode);
+    await get().setAgentMode(AGENT_MODE_IDS[(i + 1) % AGENT_MODE_IDS.length]!);
+  },
+  setPreviewHighlight(ids) {
+    const cur = get().previewHighlight;
+    if (ids.length === cur.length && ids.every((x, i) => x === cur[i])) return;
+    set({ previewHighlight: ids });
+  },
   setLeftPanel(panel) {
     set({ leftPanel: panel });
   },
@@ -258,6 +297,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       pxPerFrame: DEFAULT_PX_PER_FRAME,
       jobs: {},
     });
+    void get().loadAgentMode();
     const jobsList = (await window.cutboard.listJobs(id)) as JobInfo[];
     set({ jobs: Object.fromEntries(jobsList.map((j) => [j.id, j])) });
     // flag originals that moved or were deleted since last time (main emits an asset event for each change)
@@ -332,6 +372,11 @@ export const useEditor = create<EditorState>((set, get) => ({
         if (payload?.doc && s.doc && payload.doc.project.id === s.doc.project.id) {
           set({ doc: payload.doc });
         }
+        break;
+      }
+      case 'agent:mode': {
+        const mode = (envelope.payload as { mode?: AgentModeId } | undefined)?.mode;
+        if (mode && AGENT_MODE_IDS.includes(mode)) set({ agentMode: mode });
         break;
       }
       case 'asset': {

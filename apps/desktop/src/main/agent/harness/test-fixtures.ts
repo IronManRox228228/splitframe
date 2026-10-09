@@ -115,15 +115,25 @@ export class FakeBackend implements Backend {
 
   async call(tool: string, args: unknown): Promise<unknown> {
     this.calls.push({ tool, args });
+    return this.run(tool, args, null);
+  }
+
+  /** dry runs: the same tools over a private document */
+  async callOn(tool: string, args: unknown, io: { getDoc(): TimelineDoc; applyOps(ops: Op[], label?: string): void }): Promise<unknown> {
+    return this.run(tool, args, io);
+  }
+
+  private async run(tool: string, args: unknown, io: { getDoc(): TimelineDoc; applyOps(ops: Op[], label?: string): void } | null): Promise<unknown> {
     const registry = createToolRegistry();
     const self = this;
     const ctx = {
       actor: 'builtin-agent',
       applyOps: async (ops: Op[], _actor: unknown, label?: string) => {
-        await self.apply(ops, label ?? tool);
+        if (io) io.applyOps(ops, label);
+        else await self.apply(ops, label ?? tool);
         return { inverses: [], seq: 1 };
       },
-      getSnapshot: async () => ({ doc: self.doc, assets: self.assets, transcripts: self.transcripts, scenes: [], beatMaps: [], editorContext: { selection: self.selection, playheadFrame: 0 } }),
+      getSnapshot: async () => ({ doc: io ? io.getDoc() : self.doc, assets: self.assets, transcripts: self.transcripts, scenes: [], beatMaps: [], editorContext: { selection: self.selection, playheadFrame: 0 } }),
       getSilences: async (id: string) => self.silenceMaps[id] ?? null,
       startExport: async (preset: string) => ({ id: 'exp_1', status: 'queued', preset }),
       getExportStatus: async () => ({ status: 'queued' }),

@@ -52,6 +52,8 @@ export interface TurnTrace {
   toolCalls: ToolCallTrace[];
   steps: StepTrace[];
   stepCount: number;
+  /** confirmation cards the harness showed (the eval's stand-in user applies them all) */
+  confirmations?: { line: string; reasons: string[] }[];
   /** the 12-step budget ran out while the model still wanted to call tools */
   capHit: boolean;
   finishReason?: string;
@@ -79,6 +81,8 @@ export interface DriverContext {
   manifest: Manifest;
   /** fixture file name -> asset id */
   assetIds: Record<string, string>;
+  /** agent mode the harness runs in; evals use Auto (a Default-mode plan card would wait for a human) */
+  mode: 'plan' | 'ask' | 'default' | 'auto';
 }
 
 /**
