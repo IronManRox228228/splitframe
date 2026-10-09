@@ -400,6 +400,44 @@ private slots:
     QVERIFY(true);
   }
 
+  // GPU frames pin decoder surfaces: the cache keeps only a few per asset and demotes or drops the rest
+  void gpuFramesAreLimitedPerAsset() {
+    const auto gpuFrame = [](qint64 i) {
+      auto f = std::make_shared<VideoFrame>();
+      f->index = i;
+      auto g = std::make_shared<GpuFrame>();
+      g->width = 64;
+      g->height = 64;
+      f->gpu = g;
+      return VideoFramePtr(f);
+    };
+    FrameCache cache(64ll << 20);
+    int demoteCalls = 0;
+    cache.setGpuLimit(3, [&](AssetId, const VideoFrame& f) -> VideoFramePtr {
+      ++demoteCalls;
+      auto out = std::make_shared<VideoFrame>();
+      out->index = f.index;
+      out->image = QImage(8, 8, QImage::Format_RGBA8888);
+      return out;
+    });
+    for (qint64 i = 0; i < 6; ++i) cache.put(1, gpuFrame(i));
+    cache.put(2, gpuFrame(0)); // another asset has its own budget
+    QCOMPARE(cache.gpuCount(), 4); // 3 for asset 1, 1 for asset 2
+    QCOMPARE(demoteCalls, 3);
+    for (qint64 i = 0; i < 3; ++i) {
+      const auto f = cache.get(1, i);
+      QVERIFY(f && !f->gpu && !f->image.isNull()); // oldest became RGBA, still cached
+    }
+    QVERIFY(cache.get(1, 5)->gpu);
+    // no demoter: the surplus is simply dropped
+    cache.setGpuLimit(2);
+    cache.put(3, gpuFrame(0));
+    cache.put(3, gpuFrame(1));
+    cache.put(3, gpuFrame(2));
+    QVERIFY(!cache.contains(3, 0));
+    QVERIFY(cache.contains(3, 2));
+  }
+
   void hardwareDecodingThroughTheService() {
     const QString hwClip = dir.filePath(QStringLiteral("hw.mp4"));
     QString log;

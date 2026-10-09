@@ -12,23 +12,27 @@
 // converted on the decoder's thread.
 //
 // ---------------------------------------------------------------------------------------------
-// Plan: zero-copy D3D11 frames (not built yet; needs the renderer's D3D11 device)
+// Zero-copy D3D11 frames (VideoOpenOptions::gpu)
 //
 //  * D3D11VA decodes into an ID3D11Texture2D *array* (NV12/P010), one slice per surface.
 //    AVFrame::data[0] is the texture, data[1] the slice index.
-//  * The compositor creates its QRhi on D3D11 and hands us its ID3D11Device; hwdevice.cpp wraps it in
-//    an AVHWDeviceContext so decoder output is already on the device that samples it.
-//  * VideoFrame will gain a `std::shared_ptr<GpuFrame>` next to `image`. GpuFrame owns a ref to the
-//    AVFrame (keeping the pool surface alive) and exposes {texture, slice, width, height, format}.
-//    The compositor binds the slice as two shader views (R8/R8G8 or R16/R16G16 for P010) and does
-//    YUV->RGB + colour management in its own shader, so no CPU conversion or copy happens at all.
-//  * Surface pool pressure: every live GpuFrame pins one surface, so the cache must hold few of them
-//    (a handful per clip) and fall back to `image` for deep scrub caches; the pool size is raised
-//    via AVCodecContext::extra_hw_frames to match.
-//  * Cross-device (compositor on D3D12/Vulkan) instead needs shared NT handles
+//  * The device is the process-wide one from sharedD3D11Device() (gpu_frame.h): the compositor's QRhi
+//    adopts it, so decoder output is already on the device that samples it.
+//  * With `gpu` set, a hardware frame comes out as VideoFrame::gpu (a GpuFrame) and `image` stays
+//    empty: no download, no CPU conversion. GpuFrame owns a reference to the AVFrame, which pins its
+//    pool surface. The compositor copies the slice (GPU to GPU, QRhi cannot view one slice of an
+//    array) into a plain NV12 texture, binds its planes as R8 + R8G8 (R16 + R16G16 for P010) and
+//    does YUV->RGB in its shader.
+//  * Surface pool pressure: every live GpuFrame pins one surface. The pool holds `gpuPoolExtra` more
+//    surfaces than the codec itself needs; once that many GpuFrames of one decoder are alive the
+//    decoder hands out ordinary RGBA frames instead (so it can never run dry), and FrameCache keeps
+//    only a few GpuFrames per asset, demoting older ones to RGBA for deep scrubbing.
+//  * Cross-device (compositor on D3D12/Vulkan) would instead need shared NT handles
 //    (D3D11_RESOURCE_MISC_SHARED_NTHANDLE) imported as D3D12 resources; ID3D11Fence keeps decode
-//    and sampling ordered.
+//    and sampling ordered. Not built.
 // ---------------------------------------------------------------------------------------------
+
+#include "media/gpu_frame.h"
 
 #include <QImage>
 #include <QString>
@@ -47,6 +51,10 @@ enum class HwMode {
 struct VideoOpenOptions {
   HwMode hw = HwMode::Auto;
   int swThreads = 0; // software decoder threads; 0 = FFmpeg decides
+  // Hardware frames stay on the GPU (VideoFrame::gpu) instead of being downloaded to `image`.
+  // Only for consumers that sample the shared D3D11 device; software frames always carry `image`.
+  bool gpu = false;
+  int gpuPoolExtra = 8; // extra D3D11 surfaces beyond what the codec needs = max live GpuFrames per decoder
 };
 
 struct VideoStreamInfo {
@@ -65,9 +73,17 @@ struct VideoStreamInfo {
 struct VideoFrame {
   qint64 index = 0;
   double ptsSec = 0; // seconds from container start
-  QImage image;      // RGBA8888, display colours (matrix and range applied), not rotated
+  QImage image;      // RGBA8888, display colours (matrix and range applied), not rotated; empty when `gpu` is set
+  std::shared_ptr<const GpuFrame> gpu; // set instead of `image` for zero-copy hardware frames
   bool hardware = false; // came out of D3D11VA rather than the software decoder
-  qint64 byteSize() const { return image.sizeInBytes(); }
+  // Pixel data held, for cache accounting (GPU frames: the NV12/P010 surface they pin)
+  qint64 byteSize() const {
+    if (gpu) {
+      const qint64 px = static_cast<qint64>(gpu->width) * gpu->height;
+      return gpu->format == GpuFormat::P010 ? px * 3 : px * 3 / 2;
+    }
+    return image.sizeInBytes();
+  }
 };
 using VideoFramePtr = std::shared_ptr<const VideoFrame>;
 

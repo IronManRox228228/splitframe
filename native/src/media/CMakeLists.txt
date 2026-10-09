@@ -1,5 +1,6 @@
 add_library(sf_media STATIC
   ffmpeg.h ffmpeg.cpp
+  gpu_frame.h
   packet_index.h packet_index.cpp
   frame_convert.h frame_convert.cpp
   hwdevice.h hwdevice.cpp
@@ -15,3 +16,6 @@ target_include_directories(sf_media PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_media
   PUBLIC sf_core Qt6::Gui
   PRIVATE sf_options FFmpeg::avformat FFmpeg::avcodec FFmpeg::avutil FFmpeg::swscale FFmpeg::swresample)
+if(WIN32)
+  target_link_libraries(sf_media PRIVATE d3d11 dxgi)
+endif()

@@ -27,7 +27,7 @@ hosts the local model server.
 |---|---|---|
 | `src/core` | Project model: time, schema types, JSON load/save, ops, undo history, snapping. No GUI. | QtCore |
 | `src/media` | FFmpeg: probe, decode (hardware where available), frame cache, audio decode. | core, FFmpeg |
-| `src/render` | Compositor on QRhi (D3D12/Vulkan/Metal): one timeline frame to a texture. Used by preview and export. | core, media |
+| `src/render` | Compositor on QRhi (D3D11 today): one timeline frame to a texture, zero-copy D3D11VA video. Used by preview and export. | core, media |
 | `src/audio` | Mixer, effects, meters, output device. | core, media |
 | `src/export` | Render + encode (NVENC/AMF/QSV/software) to file. | render, audio |
 | `src/agent` | Harness v1 port: router, facade tools, plans, verifier, modes. llama-server over HTTP. | core |

@@ -2,10 +2,9 @@
 
 // Internal: the process-wide D3D11VA device decoders share, so N clips don't create N devices.
 //
-// Zero-copy plan: the compositor's QRhi (D3D11 backend) owns an ID3D11Device. Instead of letting
-// FFmpeg create its own device here, setSharedD3D11Device() will wrap that ID3D11Device in an
-// AVHWDeviceContext (AVD3D11VADeviceContext::device), so decoded textures live on the device that
-// samples them and need no copy or cross-device share handle.
+// The device is created here (not by FFmpeg) so that the compositor's QRhi can adopt the very same
+// ID3D11Device: decoded textures then live on the device that samples them and need no copy or
+// cross-device share handle. See sharedD3D11Device() in gpu_frame.h for the handles Qt needs.
 
 #include "media/ffmpeg.h"
 

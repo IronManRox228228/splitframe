@@ -29,10 +29,14 @@ public:
   struct Options {
     qint64 cacheBytes = 512ll << 20;
     int workerThreads = 3;     // concurrent decoders; hardware decoders are further capped below
-    int readAhead = 12;        // frames to keep decoded ahead of (or, in reverse, behind) the playhead
+    int readAhead = 12;        // frames to keep decoded ahead of (or, in reverse, behind) the playhead (GPU frames: fewer, see gpuFramesPerAsset)
     int scrubKeepBehind = 8;   // frames before a scrub target kept from the GOP walk (cheap back-stepping)
     int maxHardwareDecoders = 4; // GPU surface pools are big (4K NV12 x ~20); beyond this, software
     HwMode hw = HwMode::Auto;
+    // Zero-copy: hardware frames stay on the GPU as VideoFrame::gpu (no `image`). Only for a consumer
+    // that renders on the shared D3D11 device (the compositor); everything else wants RGBA images.
+    bool gpuFrames = false;
+    int gpuFramesPerAsset = 6; // cache keeps this many GPU frames per asset, then demotes/drops the oldest
   };
 
   explicit FrameService(const Options& options, QObject* parent = nullptr);
@@ -46,7 +50,11 @@ public:
   AssetId openAsset(const QString& path);
   void closeAsset(AssetId asset);
   std::optional<VideoStreamInfo> info(AssetId asset) const; // after assetOpened
+  bool failed(AssetId asset) const;                          // opening failed (or the id is unknown)
   QString decoderName(AssetId asset) const;
+  // The frame on screen at `sec` seconds from the container start (see VideoDecoder::indexAtTime).
+  // nullopt until the asset has opened.
+  std::optional<qint64> indexAtTime(AssetId asset, double sec) const;
 
   // Non-blocking: the frame if it is already decoded.
   VideoFramePtr cached(AssetId asset, qint64 index) const;

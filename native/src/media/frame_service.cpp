@@ -47,6 +47,24 @@ FrameService::FrameService(const Options& options, QObject* parent)
     : QObject(parent), options_(options), cache_(options.cacheBytes), pool_(std::make_unique<Pool>()),
       hwCount_(std::make_shared<std::atomic<int>>(0)) {
   pool_->pool.setMaxThreadCount(std::max(1, options.workerThreads));
+  if (options.gpuFrames) {
+    cache_.setGpuLimit(options.gpuFramesPerAsset, [this](AssetId id, const VideoFrame& f) -> VideoFramePtr {
+      const auto a = find(id);
+      if (!a) return nullptr;
+      {
+        // while playing, what falls out is behind the playhead: not worth a download. When paused or
+        // scrubbing, the neighbourhood is what the user is about to step through.
+        const std::lock_guard al(a->m);
+        if (a->dir != 0) return nullptr;
+      }
+      auto out = std::make_shared<VideoFrame>();
+      out->index = f.index;
+      out->ptsSec = f.ptsSec;
+      out->hardware = f.hardware;
+      out->image = frameImage(f);
+      return out->image.isNull() ? nullptr : out;
+    });
+  }
 }
 
 FrameService::~FrameService() {
@@ -112,11 +130,28 @@ std::optional<VideoStreamInfo> FrameService::info(AssetId id) const {
   return a->info;
 }
 
+bool FrameService::failed(AssetId id) const {
+  const auto a = find(id);
+  if (!a) return true;
+  const std::lock_guard al(a->m);
+  return a->failed;
+}
+
 QString FrameService::decoderName(AssetId id) const {
   const auto a = find(id);
   if (!a) return {};
   const std::lock_guard al(a->m);
   return a->decoderName;
+}
+
+std::optional<qint64> FrameService::indexAtTime(AssetId id, double sec) const {
+  const auto a = find(id);
+  if (!a) return std::nullopt;
+  {
+    const std::lock_guard al(a->m);
+    if (!a->opened) return std::nullopt;
+  }
+  return a->dec->indexAtTime(sec); // the frame table is immutable once opened
 }
 
 VideoFramePtr FrameService::cached(AssetId id, qint64 index) const {
@@ -187,6 +222,7 @@ void FrameService::runAsset(const std::shared_ptr<Asset>& a) {
   if (!a->dec) {
     VideoOpenOptions o;
     o.hw = options_.hw;
+    o.gpu = options_.gpuFrames;
     if (o.hw == HwMode::Auto && hwCount_->load() >= options_.maxHardwareDecoders) o.hw = HwMode::Off;
     QString error;
     a->dec = VideoDecoder::open(a->path, o, &error);
@@ -252,7 +288,11 @@ void FrameService::runAsset(const std::shared_ptr<Asset>& a) {
           continue;
         }
       } else if (a->dir != 0 && a->play >= 0) {
-        for (int i = 1; i <= options_.readAhead; ++i) {
+        // GPU frames pin decoder surfaces and the cache keeps only gpuFramesPerAsset of them: reading
+        // further ahead than that would evict the very frames about to be shown
+        const bool onGpu = options_.gpuFrames && a->decoderName.contains(QLatin1String("d3d11va"));
+        const int ahead = onGpu ? std::clamp(options_.gpuFramesPerAsset - 3, 1, options_.readAhead) : options_.readAhead;
+        for (int i = 1; i <= ahead; ++i) {
           const qint64 idx = a->play + static_cast<qint64>(a->dir) * i;
           if (idx < 0 || idx >= count) break;
           if (!cache_.contains(a->id, idx)) {

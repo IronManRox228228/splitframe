@@ -7,6 +7,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 
@@ -28,6 +29,24 @@ AVPixelFormat pickFormat(AVCodecContext*, const AVPixelFormat* formats) {
 }
 
 enum class Run { Ok, Cancelled, Failed, Restart, LandedLate };
+
+struct Matrix {
+  double kr, kb;
+};
+// Same choice as frame_convert: untagged is BT.709 from 720p up, BT.601 below
+Matrix matrixFor(const AVFrame& f) {
+  AVColorSpace cs = f.colorspace;
+  if (cs == AVCOL_SPC_UNSPECIFIED) cs = f.height >= 720 ? AVCOL_SPC_BT709 : AVCOL_SPC_SMPTE170M;
+  switch (cs) {
+  case AVCOL_SPC_BT470BG:
+  case AVCOL_SPC_SMPTE170M: return {0.299, 0.114};
+  case AVCOL_SPC_FCC: return {0.30, 0.11};
+  case AVCOL_SPC_SMPTE240M: return {0.212, 0.087};
+  case AVCOL_SPC_BT2020_NCL:
+  case AVCOL_SPC_BT2020_CL: return {0.2627, 0.0593};
+  default: return {0.2126, 0.0722};
+  }
+}
 
 } // namespace
 
@@ -52,6 +71,7 @@ struct VideoDecoder::Impl {
   av::FramePtr frame{av_frame_alloc()};
   av::FramePtr swFrame{av_frame_alloc()};
   media::FrameConverter converter;
+  std::shared_ptr<std::atomic<int>> liveGpu = std::make_shared<std::atomic<int>>(0); // GpuFrames out there, each pinning a surface
 
   // Decoder position. `last` is the index of the last frame the decoder emitted since the current
   // seek (keyframe-1 right after one); only meaningful while `positioned`.
@@ -74,6 +94,7 @@ struct VideoDecoder::Impl {
   bool openCodec(bool hw);
   bool seekToKey(qint64 keyIndex);
   VideoFramePtr makeFrame(qint64 index);
+  std::shared_ptr<const GpuFrame> wrapGpu() const;
   Run run(qint64 target, qint64 keepFrom, const FrameSink& sink, const Cancel& cancel, bool afterSeek,
           VideoFramePtr* out);
   double ptsSec(qint64 index) const { return table[static_cast<size_t>(index)].pts * av_q2d(st->time_base) - containerStart; }
@@ -98,6 +119,7 @@ bool VideoDecoder::Impl::openCodec(bool hw) {
     }
     c->hw_device_ctx = av_buffer_ref(dev.get());
     c->get_format = pickFormat;
+    if (options.gpu) c->extra_hw_frames = options.gpuPoolExtra;
     c->thread_count = 1; // the GPU does the work; software threads would only add latency
   } else {
     c->thread_count = options.swThreads > 0 ? options.swThreads : std::min(8, QThread::idealThreadCount());
@@ -140,6 +162,38 @@ bool VideoDecoder::Impl::seekToKey(qint64 keyIndex) {
   return true;
 }
 
+// The current hardware frame as a GpuFrame, or null when it can't or shouldn't stay on the GPU
+// (not NV12/P010, device mismatch, or the surface pool is nearly all pinned already).
+std::shared_ptr<const GpuFrame> VideoDecoder::Impl::wrapGpu() const {
+  if (!options.gpu || frame->format != AV_PIX_FMT_D3D11 || !frame->hw_frames_ctx) return nullptr;
+  const auto* frames = reinterpret_cast<const AVHWFramesContext*>(frame->hw_frames_ctx->data);
+  if (frames->sw_format != AV_PIX_FMT_NV12 && frames->sw_format != AV_PIX_FMT_P010) return nullptr;
+  if (liveGpu->load() >= options.gpuPoolExtra) return nullptr;
+  const auto dev = sharedD3D11Device();
+  if (!dev) return nullptr;
+  AVFrame* ref = av_frame_clone(frame.get());
+  if (!ref) return nullptr;
+  ++*liveGpu;
+  auto out = std::make_shared<GpuFrame>();
+  out->device = dev->device;
+  out->texture = ref->data[0];
+  out->slice = static_cast<int>(reinterpret_cast<intptr_t>(ref->data[1]));
+  out->width = ref->width;
+  out->height = ref->height;
+  out->format = frames->sw_format == AV_PIX_FMT_P010 ? GpuFormat::P010 : GpuFormat::Nv12;
+  out->bitDepth = out->format == GpuFormat::P010 ? 10 : 8;
+  const Matrix m = matrixFor(*ref);
+  out->kr = m.kr;
+  out->kb = m.kb;
+  out->fullRange = ref->color_range == AVCOL_RANGE_JPEG;
+  out->hold = std::shared_ptr<void>(ref, [live = liveGpu](void* p) {
+    auto* f = static_cast<AVFrame*>(p);
+    av_frame_free(&f);
+    --*live;
+  });
+  return out;
+}
+
 VideoFramePtr VideoDecoder::Impl::makeFrame(qint64 index) {
   const auto t0 = std::chrono::steady_clock::now();
   struct Timer {
@@ -147,6 +201,15 @@ VideoFramePtr VideoDecoder::Impl::makeFrame(qint64 index) {
     std::chrono::steady_clock::time_point t0;
     ~Timer() { acc += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(); }
   } timer{stats.convertSeconds, t0};
+  if (auto gpu = wrapGpu()) {
+    auto out = std::make_shared<VideoFrame>();
+    out->index = index;
+    out->ptsSec = ptsSec(index);
+    out->gpu = std::move(gpu);
+    out->hardware = true;
+    ++stats.framesConverted; // counted so decode-vs-convert shares stay comparable; the cost is ~0
+    return out;
+  }
   AVFrame* src = frame.get();
   if (frame->format == AV_PIX_FMT_D3D11) {
     av_frame_unref(swFrame.get());
@@ -343,6 +406,16 @@ std::unique_ptr<VideoDecoder> VideoDecoder::open(const QString& path, const Vide
     info.durationSec = info.avgFps > 0 ? 1.0 / info.avgFps : 0;
   }
   return dec;
+}
+
+QImage frameImage(const VideoFrame& f) {
+  if (!f.gpu) return f.image;
+  const auto* hw = static_cast<const AVFrame*>(f.gpu->hold.get());
+  av::FramePtr sw(av_frame_alloc());
+  if (!hw || !sw || av_hwframe_transfer_data(sw.get(), hw, 0) < 0) return {};
+  av_frame_copy_props(sw.get(), hw);
+  media::FrameConverter converter;
+  return converter.toRgba(sw.get());
 }
 
 const VideoStreamInfo& VideoDecoder::info() const { return d->info; }

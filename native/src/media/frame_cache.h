@@ -4,9 +4,11 @@
 
 #include <QtGlobal>
 
+#include <functional>
 #include <list>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace sf {
 
@@ -38,7 +40,15 @@ public:
   // Membership test that doesn't disturb the LRU order or the hit counters.
   bool contains(AssetId asset, qint64 frame) const;
   // Inserts (or refreshes) and evicts down to the limit. A frame larger than the whole limit is not kept.
+  // GPU frames each pin a decoder surface, so at most gpuLimit() of them per asset stay as they are:
+  // the least recently used beyond that are replaced by whatever the demoter makes of them (normally an
+  // RGBA copy) or dropped when there is no demoter / it returns null. The demoter runs on the calling
+  // thread, outside the cache's lock.
   void put(AssetId asset, VideoFramePtr frame);
+  using Demoter = std::function<VideoFramePtr(AssetId, const VideoFrame&)>;
+  void setGpuLimit(int perAsset, Demoter demoter = {});
+  int gpuLimit() const;
+  qint64 gpuCount() const; // GPU frames currently held
   void clearAsset(AssetId asset);
   void clear();
 
@@ -60,12 +70,17 @@ private:
     VideoFramePtr frame;
   };
   void evictLocked();
+  void eraseLocked(std::list<Entry>::iterator it);
+  void putLocked(AssetId asset, VideoFramePtr frame, std::vector<VideoFramePtr>* demote);
 
   mutable std::mutex m_;
   std::list<Entry> lru_; // front = most recent
   std::unordered_map<FrameKey, std::list<Entry>::iterator, FrameKeyHash> map_;
   qint64 limit_;
   qint64 bytes_ = 0;
+  int gpuLimit_ = 8;
+  Demoter demoter_;
+  std::unordered_map<AssetId, int> gpuPerAsset_;
   mutable Stats stats_;
 };
 
