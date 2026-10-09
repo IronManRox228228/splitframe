@@ -45,6 +45,8 @@ export interface StepFacts {
   overwritesExport?: boolean;
   /** money the step would spend (paid generation); nothing yet, the hook is here */
   costUsd?: number;
+  /** the step belongs to a plan the user approved with Run: a big cut there was already seen and agreed to */
+  approvedPlan?: boolean;
 }
 
 export function destructive(diff: DocDiff | null | undefined): boolean {
@@ -60,7 +62,7 @@ export function askReasons(f: StepFacts): AskReason[] {
   if (f.removesMedia) out.push('media-removal');
   if (f.overwritesExport) out.push('overwrite-export');
   if ((f.costUsd ?? 0) > 0) out.push('cost');
-  if (destructive(f.diff)) out.push('destructive');
+  if (!f.approvedPlan && destructive(f.diff)) out.push('destructive');
   return out;
 }
 

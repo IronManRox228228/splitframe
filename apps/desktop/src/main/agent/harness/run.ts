@@ -103,6 +103,8 @@ class Run {
     readonly d: HarnessDeps,
     readonly history: HistoryTurn[],
     readonly mode: AgentMode = d.mode ?? DEFAULT_MODE,
+    /** executing a plan the user approved with Run (the destructive guard does not ask again) */
+    readonly approvedPlan = false,
   ) {}
 
   get sink() {
@@ -168,6 +170,7 @@ class Run {
       diff: preview?.diff ?? null,
       removesMedia: risk.removesMedia,
       costUsd: risk.costUsd,
+      approvedPlan: this.approvedPlan,
       overwritesExport: tool.name === 'exportVideo' ? (this.d.backend.exportWouldOverwrite?.(preset) ?? false) : false,
     });
     if (decision.action === 'apply') return null;
@@ -632,11 +635,11 @@ export async function runHarness(message: string, history: HistoryTurn[], deps: 
 
 /**
  * The user pressed Run on a plan card: execute the stored plan. The press is the approval, so the
- * steps run as in Auto (still verified, and the always-ask guards still apply); in Ask mode each
- * step still shows its preview.
+ * steps run as in Auto (still verified; media removal, export overwrite and cost still ask, but a
+ * big cut does not ask again); in Ask mode each step still shows its preview.
  */
 export async function runStoredPlan(deps: HarnessDeps): Promise<HarnessResult> {
-  const run = new Run(deps, [], deps.mode === 'ask' ? 'ask' : 'auto');
+  const run = new Run(deps, [], deps.mode === 'ask' ? 'ask' : 'auto', true);
   const b = deps.backend;
   const plan = parseStoredPlan(b.loadPlan());
   if (!plan) {

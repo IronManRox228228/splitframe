@@ -87,6 +87,14 @@ describe('destructive-edit guard', () => {
     expect(decideStep('default', f).action).toBe('confirm');
   });
 
+  it('does not ask again inside a plan the user approved, but the other guards still do', () => {
+    const big = diff({ beforeSec: 136, afterSec: 30 });
+    expect(decideStep('auto', edit({ diff: big, approvedPlan: true })).action).toBe('apply');
+    expect(decideStep('ask', edit({ diff: big, approvedPlan: true })).action).toBe('confirm'); // Ask still asks per step
+    expect(askReasons(edit({ diff: big, approvedPlan: true, removesMedia: true }))).toEqual(['media-removal']);
+    expect(askReasons(edit({ approvedPlan: true, overwritesExport: true, costUsd: 1 }))).toEqual(['overwrite-export', 'cost']);
+  });
+
   it('no diff (an export) is never destructive', () => {
     expect(destructive(null)).toBe(false);
   });
