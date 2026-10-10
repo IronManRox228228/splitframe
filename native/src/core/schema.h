@@ -374,11 +374,60 @@ struct Marker {
   bool operator==(const Marker&) const = default;
 };
 
+// ---------- mixer (native-only) ----------
+
+// Audio mixer graph: track strips -> buses -> master, with inserts and sends. The whole block is
+// optional on the document: absent = every track at unity going straight to the master, which is
+// what the Electron app plays, so existing projects (and their JSON) are untouched. The zod schema
+// strips the key (see ItemColor). See audio/mixer.h for how it is rendered.
+//
+// Automation keyframes use absolute timeline frames (not item-local) and Keyframe's easing.
+struct MixInsert {
+  QString id;
+  // "eq" "compressor" "limiter" "gate" "deesser" "reverb" "clap" (hosted plugin, params["plugin"] = id)
+  QString type;
+  bool bypass = false;
+  EffectParams params;
+  KeyframeMap automation;               // param name -> points
+  std::optional<QString> sidechain;     // node id whose output keys a dynamics effect
+  std::optional<QString> state;         // hosted plugin state, base64
+  bool operator==(const MixInsert&) const = default;
+};
+
+struct MixSend {
+  QString target; // bus id
+  double level = 1;
+  bool preFader = false;
+  bool operator==(const MixSend&) const = default;
+};
+
+struct MixNode {
+  QString id; // track id for a strip, bus id for a bus, "master" for the master
+  std::optional<QString> name;
+  double volume = 1;
+  double pan = 0; // -1 (left) .. 1 (right), constant power
+  bool muted = false;
+  bool solo = false;
+  std::optional<QString> output; // bus id; absent = master
+  std::vector<MixInsert> inserts;
+  std::vector<MixSend> sends;
+  KeyframeMap automation; // "volume", "pan"
+  bool operator==(const MixNode&) const = default;
+};
+
+struct Mixer {
+  std::vector<MixNode> strips; // by track id; tracks without a strip use defaults
+  std::vector<MixNode> buses;
+  MixNode master{.id = QStringLiteral("master")};
+  bool operator==(const Mixer&) const = default;
+};
+
 struct TimelineDoc {
   Project project;
   std::vector<Track> tracks;
   std::vector<Item> items;
   std::vector<Marker> markers;
+  std::optional<Mixer> mixer; // native-only
   bool operator==(const TimelineDoc&) const = default;
 };
 
@@ -519,6 +568,8 @@ QJsonObject toJson(const ItemProps&);
 QJsonObject toJson(const Item&, bool omitProps = false);
 QJsonObject toJson(const ItemPatch&);
 QJsonObject toJson(const TimelineDoc&);
+Mixer parseMixer(const Rd& r);       // core/mixer.cpp
+QJsonObject toJson(const Mixer&);
 QJsonObject toJson(const Asset&);
 QJsonObject toJson(const Transcript&);
 QJsonObject toJson(const Scene&);

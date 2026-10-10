@@ -132,6 +132,11 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ProjectSetStyleConf
   return {ProjectSetStyleConfig{doc.project.styleConfig}};
 }
 
+Inverse run(TimelineDoc& next, const TimelineDoc& doc, const MixerSet& o) {
+  next.mixer = o.mixer;
+  return {MixerSet{doc.mixer}};
+}
+
 Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ProjectSetReference& o) {
   // references are metadata, not timeline items: the tool layer validates them against assets
   next.project.referenceAssetId = o.assetId;

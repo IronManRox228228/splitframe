@@ -473,6 +473,7 @@ TimelineDoc parseTimelineDoc(const Rd& r) {
   d.tracks = r.field(QStringLiteral("tracks")).list(parseTrack);
   d.items = r.field(QStringLiteral("items")).list([](const Rd& x) { return parseItem(x); });
   d.markers = r.field(QStringLiteral("markers")).list(parseMarker);
+  d.mixer = r.field(QStringLiteral("mixer")).opt(parseMixer);
   return d;
 }
 
@@ -779,6 +780,7 @@ QJsonObject toJson(const TimelineDoc& d) {
                 {QStringLiteral("tracks"), arr(d.tracks, [](const Track& t) { return toJson(t); })},
                 {QStringLiteral("items"), arr(d.items, [](const Item& i) { return toJson(i); })},
                 {QStringLiteral("markers"), arr(d.markers, [](const Marker& m) { return toJson(m); })}};
+  if (d.mixer) o.insert(QStringLiteral("mixer"), toJson(*d.mixer));
   return o;
 }
 

@@ -99,3 +99,36 @@ sf_add_editor_test(tst_timeline_view
 sf_add_editor_test(tst_ui_smoke)
 add_dependencies(tst_ui_smoke splitframe)
 target_compile_definitions(tst_ui_smoke PRIVATE SF_APP_EXE="$<TARGET_FILE:splitframe>")
+
+# Audio engine: renderer, DSP, loudness, mixer schema, CLAP host (with a tiny test plugin), output device.
+function(sf_add_audio_test name)
+  cmake_parse_arguments(T "" "" "SOURCES;DEFS" ${ARGN})
+  qt_add_executable(${name} ${name}.cpp ${T_SOURCES})
+  target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
+  target_link_libraries(${name} PRIVATE sf_audio sf_media sf_core sf_options Qt6::Test)
+  if(T_DEFS)
+    target_compile_definitions(${name} PRIVATE ${T_DEFS})
+  endif()
+  add_test(NAME ${name} COMMAND ${name})
+  get_target_property(_qtcore Qt6::Core IMPORTED_LOCATION_RELEASE)
+  if(NOT _qtcore)
+    get_target_property(_qtcore Qt6::Core IMPORTED_LOCATION_DEBUG)
+  endif()
+  get_filename_component(_qtbin "${_qtcore}" DIRECTORY)
+  set_tests_properties(${name} PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin;PATH=path_list_prepend:$ENV{OCIO_ROOT}/bin"
+    ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE}")
+endfunction()
+
+add_library(sf_test_clap_gain MODULE clap_test_gain.cpp)
+target_include_directories(sf_test_clap_gain SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/third_party/clap/include")
+set_target_properties(sf_test_clap_gain PROPERTIES PREFIX "" SUFFIX ".clap"
+  LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/clap" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/clap")
+
+sf_add_audio_test(tst_audio_render)
+sf_add_audio_test(tst_audio_dsp)
+sf_add_audio_test(tst_loudness)
+sf_add_audio_test(tst_mixer_schema)
+sf_add_audio_test(tst_clap_host DEFS "SF_TEST_CLAP=\"$<TARGET_FILE:sf_test_clap_gain>\"")
+add_dependencies(tst_clap_host sf_test_clap_gain)
+sf_add_audio_test(tst_audio_output SOURCES "${CMAKE_SOURCE_DIR}/src/render/playback_clock.cpp")

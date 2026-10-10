@@ -23,6 +23,10 @@ struct ProjectSetStyleConfig { StyleConfig styleConfig; };
 // Reference video for style matching; null (nullopt) clears it.
 struct ProjectSetReference { std::optional<QString> assetId; };
 
+// Native-only: replaces the whole audio mixer block (nullopt = remove it). The inverse is the same op
+// carrying the previous block, so a mixer edit is one undo step.
+struct MixerSet { std::optional<Mixer> mixer; };
+
 struct TrackAdd {
   QString trackId;
   TrackKind kind = TrackKind::Video;
@@ -144,7 +148,7 @@ using OpBody = std::variant<ProjectRename, ProjectSetCanvas, ProjectSetFps, Proj
                             TrackReorder, ItemAdd, ItemRemove, ItemUpdate, ItemMove, ItemTrim, ItemSplit,
                             ItemClone, ItemSlip, ItemSetSpeed, ItemSetTimeRemap, ItemSetKeyframes, EffectAdd,
                             EffectRemove, EffectUpdate, MaskAdd, MaskRemove, MarkerAdd, MarkerRemove,
-                            MarkerUpdate, BatchOp>;
+                            MarkerUpdate, BatchOp, MixerSet>;
 
 struct Op {
   OpBody body;

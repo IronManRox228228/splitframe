@@ -20,3 +20,4 @@ target_compile_definitions(splitframe PRIVATE PROJECT_VERSION_STRING="${PROJECT_
 add_custom_command(TARGET splitframe POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} "$<TARGET_FILE_DIR:splitframe>"
   COMMAND_EXPAND_LISTS)
+target_link_libraries(splitframe PRIVATE sf_audio)

@@ -4,6 +4,7 @@
 // and the playhead clock. Lives on the UI thread; the preview item's render thread reads from it
 // through the thread-safe parts (clock, session snapshot, atomics).
 
+#include "audio/preview_audio.h"
 #include "core/schema.h"
 #include "media/frame_service.h"
 #include "render/media_provider.h"
@@ -90,6 +91,8 @@ public:
   qint64 presentedFrames() const;
   qint64 droppedFrames() const;
 
+  audio::PreviewAudio& audio() { return *audio_; } // meters, loudness, device state
+
   // ---- render thread side ----
   render::PlaybackClock& clock() { return clock_; }
   std::shared_ptr<Session> session() const; // snapshot
@@ -111,7 +114,14 @@ private:
   void refreshTransport();
   void updateStats();
   void publish(std::shared_ptr<Session> s);
+  void syncAudioAssets(const render::AssetTable& assets);
+  void syncAudioSession(const TimelineDoc& doc);
+  void startAudio();
 
+  // Sound: the engine, the sound card and the master clock the PlaybackClock follows while audio plays at 1x.
+  // Declared before clock_ because the clock is built from the audio clock source.
+  std::unique_ptr<audio::PreviewAudio> audio_;
+  std::shared_ptr<audio::FileProvider> audioFiles_ = std::make_shared<audio::FileProvider>();
   mutable std::mutex m_;
   std::shared_ptr<Session> session_;
   render::PlaybackClock clock_;

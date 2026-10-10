@@ -1,5 +1,6 @@
 #include "app/player.h"
 
+#include "audio/timebase.h"
 #include "core/error.h"
 #include "core/timeline_doc.h"
 
@@ -10,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace sf::app {
 
@@ -33,7 +35,8 @@ Frame clockFrames(const TimelineDoc& doc) { return docDurationFrames(doc) + 1; }
 
 } // namespace
 
-Player::Player(QObject* parent) : QObject(parent) {
+Player::Player(QObject* parent)
+    : QObject(parent), audio_(std::make_unique<audio::PreviewAudio>()), clock_(audio_->clockSource()) {
   auto* timer = new QTimer(this);
   timer->setInterval(500);
   connect(timer, &QTimer::timeout, this, &Player::updateStats);
@@ -49,6 +52,24 @@ Player::Player(QObject* parent) : QObject(parent) {
 
 Player::~Player() = default;
 
+void Player::syncAudioAssets(const render::AssetTable& assets) {
+  std::map<QString, audio::FileProvider::File> files;
+  for (const auto& [id, ref] : assets) files[id] = {ref.path, ref.kind != AssetKind::Image};
+  audioFiles_->setFiles(std::move(files));
+}
+
+void Player::syncAudioSession(const TimelineDoc& doc) { audio_->setSession(std::make_shared<const TimelineDoc>(doc), audioFiles_); }
+
+// Sound plays at 1x only; every other rate (shuttle, reverse) is silent and the clock runs on the system clock.
+void Player::startAudio() {
+  if (clock_.playing() && clock_.rate() == 1.0) {
+    audio_->openDevice();
+    audio_->play(clock_.frame());
+  } else {
+    audio_->pause();
+  }
+}
+
 std::shared_ptr<Session> Player::session() const {
   const std::lock_guard lock(m_);
   return session_;
@@ -60,6 +81,8 @@ void Player::publish(std::shared_ptr<Session> s) {
 }
 
 void Player::loadProject(TimelineDoc doc, render::AssetTable assets) {
+  audio_->pause();
+  syncAudioAssets(assets);
   auto media = makeMedia();
   FrameService::Options o;
   o.gpuFrames = zeroCopy_;
@@ -78,6 +101,7 @@ void Player::loadProject(TimelineDoc doc, render::AssetTable assets) {
   clock_.pause();
   clock_.setTimeline(static_cast<double>(doc.project.fps), clockFrames(doc));
   clock_.seek(0);
+  syncAudioSession(doc);
   s->doc = std::move(doc);
   {
     const std::lock_guard lock(m_);
@@ -99,6 +123,7 @@ void Player::setDocument(TimelineDoc doc) {
   auto s = std::make_shared<Session>();
   s->media = current->media;
   clock_.setTimeline(static_cast<double>(doc.project.fps), clockFrames(doc));
+  syncAudioSession(doc);
   s->doc = std::move(doc);
   publish(std::move(s));
   refreshTransport();
@@ -109,6 +134,8 @@ void Player::setDocument(TimelineDoc doc) {
 void Player::setAssets(render::AssetTable assets) {
   const auto current = session();
   if (!current) return;
+  syncAudioAssets(assets);
+  syncAudioSession(current->doc);
   const bool few = assets.size() <= 8;
   current->media->provider->setAssets(std::move(assets));
   if (few) current->media->provider->openAll();
@@ -118,6 +145,11 @@ void Player::setAssets(render::AssetTable assets) {
 void Player::refreshTransport() {
   const qint64 f = clock_.frame();
   const bool playing = clock_.playing();
+  if (!playing && audio_->playing()) audio_->pause(); // the clock stopped on its own (end of timeline)
+  if (playing && audio_->playing() && clock_.fps() > 0) { // a loop wrap moved the clock: bring the sound along
+    const qint64 af = audio::sampleToFrame(audio_->positionSamples(), static_cast<std::int64_t>(clock_.fps()));
+    if (std::abs(af - f) > 3) audio_->seek(f);
+  }
   if (f != frame_ || playing != wasPlaying_) {
     frame_ = f;
     wasPlaying_ = playing;
@@ -127,12 +159,15 @@ void Player::refreshTransport() {
 
 void Player::play() {
   if (!session_) return;
+  clock_.pause();
   clock_.play(clock_.rate() > 0 ? clock_.rate() : 1.0);
+  startAudio();
   refreshTransport();
   emit renderRequested();
 }
 
 void Player::pause() {
+  audio_->pause();
   clock_.pause();
   refreshTransport();
   emit renderRequested();
@@ -145,11 +180,13 @@ void Player::toggle() {
 
 void Player::seek(qint64 frame) {
   clock_.seek(frame);
+  audio_->seek(clock_.frame());
   refreshTransport();
   emit renderRequested();
 }
 
 void Player::step(int frames) {
+  audio_->pause();
   clock_.pause();
   clock_.seek(clock_.frame() + frames);
   refreshTransport();
@@ -162,7 +199,9 @@ void Player::shuttle(int dir) {
     pause();
     return;
   }
+  audio_->pause();
   clock_.play(render::PlaybackClock::shuttleRate(clock_.rate(), clock_.playing(), dir));
+  startAudio();
   refreshTransport();
   emit renderRequested();
 }

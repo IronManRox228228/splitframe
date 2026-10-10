@@ -79,6 +79,7 @@ QString Op::type() const {
           [](const MarkerRemove&) { return q("marker.remove"); },
           [](const MarkerUpdate&) { return q("marker.update"); },
           [](const BatchOp&) { return q("batch"); },
+          [](const MixerSet&) { return q("mixer.set"); },
       },
       body);
 }
@@ -142,6 +143,12 @@ Op parseOp(const Rd& r) {
     o.muted = f("muted").boolOr(false);
     o.hidden = f("hidden").boolOr(false);
     o.index = f("index").optInteger(kIntNonNeg);
+    return o;
+  }
+  if (type == q("mixer.set")) {
+    MixerSet o;
+    const Rd m = f("mixer");
+    if (!m.missing() && !m.raw().isNull()) o.mixer = parseMixer(m);
     return o;
   }
   if (type == q("track.remove")) {
@@ -414,6 +421,9 @@ QJsonObject toJson(const Op& op) {
             if (o.patch.label) patch.insert(q("label"), *o.patch.label);
             if (o.patch.color) patch.insert(q("color"), *o.patch.color);
             return tagged("marker.update", {{q("markerId"), o.markerId}, {q("patch"), patch}});
+          },
+          [](const MixerSet& o) {
+            return tagged("mixer.set", {{q("mixer"), o.mixer ? QJsonValue(toJson(*o.mixer)) : QJsonValue(QJsonValue::Null)}});
           },
           [](const BatchOp& o) {
             QJsonArray ops;

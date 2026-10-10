@@ -11,3 +11,4 @@ add_library(sf_core STATIC
 )
 target_include_directories(sf_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_core PUBLIC Qt6::Core PRIVATE sf_options)
+target_sources(sf_core PRIVATE mixer.cpp)

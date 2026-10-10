@@ -58,3 +58,5 @@ enable_testing()
 add_subdirectory(tests)
 add_subdirectory(bench)
 
+# Audio engine (mixer, effects, loudness, output device, CLAP host). Defined last so existing targets keep their order.
+add_subdirectory(src/audio)
