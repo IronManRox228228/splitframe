@@ -282,6 +282,25 @@ StyleConfig parseStyleConfig(const Rd& r) {
   return s;
 }
 
+ColorManagement parseColorManagement(const Rd& r) {
+  r.requireObject();
+  ColorManagement c;
+  c.workingSpace = r.field(QStringLiteral("workingSpace")).optStr();
+  c.outputSpace = r.field(QStringLiteral("outputSpace")).optStr();
+  c.displayView = r.field(QStringLiteral("displayView")).optStr();
+  c.blendSpace = r.field(QStringLiteral("blendSpace")).enumOr(BlendSpace::Linear);
+  return c;
+}
+
+ItemColor parseItemColor(const Rd& r) {
+  r.requireObject();
+  ItemColor c;
+  c.inputSpace = r.field(QStringLiteral("inputSpace")).optStr();
+  c.lutPath = r.field(QStringLiteral("lutPath")).optStr();
+  c.lutIntensity = r.field(QStringLiteral("lutIntensity")).numOr(1, {.min = 0, .max = 1});
+  return c;
+}
+
 Track parseTrack(const Rd& r) {
   r.requireObject();
   Track t;
@@ -305,6 +324,7 @@ Project parseProject(const Rd& r) {
   p.templateId = r.field(QStringLiteral("templateId")).optStr();
   p.styleConfig = parseStyleConfig(r.field(QStringLiteral("styleConfig")));
   p.referenceAssetId = r.field(QStringLiteral("referenceAssetId")).optStr();
+  p.colorManagement = r.field(QStringLiteral("colorManagement")).opt(parseColorManagement);
   p.createdAt = r.field(QStringLiteral("createdAt")).str();
   p.updatedAt = r.field(QStringLiteral("updatedAt")).str();
   return p;
@@ -390,6 +410,7 @@ Item parseItem(const Rd& r, bool propsOptional, bool* omitted) {
   it.masks = r.field(QStringLiteral("masks")).listOr(parseMask);
   it.keyframes = parseKeyframeMap(r.field(QStringLiteral("keyframes")));
   it.labels = parseLabels(r.field(QStringLiteral("labels")));
+  it.color = r.field(QStringLiteral("color")).opt(parseItemColor);
 
   const Rd props = r.field(QStringLiteral("props"));
   if (props.missing() && propsOptional) {
@@ -439,6 +460,7 @@ ItemPatch parseItemPatch(const Rd& r) {
     if (auto c = labels.field(QStringLiteral("color")).optStr()) lp.color = std::optional<QString>(*c);
     p.labels = lp;
   }
+  p.color = r.field(QStringLiteral("color")).opt(parseItemColor);
   const Rd props = r.field(QStringLiteral("props"));
   if (!props.missing()) p.props = props.raw();
   return p;
@@ -633,6 +655,21 @@ QJsonObject toJson(const StyleConfig& s) {
   return o;
 }
 
+QJsonObject toJson(const ColorManagement& c) {
+  QJsonObject o{{QStringLiteral("blendSpace"), enumName(c.blendSpace)}};
+  putOpt(o, "workingSpace", c.workingSpace);
+  putOpt(o, "outputSpace", c.outputSpace);
+  putOpt(o, "displayView", c.displayView);
+  return o;
+}
+
+QJsonObject toJson(const ItemColor& c) {
+  QJsonObject o{{QStringLiteral("lutIntensity"), c.lutIntensity}};
+  putOpt(o, "inputSpace", c.inputSpace);
+  putOpt(o, "lutPath", c.lutPath);
+  return o;
+}
+
 QJsonObject toJson(const Track& t) {
   return {{QStringLiteral("id"), t.id},         {QStringLiteral("kind"), enumName(t.kind)},
           {QStringLiteral("name"), t.name},     {QStringLiteral("locked"), t.locked},
@@ -650,6 +687,7 @@ QJsonObject toJson(const Project& p) {
                 {QStringLiteral("updatedAt"), p.updatedAt}};
   putOpt(o, "templateId", p.templateId);
   putOpt(o, "referenceAssetId", p.referenceAssetId);
+  if (p.colorManagement) o.insert(QStringLiteral("colorManagement"), toJson(*p.colorManagement));
   return o;
 }
 
@@ -705,6 +743,7 @@ QJsonObject toJson(const Item& it, bool omitProps) {
   putOpt(labels, "name", it.labels.name);
   putOpt(labels, "color", it.labels.color);
   o.insert(QStringLiteral("labels"), labels);
+  if (it.color) o.insert(QStringLiteral("color"), toJson(*it.color));
   if (!omitProps) o.insert(QStringLiteral("props"), toJson(it.props));
   return o;
 }
@@ -730,15 +769,17 @@ QJsonObject toJson(const ItemPatch& p) {
     if (p.labels->color && *p.labels->color) l.insert(QStringLiteral("color"), **p.labels->color);
     o.insert(QStringLiteral("labels"), l);
   }
+  if (p.color) o.insert(QStringLiteral("color"), toJson(*p.color));
   if (p.props) o.insert(QStringLiteral("props"), *p.props);
   return o;
 }
 
 QJsonObject toJson(const TimelineDoc& d) {
-  return {{QStringLiteral("project"), toJson(d.project)},
-          {QStringLiteral("tracks"), arr(d.tracks, [](const Track& t) { return toJson(t); })},
-          {QStringLiteral("items"), arr(d.items, [](const Item& i) { return toJson(i); })},
-          {QStringLiteral("markers"), arr(d.markers, [](const Marker& m) { return toJson(m); })}};
+  QJsonObject o{{QStringLiteral("project"), toJson(d.project)},
+                {QStringLiteral("tracks"), arr(d.tracks, [](const Track& t) { return toJson(t); })},
+                {QStringLiteral("items"), arr(d.items, [](const Item& i) { return toJson(i); })},
+                {QStringLiteral("markers"), arr(d.markers, [](const Marker& m) { return toJson(m); })}};
+  return o;
 }
 
 QJsonObject toJson(const Asset& a) {

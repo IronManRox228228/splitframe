@@ -46,6 +46,12 @@ SF_ENUM_TABLE(ItemType, (std::array<std::pair<ItemType, std::string_view>, 7>{{
     {ItemType::Text, "text"}, {ItemType::Caption, "caption"}, {ItemType::Shape, "shape"},
     {ItemType::MotionGraphic, "motionGraphic"}}}));
 
+// Where overlapping layers are blended: scene-linear light (physically right, the native default) or
+// display-encoded sRGB values as the Electron canvas does (see ColorManagement).
+enum class BlendSpace { Linear, Display };
+SF_ENUM_TABLE(BlendSpace, (std::array<std::pair<BlendSpace, std::string_view>, 2>{{
+    {BlendSpace::Linear, "linear"}, {BlendSpace::Display, "display"}}}));
+
 enum class TextAlign { Left, Center, Right };
 SF_ENUM_TABLE(TextAlign, (std::array<std::pair<TextAlign, std::string_view>, 3>{{
     {TextAlign::Left, "left"}, {TextAlign::Center, "center"}, {TextAlign::Right, "right"}}}));
@@ -247,6 +253,19 @@ struct Labels {
   bool operator==(const Labels&) const = default;
 };
 
+// Native-only colour management for one item. Absent on the item = today's behaviour (the stream's own
+// tags, sRGB-style display-referred video). The Electron app's zod schema strips these keys on load,
+// so a project round-tripped through it loses them; the native app reads documents without them fine.
+struct ItemColor {
+  // OpenColorIO colour space the source pixels are in (e.g. "ARRI LogC3 (EI800)"); absent = by stream tags
+  std::optional<QString> inputSpace;
+  // LUT file (.cube .3dl .clf .spi3d ...) applied to the source values before `inputSpace` is
+  // interpreted; its output is what `inputSpace` describes. See render/color_manager.h.
+  std::optional<QString> lutPath;
+  double lutIntensity = 1; // 0..1 mix of source and LUT output
+  bool operator==(const ItemColor&) const = default;
+};
+
 // One timeline item. The zod discriminated union becomes the type-specific `props` variant; the
 // shared fields live here.
 struct Item {
@@ -265,6 +284,7 @@ struct Item {
   std::vector<Mask> masks;
   KeyframeMap keyframes;
   Labels labels;
+  std::optional<ItemColor> color; // native-only, see ItemColor
   ItemProps props;
 
   ItemType type() const { return static_cast<ItemType>(props.index()); }
@@ -294,6 +314,7 @@ struct ItemPatch {
   std::optional<std::vector<Mask>> masks;
   std::optional<KeyframeMap> keyframes;
   std::optional<LabelsPatch> labels;
+  std::optional<ItemColor> color; // replaces the whole block; a default ItemColor clears it
   std::optional<QJsonValue> props;
   bool operator==(const ItemPatch&) const = default;
 };
@@ -319,6 +340,17 @@ struct StyleConfig {
   bool operator==(const StyleConfig&) const = default;
 };
 
+// Native-only project colour management. Absent = defaults: linear-light blending, built-in linear
+// Rec.709 working space, sRGB display. The zod schema strips this key (see ItemColor).
+struct ColorManagement {
+  std::optional<QString> workingSpace; // OpenColorIO scene-linear space (e.g. "ACEScg"); absent = built-in linear Rec.709
+  // delivery target: "srgb", "rec709", "rec2100pq", "rec2100hlg", or a display-referred OCIO colour space name
+  std::optional<QString> outputSpace;
+  std::optional<QString> displayView; // preview transform "Display/View" (e.g. "sRGB - Display/ACES 1.0 - SDR Video")
+  BlendSpace blendSpace = BlendSpace::Linear;
+  bool operator==(const ColorManagement&) const = default;
+};
+
 struct Project {
   QString id;
   QString name;
@@ -328,6 +360,7 @@ struct Project {
   std::optional<QString> templateId;
   StyleConfig styleConfig;
   std::optional<QString> referenceAssetId;
+  std::optional<ColorManagement> colorManagement; // native-only
   QString createdAt;
   QString updatedAt;
   bool operator==(const Project&) const = default;

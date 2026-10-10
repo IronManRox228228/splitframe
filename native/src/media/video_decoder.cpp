@@ -48,6 +48,31 @@ Matrix matrixFor(const AVFrame& f) {
   }
 }
 
+ColorTrc trcFor(const AVFrame& f) {
+  switch (f.color_trc) {
+  case AVCOL_TRC_BT709:
+  case AVCOL_TRC_SMPTE170M:
+  case AVCOL_TRC_BT2020_10:
+  case AVCOL_TRC_BT2020_12: return ColorTrc::Bt709;
+  case AVCOL_TRC_IEC61966_2_1: return ColorTrc::Srgb;
+  case AVCOL_TRC_LINEAR: return ColorTrc::Linear;
+  case AVCOL_TRC_GAMMA22: return ColorTrc::Gamma22;
+  case AVCOL_TRC_GAMMA28: return ColorTrc::Gamma28;
+  case AVCOL_TRC_SMPTE2084: return ColorTrc::Pq;
+  case AVCOL_TRC_ARIB_STD_B67: return ColorTrc::Hlg;
+  default: return ColorTrc::Unspecified;
+  }
+}
+
+ColorPrim primFor(const AVFrame& f) {
+  switch (f.color_primaries) {
+  case AVCOL_PRI_BT709: return ColorPrim::Bt709;
+  case AVCOL_PRI_BT2020: return ColorPrim::Bt2020;
+  case AVCOL_PRI_SMPTE432: return ColorPrim::DisplayP3;
+  default: return ColorPrim::Unspecified;
+  }
+}
+
 } // namespace
 
 struct VideoDecoder::Impl {
@@ -186,6 +211,8 @@ std::shared_ptr<const GpuFrame> VideoDecoder::Impl::wrapGpu() const {
   out->kr = m.kr;
   out->kb = m.kb;
   out->fullRange = ref->color_range == AVCOL_RANGE_JPEG;
+  out->trc = trcFor(*ref);
+  out->prim = primFor(*ref);
   out->hold = std::shared_ptr<void>(ref, [live = liveGpu](void* p) {
     auto* f = static_cast<AVFrame*>(p);
     av_frame_free(&f);
@@ -205,6 +232,8 @@ VideoFramePtr VideoDecoder::Impl::makeFrame(qint64 index) {
     auto out = std::make_shared<VideoFrame>();
     out->index = index;
     out->ptsSec = ptsSec(index);
+    out->trc = gpu->trc;
+    out->prim = gpu->prim;
     out->gpu = std::move(gpu);
     out->hardware = true;
     ++stats.framesConverted; // counted so decode-vs-convert shares stay comparable; the cost is ~0
@@ -230,6 +259,8 @@ VideoFramePtr VideoDecoder::Impl::makeFrame(qint64 index) {
   out->index = index;
   out->ptsSec = ptsSec(index);
   out->image = std::move(image);
+  out->trc = trcFor(*src);
+  out->prim = primFor(*src);
   out->hardware = hwSeen;
   return out;
 }

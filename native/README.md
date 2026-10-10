@@ -43,3 +43,12 @@ hosts the local model server.
 - Timeline time is integer frames, analysis time is integer ms — same as `packages/schema`.
   Rounding follows JavaScript `Math.round` so both apps compute identical frames.
 - Every module gets QtTest coverage; behaviour ported from TypeScript ports its tests too.
+
+## Colour management (C1)
+
+The compositor blends in scene-linear light on an RGBA16F canvas (`src/render/color.h`, `color_manager.h`,
+`shaders/layer.frag`, `shaders/output.frag`); `project.colorManagement.blendSpace = "display"` reproduces the
+Electron app's gamma blending. OpenColorIO 2.x is optional: build it once (shared, Release, MSVC x64; apps, docs,
+Python, tests off; `-DOCIO_INSTALL_EXT_PACKAGES=ALL` fetches its dependencies) into `C:\dev\ocio`, or point `OCIO_ROOT`
+at another prefix. `scripts\dev.cmd` puts `%OCIO_ROOT%\bin` on PATH and the build copies the DLL next to the binaries.
+Without it only the built-in sRGB / BT.709 / BT.1886 / PQ / HLG pipeline is available.

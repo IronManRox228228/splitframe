@@ -21,8 +21,14 @@ public:
   QRhi* rhi() const;
   Compositor& compositor();
 
-  // One frame, read back as RGBA8888 at the project's size. Blocks until the GPU is done.
+  // One frame in its delivery encoding, read back as RGBA8888 at the project's size (a 10-bit delivery
+  // is rounded to 8 bits; use renderRgba64). Blocks until the GPU is done.
   QImage render(const TimelineDoc& doc, Frame frame, MediaProvider& media, RenderStats* stats = nullptr);
+  // The same in 16 bits per channel (Format_RGBA64): 8-bit deliveries are expanded, 10-bit ones scaled.
+  QImage renderRgba64(const TimelineDoc& doc, Frame frame, MediaProvider& media, RenderStats* stats = nullptr);
+  // The blend target before the output transform: linear working space (or sRGB-encoded when blending
+  // in the display space), Format_RGBA32FPx4_Premultiplied. For tests and scopes.
+  QImage renderLinear(const TimelineDoc& doc, Frame frame, MediaProvider& media, RenderStats* stats = nullptr);
 
   // Same, but without the readback: returns once the GPU has finished the frame (an event query
   // waits for it). What preview costs, and what export pays before handing the texture to an encoder.
@@ -33,6 +39,8 @@ public:
   void waitForGpu(); // everything queued so far is done on return
 
 private:
+  enum class Readback { Rgba8, Rgba64, Linear };
+  QImage renderRead(const TimelineDoc& doc, Frame frame, MediaProvider& media, RenderStats* stats, Readback what);
   OffscreenRenderer();
   struct Impl;
   std::unique_ptr<Impl> d;

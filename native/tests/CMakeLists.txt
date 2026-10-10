@@ -10,7 +10,7 @@ function(sf_add_test name)
   endif()
   get_filename_component(_qtbin "${_qtcore}" DIRECTORY)
   set_tests_properties(${name} PROPERTIES
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin;PATH=path_list_prepend:${OCIO_ROOT}/bin"
     ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE}")
 endfunction()
 
@@ -57,13 +57,14 @@ function(sf_add_render_test name)
   endif()
   get_filename_component(_qtbin "${_qtcore}" DIRECTORY)
   set_tests_properties(${name} PROPERTIES
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin;PATH=path_list_prepend:${OCIO_ROOT}/bin"
     ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE}")
 endfunction()
 
 sf_add_render_test(tst_playback_clock)
 sf_add_render_test(tst_layout)
 sf_add_render_test(tst_compositor)
+sf_add_render_test(tst_color)
 
 # Editor (project lifecycle, media pool, timeline models/controller, inspector) and the UI on top.
 function(sf_add_editor_test name)
@@ -78,7 +79,7 @@ function(sf_add_editor_test name)
   endif()
   get_filename_component(_qtbin "${_qtcore}" DIRECTORY)
   set_tests_properties(${name} PROPERTIES
-    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin"
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin;PATH=path_list_prepend:${OCIO_ROOT}/bin"
     ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE};${T_ENV}")
 endfunction()
 

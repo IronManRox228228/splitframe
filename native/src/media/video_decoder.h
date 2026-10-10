@@ -75,6 +75,8 @@ struct VideoFrame {
   double ptsSec = 0; // seconds from container start
   QImage image;      // RGBA8888, display colours (matrix and range applied), not rotated; empty when `gpu` is set
   std::shared_ptr<const GpuFrame> gpu; // set instead of `image` for zero-copy hardware frames
+  ColorTrc trc = ColorTrc::Unspecified; // the stream's transfer / primaries tags (also set on `gpu` frames)
+  ColorPrim prim = ColorPrim::Unspecified;
   bool hardware = false; // came out of D3D11VA rather than the software decoder
   // Pixel data held, for cache accounting (GPU frames: the NV12/P010 surface they pin)
   qint64 byteSize() const {

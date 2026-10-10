@@ -65,6 +65,13 @@ class TstCompositor : public QObject {
 
   QImage render(const Scene& s, Frame frame, RenderStats* stats = nullptr) { return renderWith(s, frame, false, HwMode::Off, stats); }
 
+  // The reference blends in gamma; the native default is linear light. Tests of overlaps say which.
+  static void blendIn(Scene& s, BlendSpace space) {
+    ColorManagement cm = s.doc.project.colorManagement.value_or(ColorManagement{});
+    cm.blendSpace = space;
+    s.doc.project.colorManagement = cm;
+  }
+
 private slots:
   void initTestCase() {
     QVERIFY(dir_.isValid());
@@ -189,11 +196,20 @@ private slots:
     const QString top = addTopTrack(s.doc, QStringLiteral("trk_top"));
     addMedia(s.doc, ItemType::Video, bottom, QStringLiteral("itm_blue"), QStringLiteral("ast_blue"), 0, 40);
     Item& r = addMedia(s.doc, ItemType::Video, top, QStringLiteral("itm_red"), QStringLiteral("ast_red"), 0, 40);
+    // gamma blending, as the Electron canvas does: unchanged from the reference
+    blendIn(s, BlendSpace::Display);
     r.transform.opacity = 0.5;
-    const QImage img = render(s, 0);
-    SF_VERIFY_PIXEL(img, 160, 120, (Rgb{128, 0, 128}), 4);
+    SF_VERIFY_PIXEL(render(s, 0), 160, 120, (Rgb{128, 0, 128}), 4);
     r.transform.opacity = 0.25;
     SF_VERIFY_PIXEL(render(s, 0), 10, 10, (Rgb{64, 0, 191}), 4);
+    r.transform.opacity = 0;
+    SF_VERIFY_PIXEL(render(s, 0), 10, 10, (Rgb{0, 0, 255}), 4);
+    // linear light (the default): the same mix is brighter, e.g. 50% is sRGB(0.5) = 188
+    blendIn(s, BlendSpace::Linear);
+    r.transform.opacity = 0.5;
+    SF_VERIFY_PIXEL(render(s, 0), 160, 120, (Rgb{188, 0, 188}), 4);
+    r.transform.opacity = 0.25;
+    SF_VERIFY_PIXEL(render(s, 0), 10, 10, (Rgb{137, 0, 225}), 4);
     r.transform.opacity = 0;
     SF_VERIFY_PIXEL(render(s, 0), 10, 10, (Rgb{0, 0, 255}), 4);
   }
@@ -203,8 +219,13 @@ private slots:
     if (red.isEmpty()) QSKIP(qPrintable(skip_));
     Scene s = oneClip(red, 320, 240, 40);
     findItem(s.doc, QStringLiteral("itm_a")).props = VideoProps{{10, 0}};
+    blendIn(s, BlendSpace::Display);
     SF_VERIFY_PIXEL(render(s, 0), 5, 5, (Rgb{0, 0, 0}), 2);
     SF_VERIFY_PIXEL(render(s, 5), 5, 5, (Rgb{128, 0, 0}), 4);
+    SF_VERIFY_PIXEL(render(s, 12), 5, 5, (Rgb{255, 0, 0}), 4);
+    blendIn(s, BlendSpace::Linear); // a fade over black is a linear-light ramp: halfway is sRGB(0.5)
+    SF_VERIFY_PIXEL(render(s, 0), 5, 5, (Rgb{0, 0, 0}), 2);
+    SF_VERIFY_PIXEL(render(s, 5), 5, 5, (Rgb{188, 0, 0}), 4);
     SF_VERIFY_PIXEL(render(s, 12), 5, 5, (Rgb{255, 0, 0}), 4);
   }
 
@@ -213,7 +234,11 @@ private slots:
     if (red.isEmpty()) QSKIP(qPrintable(skip_));
     Scene s = oneClip(red, 320, 240, 40);
     findItem(s.doc, QStringLiteral("itm_a")).keyframes[QStringLiteral("transform.opacity")] = {{0, 0.0, Easing::Linear}, {20, 1.0, Easing::Linear}};
+    blendIn(s, BlendSpace::Display);
     SF_VERIFY_PIXEL(render(s, 10), 5, 5, (Rgb{128, 0, 0}), 4);
+    SF_VERIFY_PIXEL(render(s, 30), 5, 5, (Rgb{255, 0, 0}), 4);
+    blendIn(s, BlendSpace::Linear);
+    SF_VERIFY_PIXEL(render(s, 10), 5, 5, (Rgb{188, 0, 0}), 4);
     SF_VERIFY_PIXEL(render(s, 30), 5, 5, (Rgb{255, 0, 0}), 4);
   }
 
@@ -327,7 +352,10 @@ private slots:
     s.doc = newDoc(100, 100, 25, QStringLiteral("#0000ff"));
     s.assets["ast_img"] = {png, AssetKind::Image};
     addMedia(s.doc, ItemType::Image, mainTrack(s.doc), QStringLiteral("itm_i"), QStringLiteral("ast_img"), 0, 30);
+    blendIn(s, BlendSpace::Display);
     SF_VERIFY_PIXEL(render(s, 0), 50, 50, (Rgb{128, 0, 127}), 3); // straight alpha over blue
+    blendIn(s, BlendSpace::Linear);
+    SF_VERIFY_PIXEL(render(s, 0), 50, 50, (Rgb{188, 0, 187}), 3);
   }
 
   void missingMediaDrawsThePlaceholderCard() {

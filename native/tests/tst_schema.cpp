@@ -386,6 +386,51 @@ private slots:
     QCOMPARE_EQ(b.beatMaps[0].sections[0].energy, 0.5);
     QVERIFY(parseProjectBundleJson(projectBundleToJson(b)) == b);
   }
+
+  // Native-only colour fields: absent stays absent, present round-trips, bad values name their path
+  void colourManagementFieldsAreOptionalAndRoundTrip() {
+    QJsonObject root = json(kMinimalDoc).toObject();
+    TimelineDoc plain = parseTimelineDoc(Rd(root));
+    QVERIFY(!plain.project.colorManagement);
+    QVERIFY(!plain.items[0].color);
+    QVERIFY(!toJson(plain)["project"].toObject().contains(S("colorManagement")));
+    QVERIFY(!toJson(plain)["items"].toArray()[0].toObject().contains(S("color")));
+
+    QJsonObject project = root["project"].toObject();
+    project["colorManagement"] = json(R"({"workingSpace": "ACEScg", "displayView": "sRGB - Display/ACES 2.0", "blendSpace": "display"})");
+    root["project"] = project;
+    QJsonArray items = root["items"].toArray();
+    QJsonObject item = items[0].toObject();
+    item["color"] = json(R"x({"inputSpace": "ARRI LogC3 (EI800)", "lutPath": "C:/luts/look.cube", "lutIntensity": 0.5})x");
+    items[0] = item;
+    root["items"] = items;
+    const TimelineDoc doc = parseTimelineDoc(Rd(root));
+    QVERIFY(doc.project.colorManagement);
+    QCOMPARE(*doc.project.colorManagement->workingSpace, S("ACEScg"));
+    QVERIFY(!doc.project.colorManagement->outputSpace);
+    QCOMPARE(doc.project.colorManagement->blendSpace, BlendSpace::Display);
+    QCOMPARE(*doc.items[0].color->lutPath, S("C:/luts/look.cube"));
+    QCOMPARE(doc.items[0].color->lutIntensity, 0.5);
+    const TimelineDoc again = parseTimelineDoc(Rd(toJson(doc)));
+    QCOMPARE(again, doc);
+
+    // a colour block without blendSpace defaults to linear; bad values fail with their path
+    project["colorManagement"] = json(R"({"workingSpace": "ACEScg"})");
+    root["project"] = project;
+    QCOMPARE(parseTimelineDoc(Rd(root)).project.colorManagement->blendSpace, BlendSpace::Linear);
+    QVERIFY(errorPath([](QJsonObject& r) {
+              QJsonObject p = r["project"].toObject();
+              p["colorManagement"] = json(R"({"blendSpace": "gamma"})");
+              r["project"] = p;
+            }).contains(S("blendSpace")));
+    QVERIFY(errorPath([](QJsonObject& r) {
+              QJsonArray its = r["items"].toArray();
+              QJsonObject it = its[0].toObject();
+              it["color"] = json(R"({"lutIntensity": 2})");
+              its[0] = it;
+              r["items"] = its;
+            }).contains(S("lutIntensity")));
+  }
 };
 
 QTEST_APPLESS_MAIN(TstSchema)

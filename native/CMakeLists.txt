@@ -15,6 +15,17 @@ option(SF_SANITIZE_ADDRESS "Build with AddressSanitizer" OFF)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick QuickControls2 ShaderTools Test)
 find_package(FFmpeg REQUIRED)
+# OpenColorIO 2.x is optional: without it the compositor keeps its built-in sRGB / BT.709 / PQ / HLG
+# colour pipeline and only OCIO config spaces, views and LUT files are unavailable (see render/color_manager.h).
+# scripts/dev.cmd sets OCIO_ROOT (default C:\dev\ocio, built per native/README.md).
+set(OCIO_ROOT "$ENV{OCIO_ROOT}" CACHE PATH "OpenColorIO install prefix")
+find_package(OpenColorIO 2 CONFIG QUIET HINTS "${OCIO_ROOT}")
+if(OpenColorIO_FOUND)
+  message(STATUS "OpenColorIO ${OpenColorIO_VERSION}: ${OpenColorIO_DIR}")
+else()
+  message(WARNING "OpenColorIO 2.x not found (set OCIO_ROOT to its install prefix): building without colour management; "
+                  "config colour spaces, display/views and LUT files will be unavailable")
+endif()
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(sf_options INTERFACE)
@@ -46,3 +57,4 @@ add_subdirectory(src/app)
 enable_testing()
 add_subdirectory(tests)
 add_subdirectory(bench)
+

@@ -328,6 +328,7 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemUpdate& o) {
     if (patch.labels->color) l.color = item.labels.color;
     inv.labels = l;
   }
+  if (patch.color) inv.color = item.color.value_or(ItemColor{});
   if (patch.props) inv.props = QJsonValue(toJson(item.props));
 
   Item& t = itemRef(next, o.itemId);
@@ -360,6 +361,10 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemUpdate& o) {
   if (patch.labels) {
     if (patch.labels->name) t.labels.name = *patch.labels->name;
     if (patch.labels->color) t.labels.color = *patch.labels->color;
+  }
+  if (patch.color) {
+    if (*patch.color == ItemColor{}) t.color.reset();
+    else t.color = *patch.color;
   }
   if (newProps) t.props = *newProps;
   return {ItemUpdate{o.itemId, inv}};

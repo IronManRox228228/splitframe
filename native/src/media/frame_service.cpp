@@ -61,6 +61,8 @@ FrameService::FrameService(const Options& options, QObject* parent)
       out->index = f.index;
       out->ptsSec = f.ptsSec;
       out->hardware = f.hardware;
+      out->trc = f.trc;
+      out->prim = f.prim;
       out->image = frameImage(f);
       return out->image.isNull() ? nullptr : out;
     });

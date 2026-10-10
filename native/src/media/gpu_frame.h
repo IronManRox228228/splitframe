@@ -13,6 +13,11 @@ namespace sf {
 
 enum class GpuFormat { Nv12, P010 };
 
+// What the stream's colour tags say (AVFrame::color_trc / color_primaries), reduced to what the
+// compositor can act on. Unspecified is treated as BT.709 / sRGB-like SDR.
+enum class ColorTrc { Unspecified, Bt709, Srgb, Linear, Gamma22, Gamma28, Pq, Hlg };
+enum class ColorPrim { Unspecified, Bt709, Bt2020, DisplayP3 };
+
 // The D3D11 device the whole process shares: decoders (D3D11VA) and the compositor's QRhi both run
 // on it, so decoded surfaces can be sampled without leaving the GPU. Created on first use.
 // Hand it to Qt as an imported device: QQuickGraphicsDevice::fromDeviceAndContext(device, context)
@@ -59,6 +64,8 @@ struct GpuFrame {
   double kr = 0.2126;
   double kb = 0.0722;
   bool fullRange = false;
+  ColorTrc trc = ColorTrc::Unspecified;
+  ColorPrim prim = ColorPrim::Unspecified;
   std::shared_ptr<void> hold; // the AVFrame reference; opaque so this header stays FFmpeg-free
 };
 
