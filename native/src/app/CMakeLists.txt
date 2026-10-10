@@ -4,11 +4,12 @@ qt_add_executable(splitframe WIN32 main.cpp)
 qt_add_qml_module(splitframe
   URI SplitFrame
   VERSION 1.0
-  QML_FILES Main.qml Theme.qml Btn.qml Toasts.qml MediaPanel.qml PreviewPanel.qml InspectorPanel.qml TimelinePanel.qml
+  QML_FILES Main.qml Theme.qml Btn.qml Toasts.qml MediaPanel.qml PreviewPanel.qml InspectorPanel.qml TimelinePanel.qml ExportDialog.qml
   SOURCES
     player.h player.cpp
     preview_item.h preview_item.cpp
     editor.h editor.cpp
+    export_controller.h export_controller.cpp
     timeline_view.h timeline_view.cpp
     pool_image_provider.h
 )
@@ -20,4 +21,4 @@ target_compile_definitions(splitframe PRIVATE PROJECT_VERSION_STRING="${PROJECT_
 add_custom_command(TARGET splitframe POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} "$<TARGET_FILE_DIR:splitframe>"
   COMMAND_EXPAND_LISTS)
-target_link_libraries(splitframe PRIVATE sf_audio)
+target_link_libraries(splitframe PRIVATE sf_audio sf_export)

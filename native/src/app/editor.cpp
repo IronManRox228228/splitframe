@@ -32,11 +32,26 @@ Editor::Editor(Player& player, const Options& options, QObject* parent)
       tracks_(project_),
       controller_(project_),
       inspector_(project_),
-      recent_(options.settingsFile) {
+      recent_(options.settingsFile),
+      export_(project_) {
   project_.setRecoveryDir(options.recoveryDir.isEmpty() ? defaultRecoveryDir() : options.recoveryDir);
   project_.setAutosaveInterval(options.autosaveMs);
   controller_.setSnapEnabled(recent_.value(QStringLiteral("snap"), true).toBool());
   controller_.setRippleEnabled(recent_.value(QStringLiteral("ripple"), false).toBool());
+
+  useProxies_ = recent_.value(QStringLiteral("useProxies"), false).toBool();
+  player_.setUseProxies(useProxies_);
+  pool_.setProxiesEnabled(useProxies_);
+  // a proxy finishing (or going stale) changes which file preview decodes
+  connect(&pool_, &MediaPool::proxiesChanged, this, [this] {
+    if (!useProxies_) return;
+    QStringList key; // progress ticks come through here too: only a different set of proxy files matters
+    for (const Asset& a : project_.assets()) key << pool_.proxyPath(a.id);
+    const QString joined = key.join(QLatin1Char('|'));
+    if (joined == proxyKey_) return;
+    proxyKey_ = joined;
+    pushAssets();
+  });
 
   connect(&controller_, &TimelineController::optionsChanged, this, [this] {
     recent_.setValue(QStringLiteral("snap"), controller_.snapEnabled());
@@ -73,7 +88,7 @@ render::AssetTable Editor::assetTable() const {
   render::AssetTable t;
   for (const Asset& a : project_.assets()) {
     if (a.status == AssetStatus::Failed) continue;
-    t[a.id] = {a.path, a.kind};
+    t[a.id] = {a.path, a.kind, pool_.proxyPath(a.id)};
   }
   return t;
 }
@@ -94,6 +109,16 @@ void Editor::pushDocument() {
 }
 
 void Editor::pushAssets() { player_.setAssets(assetTable()); }
+
+void Editor::setUseProxies(bool on) {
+  if (on == useProxies_) return;
+  useProxies_ = on;
+  recent_.setValue(QStringLiteral("useProxies"), on);
+  pool_.setProxiesEnabled(on);
+  player_.setUseProxies(on);
+  if (on) pushAssets();
+  emit useProxiesChanged();
+}
 
 void Editor::rememberRecent() {
   if (!project_.path().isEmpty()) recent_.add(project_.path());

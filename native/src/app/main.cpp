@@ -1,6 +1,7 @@
 #include "app/editor.h"
 #include "app/player.h"
 #include "app/pool_image_provider.h"
+#include "export/export_cli.h"
 #include "media/gpu_frame.h"
 #include "media/probe.h"
 
@@ -18,6 +19,16 @@
 #include <memory>
 
 int main(int argc, char* argv[]) {
+  // Headless export (export/export_cli.h): no window, no QML, progress on stdout, exit code = result.
+  for (int i = 1; i < argc; ++i) {
+    const QByteArray arg(argv[i]);
+    if (arg == "--export" || arg.startsWith("--export=")) {
+      QGuiApplication cliApp(argc, argv);
+      QGuiApplication::setApplicationName(QStringLiteral("SplitFrame"));
+      QGuiApplication::setOrganizationName(QStringLiteral("SplitFrame"));
+      return sf::xport::runExportCli(QCoreApplication::arguments());
+    }
+  }
   // The compositor samples decoded D3D11 surfaces directly, so Qt Quick has to run on D3D11
   if (qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")) QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
   QQuickStyle::setStyle(QStringLiteral("Basic")); // the one style that follows our dark palette everywhere

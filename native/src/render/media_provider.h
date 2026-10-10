@@ -11,6 +11,7 @@
 #include <QSize>
 #include <QString>
 
+#include <atomic>
 #include <map>
 #include <optional>
 #include <memory>
@@ -22,6 +23,9 @@ namespace sf::render {
 struct AssetRef {
   QString path;
   AssetKind kind = AssetKind::Video;
+  // A lighter stand-in for `path` (export/proxy.h) that Live (preview) providers decode instead when
+  // proxies are on. Blocking providers (export, tests) never look at it: export always uses the original.
+  QString proxyPath;
 };
 using AssetTable = std::map<QString, AssetRef>; // asset id -> file
 
@@ -73,6 +77,10 @@ public:
   // Starts opening every video asset (the packet scan is the slow part: do it before the first play)
   void openAll();
   AssetTable assets() const;
+  // Preview only: decode AssetRef::proxyPath where there is one (Live mode; ignored in Blocking mode).
+  // Open decoders are closed and reopen on the file that now applies. Thread-safe.
+  void setUseProxies(bool on);
+  bool useProxies() const { return useProxies_; }
   // Replaces the asset table (media imported, removed or relinked while the project is open). Thread-safe;
   // decoders of files that changed are closed and open again on demand.
   void setAssets(AssetTable assets);
@@ -84,11 +92,13 @@ private:
   std::optional<qint64> sourceIndex(AssetId id, const VideoStreamInfo& info, Frame sourceFrame, double fps);
 
   std::optional<AssetRef> assetRef(const QString& assetId) const;
+  QString effectivePath(const AssetRef& ref) const; // the proxy when it applies, else the original
 
   FrameService& service_;
   mutable std::mutex am_; // guards assets_ (the UI thread replaces it while the render thread reads)
   AssetTable assets_;
   Mode mode_;
+  std::atomic<bool> useProxies_{false};
   ImageStore images_;
   std::mutex m_;
   std::unordered_map<QString, AssetId> ids_;

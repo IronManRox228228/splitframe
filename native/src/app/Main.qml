@@ -48,6 +48,7 @@ ApplicationWindow {
     Act { id: aSave; text: "Save"; key: "Ctrl+S"; onTriggered: appEditor.save() }
     Act { id: aSaveAs; text: "Save as…"; key: "Ctrl+Shift+S"; onTriggered: saveDialog.open() }
     Act { id: aImport; text: "Import media…"; key: "Ctrl+I"; onTriggered: importDialog.open() }
+    Act { id: aExport; text: "Export…"; key: "Ctrl+E"; onTriggered: exportDialog.open() }
     Act { id: aQuit; text: "Quit"; key: "Ctrl+Q"; onTriggered: root.close() }
 
     Act { id: aUndo; text: "Undo"; key: "Ctrl+Z"; enabled: appEditor.canUndo; onTriggered: appEditor.undo() }
@@ -176,6 +177,7 @@ ApplicationWindow {
             Cmd { act: aSaveAs }
             MenuSeparator {}
             Cmd { act: aImport }
+            Cmd { act: aExport }
             MenuSeparator {}
             Cmd { act: aQuit }
         }
@@ -383,6 +385,8 @@ ApplicationWindow {
             appEditor.importFiles(urls)
         }
     }
+
+    ExportDialog { id: exportDialog }
 
     Dialog {
         id: unsavedDialog

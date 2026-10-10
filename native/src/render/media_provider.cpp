@@ -40,6 +40,23 @@ std::optional<AssetRef> FrameServiceProvider::assetRef(const QString& assetId) c
   return it->second;
 }
 
+QString FrameServiceProvider::effectivePath(const AssetRef& ref) const {
+  if (mode_ == Mode::Live && useProxies_ && ref.kind == AssetKind::Video && !ref.proxyPath.isEmpty() && QFileInfo::exists(ref.proxyPath)) return ref.proxyPath;
+  return ref.path;
+}
+
+void FrameServiceProvider::setUseProxies(bool on) {
+  if (useProxies_.exchange(on) == on) return;
+  const std::lock_guard lock(m_);
+  for (auto& [key, id] : ids_) {
+    if (id != 0) {
+      service_.closeAsset(id);
+      lastShown_.erase(id);
+    }
+  }
+  ids_.clear();
+}
+
 AssetTable FrameServiceProvider::assets() const {
   const std::lock_guard lock(am_);
   return assets_;
@@ -58,7 +75,7 @@ void FrameServiceProvider::setAssets(AssetTable assets) {
     const auto before = old.find(it->first);
     const auto after = now.find(it->first);
     // changed or removed file: drop the decoder; an entry that was "unavailable" gets another look
-    const bool stale = after == now.end() || before == old.end() || before->second.path != after->second.path || it->second == 0;
+    const bool stale = after == now.end() || before == old.end() || effectivePath(before->second) != effectivePath(after->second) || it->second == 0;
     if (!stale) {
       ++it;
       continue;
@@ -76,11 +93,12 @@ AssetId FrameServiceProvider::assetFor(const QString& assetId) {
   if (!ref || ref->kind != AssetKind::Video) return 0;
   const std::lock_guard lock(m_);
   if (const auto it = ids_.find(assetId); it != ids_.end()) return it->second;
-  if (!QFileInfo::exists(ref->path)) {
+  const QString path = effectivePath(*ref);
+  if (!QFileInfo::exists(path)) {
     ids_[assetId] = 0;
     return 0;
   }
-  const AssetId id = service_.openAsset(ref->path);
+  const AssetId id = service_.openAsset(path);
   ids_[assetId] = id;
   return id;
 }

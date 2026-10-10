@@ -31,12 +31,18 @@ Rectangle {
                 font.weight: Font.DemiBold
             }
             Text {
-                visible: root.pool.pending > 0
-                text: "analysing…"
+                visible: root.pool.pending > 0 || (appEditor.useProxies && root.pool.proxyPending > 0)
+                text: root.pool.pending > 0 ? "analysing…" : "making proxies (" + root.pool.proxyPending + ")…"
                 color: Theme.faint
                 font.pixelSize: 11
             }
             Item { Layout.fillWidth: true }
+            Btn {
+                text: "Proxies"
+                active: appEditor.useProxies
+                tip: "Preview from lightweight proxy copies (made in the background). Export always uses the original files."
+                onClicked: appEditor.useProxies = !appEditor.useProxies
+            }
             Btn {
                 text: "Import"
                 tip: "Import media (Ctrl+I)"
@@ -103,6 +109,8 @@ Rectangle {
                     required property string thumb
                     required property bool missing
                     required property int uses
+                    required property string proxyState
+                    required property real proxyProgress
                     width: grid.cellWidth
                     height: grid.cellHeight
 
@@ -154,6 +162,24 @@ Rectangle {
                                     color: Theme.text
                                     font.pixelSize: 10
                                     font.family: Theme.mono
+                                }
+                            }
+                            Rectangle {
+                                visible: card.kind === "video" && appEditor.useProxies && card.proxyState !== "none" && card.proxyState !== "unneeded"
+                                anchors.left: parent.left
+                                anchors.bottom: parent.bottom
+                                anchors.margins: 4
+                                width: proxyLabel.implicitWidth + 8
+                                height: 15
+                                radius: 7
+                                color: "#cc08090b"
+                                border.color: card.proxyState === "ready" ? Theme.accent : (card.proxyState === "failed" ? Theme.danger : Theme.lineStrong)
+                                Text {
+                                    id: proxyLabel
+                                    anchors.centerIn: parent
+                                    font.pixelSize: 10
+                                    color: card.proxyState === "failed" ? Theme.danger : (card.proxyState === "ready" ? Theme.accent : Theme.muted)
+                                    text: card.proxyState === "ready" ? "proxy" : (card.proxyState === "running" ? "proxy " + Math.round(card.proxyProgress * 100) + "%" : (card.proxyState === "failed" ? "proxy failed" : "proxy queued"))
                                 }
                             }
                             Rectangle {

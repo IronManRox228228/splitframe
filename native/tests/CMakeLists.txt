@@ -132,3 +132,29 @@ sf_add_audio_test(tst_mixer_schema)
 sf_add_audio_test(tst_clap_host DEFS "SF_TEST_CLAP=\"$<TARGET_FILE:sf_test_clap_gain>\"")
 add_dependencies(tst_clap_host sf_test_clap_gain)
 sf_add_audio_test(tst_audio_output SOURCES "${CMAKE_SOURCE_DIR}/src/render/playback_clock.cpp")
+
+# Export (offscreen render + encode + mux, headless CLI) and proxies. Tiny projects only; the compositor needs D3D11
+# (the suites skip without it). NVENC tests are opt-in (SF_TEST_NVENC=1) and never run by default.
+function(sf_add_export_test name)
+  cmake_parse_arguments(T "" "" "SOURCES;DEFS" ${ARGN})
+  qt_add_executable(${name} ${name}.cpp ${T_SOURCES})
+  target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
+  target_link_libraries(${name} PRIVATE sf_export sf_editor sf_render sf_audio sf_media sf_core sf_options Qt6::Test)
+  if(T_DEFS)
+    target_compile_definitions(${name} PRIVATE ${T_DEFS})
+  endif()
+  add_test(NAME ${name} COMMAND ${name})
+  get_target_property(_qtcore Qt6::Core IMPORTED_LOCATION_RELEASE)
+  if(NOT _qtcore)
+    get_target_property(_qtcore Qt6::Core IMPORTED_LOCATION_DEBUG)
+  endif()
+  get_filename_component(_qtbin "${_qtcore}" DIRECTORY)
+  set_tests_properties(${name} PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin;PATH=path_list_prepend:$ENV{OCIO_ROOT}/bin"
+    ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE}")
+endfunction()
+
+sf_add_export_test(tst_export)
+sf_add_export_test(tst_proxy)
+sf_add_export_test(tst_export_cli DEFS "SF_APP_EXE=\"$<TARGET_FILE:splitframe>\"")
+add_dependencies(tst_export_cli splitframe)

@@ -76,6 +76,9 @@ public:
   void setZeroCopy(bool on) { zeroCopy_ = on; }
   // Software decoding only (no hardware decoder sessions at all); takes effect for the next open.
   void setSoftwareDecode(bool on) { softwareDecode_ = on; }
+  // Preview from the assets' proxy files (AssetRef::proxyPath) where they exist. Export never does.
+  void setUseProxies(bool on);
+  bool useProxies() const { return useProxies_; }
 
   bool loaded() const { return static_cast<bool>(session_); }
   bool playing() const { return clock_.playing(); }
@@ -131,6 +134,7 @@ private:
   bool loop_ = false;
   bool zeroCopy_ = true;
   bool softwareDecode_ = false;
+  bool useProxies_ = false;
   QString stats_;
   std::atomic<qint64> renderedFrame_{-1};
   std::atomic<bool> renderedComplete_{false};

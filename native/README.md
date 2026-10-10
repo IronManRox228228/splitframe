@@ -6,8 +6,8 @@ implementation until this one reaches parity; both read and write the same proje
 ## Build (Windows)
 
 Needs Visual Studio 2022 Build Tools (C++ workload), CMake 3.25+, Qt 6.8 (`msvc2022_64` with
-qtmultimedia, qtshadertools, qtimageformats) and a shared FFmpeg build (BtbN `lgpl-shared`).
-Defaults: `QT_ROOT=C:\Qt\6.8.3\msvc2022_64`, `FFMPEG_ROOT=C:\dev\ffmpeg-8.1`.
+qtmultimedia, qtshadertools, qtimageformats) and a shared **GPL** FFmpeg build (BtbN `gpl-shared`: libx264 / libx265 are needed for export; the native app is GPL-3.0-or-later, so GPL FFmpeg is fine here).
+Defaults: `QT_ROOT=C:\Qt\6.8.3\msvc2022_64`, `FFMPEG_ROOT=C:\dev\ffmpeg-8.1-gpl`.
 
 ```
 scripts\dev.cmd cmake --preset debug

@@ -90,6 +90,7 @@ void Player::loadProject(TimelineDoc doc, render::AssetTable assets) {
   media->service = std::make_unique<FrameService>(o);
   const bool few = assets.size() <= 8;
   media->provider = std::make_unique<render::FrameServiceProvider>(*media->service, std::move(assets));
+  media->provider->setUseProxies(useProxies_);
   // the packet scan is the slow part and belongs before play; a library of dozens of clips opens on demand instead
   if (few) media->provider->openAll();
   connect(media->service.get(), &FrameService::frameReady, this, [this] { emit mediaReady(); }, Qt::QueuedConnection);
@@ -139,6 +140,16 @@ void Player::setAssets(render::AssetTable assets) {
   const bool few = assets.size() <= 8;
   current->media->provider->setAssets(std::move(assets));
   if (few) current->media->provider->openAll();
+  emit renderRequested();
+}
+
+void Player::setUseProxies(bool on) {
+  if (on == useProxies_) return;
+  useProxies_ = on;
+  const auto current = session();
+  if (!current) return;
+  current->media->provider->setUseProxies(on);
+  if (current->media->provider->assets().size() <= 8) current->media->provider->openAll();
   emit renderRequested();
 }
 

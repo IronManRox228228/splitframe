@@ -1,6 +1,7 @@
 #include "editor/media_pool.h"
 
 #include "core/ops.h"
+#include "export/proxy.h"
 #include "media/probe.h"
 
 #include <QCoreApplication>
@@ -52,6 +53,8 @@ struct MediaPool::Probed {
 
 MediaPool::MediaPool(Project& project, QObject* parent) : QAbstractListModel(parent), project_(project), cancel_(std::make_shared<std::atomic<bool>>(false)) {
   threads_.setMaxThreadCount(2);
+  proxyThreads_.setMaxThreadCount(1);
+  proxyCancel_ = std::make_shared<std::atomic<bool>>(false);
   qRegisterMetaType<sf::editor::ImportSummary>();
   connect(&project_, &Project::assetsChanged, this, &MediaPool::onAssetsChanged);
   rebuild();
@@ -59,7 +62,9 @@ MediaPool::MediaPool(Project& project, QObject* parent) : QAbstractListModel(par
 
 MediaPool::~MediaPool() {
   cancel_->store(true);
+  proxyCancel_->store(true);
   threads_.waitForDone();
+  proxyThreads_.waitForDone();
 }
 
 int MediaPool::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : count(); }
@@ -67,7 +72,8 @@ int MediaPool::rowCount(const QModelIndex& parent) const { return parent.isValid
 QHash<int, QByteArray> MediaPool::roleNames() const {
   return {{IdRole, "assetId"},     {NameRole, "name"},   {KindRole, "kind"},     {StatusRole, "status"}, {DurationRole, "duration"},
           {DurationMsRole, "durationMs"}, {DetailRole, "detail"}, {PathRole, "path"}, {MissingRole, "missing"}, {ErrorRole, "error"},
-          {ThumbRole, "thumb"},   {UsesRole, "uses"}};
+          {ThumbRole, "thumb"},   {UsesRole, "uses"},
+          {ProxyStateRole, "proxyState"}, {ProxyProgressRole, "proxyProgress"}};
 }
 
 QVariant MediaPool::data(const QModelIndex& index, int role) const {
@@ -102,6 +108,8 @@ QVariant MediaPool::data(const QModelIndex& index, int role) const {
     return QStringLiteral("image://pool/%1?%2").arg(id).arg(revisions_.at(id));
   }
   case UsesRole: return usesOf(id);
+  case ProxyStateRole: return proxyState(id);
+  case ProxyProgressRole: return proxyProgress(id);
   default: return {};
   }
 }
@@ -305,6 +313,7 @@ void MediaPool::previewsDone(const QString& assetId, const std::shared_ptr<Asset
     Asset a = *current;
     a.status = AssetStatus::Analyzed;
     project_.updateAsset(a);
+    if (proxiesEnabled_) requestProxy(assetId);
   }
   if (ok) {
     const auto it = std::find(rows_.begin(), rows_.end(), assetId);
@@ -319,6 +328,7 @@ void MediaPool::previewsDone(const QString& assetId, const std::shared_ptr<Asset
 // ---------- availability, removal ----------
 
 void MediaPool::refreshAvailability() {
+  refreshProxyStates();
   for (const Asset& a : std::vector<Asset>(project_.assets())) {
     const bool exists = QFileInfo::exists(a.path);
     if (!exists && (a.status == AssetStatus::Analyzed || a.status == AssetStatus::Processing)) {
@@ -339,6 +349,13 @@ void MediaPool::projectLoaded() {
     const QMutexLocker lock(&mutex_);
     previews_.clear();
   }
+  // jobs of the previous project stop; their results are dropped (they carry the old flag)
+  proxyCancel_->store(true);
+  proxyCancel_ = std::make_shared<std::atomic<bool>>(false);
+  proxies_.clear();
+  proxyPending_ = 0;
+  ++proxyGen_;
+  refreshProxyStates();
   for (const Asset& a : std::vector<Asset>(project_.assets())) {
     if (!QFileInfo::exists(a.path)) {
       if (a.status != AssetStatus::Missing) {
@@ -364,9 +381,150 @@ bool MediaPool::removeAsset(const QString& assetId, bool removeClips) {
     if (!project_.apply(ItemRemove{ids, false}, QStringLiteral("Remove media from timeline"))) return false;
   }
   if (!project_.removeAsset(assetId)) return false;
+  proxies_.erase(assetId);
   const QMutexLocker lock(&mutex_);
   previews_.erase(assetId);
   return true;
+}
+
+// ---------- proxies ----------
+
+QString MediaPool::proxyDir() const { return proxyDirOverride_.isEmpty() ? xport::proxyCacheDir(project_.path()) : proxyDirOverride_; }
+
+QString MediaPool::proxyState(const QString& assetId) const {
+  const auto it = proxies_.find(assetId);
+  return it == proxies_.end() ? QStringLiteral("none") : it->second.state;
+}
+
+double MediaPool::proxyProgress(const QString& assetId) const {
+  const auto it = proxies_.find(assetId);
+  return it == proxies_.end() ? 0.0 : it->second.progress;
+}
+
+QString MediaPool::proxyPath(const QString& assetId) const {
+  if (proxyState(assetId) != QLatin1String("ready")) return {};
+  const Asset* a = project_.asset(assetId);
+  return a ? xport::existingProxy(a->path, proxyDir()) : QString();
+}
+
+void MediaPool::notifyProxyRow(const QString& assetId) {
+  const auto it = std::find(rows_.begin(), rows_.end(), assetId);
+  if (it != rows_.end()) {
+    const QModelIndex i = index(static_cast<int>(it - rows_.begin()));
+    emit dataChanged(i, i, {ProxyStateRole, ProxyProgressRole});
+  }
+  emit proxiesChanged();
+}
+
+void MediaPool::refreshProxyStates() {
+  const QString dir = proxyDir();
+  for (const Asset& a : project_.assets()) {
+    if (a.kind != AssetKind::Video) continue;
+    ProxyInfo& info = proxies_[a.id];
+    if (info.state == QLatin1String("queued") || info.state == QLatin1String("running")) continue;
+    const QString before = info.state;
+    // a proxy is keyed by the source's path, size and mtime: a replaced source has no ready proxy any more
+    // (and "unneeded" is re-evaluated, the new file may be bigger)
+    info.state = xport::existingProxy(a.path, dir).isEmpty() ? QStringLiteral("none") : QStringLiteral("ready");
+    if (info.state != before) notifyProxyRow(a.id);
+  }
+  if (proxiesEnabled_) requestAllProxies();
+}
+
+void MediaPool::setProxiesEnabled(bool on) {
+  if (on == proxiesEnabled_) return;
+  proxiesEnabled_ = on;
+  if (on) requestAllProxies();
+  emit proxiesChanged();
+}
+
+void MediaPool::requestAllProxies() {
+  for (const Asset& a : std::vector<Asset>(project_.assets())) {
+    if (a.kind == AssetKind::Video) requestProxy(a.id);
+  }
+}
+
+void MediaPool::requestProxy(const QString& assetId) {
+  const Asset* a = project_.asset(assetId);
+  if (!a || a->kind != AssetKind::Video || a->status != AssetStatus::Analyzed) return;
+  ProxyInfo& info = proxies_[assetId];
+  if (info.state == QLatin1String("queued") || info.state == QLatin1String("running")) return;
+  const QString dir = proxyDir();
+  if (!xport::existingProxy(a->path, dir).isEmpty()) {
+    if (info.state != QLatin1String("ready")) {
+      info.state = QStringLiteral("ready");
+      notifyProxyRow(assetId);
+    }
+    return;
+  }
+  info.state = QStringLiteral("queued");
+  info.progress = 0;
+  info.error.clear();
+  ++proxyPending_;
+  notifyProxyRow(assetId);
+  const auto cancel = proxyCancel_;
+  const int gen = proxyGen_;
+  const QString path = a->path;
+  const xport::ProxyOptions options = proxyOptions_;
+  proxyThreads_.start([this, assetId, path, dir, options, cancel, gen] {
+    xport::ProxyResult result;
+    if (cancel->load()) {
+      result.cancelled = true;
+    } else {
+      auto last = std::make_shared<std::atomic<qint64>>(0);
+      result = xport::makeProxy(path, dir, options,
+                                [this, assetId, last](double f) {
+                                  const qint64 now = QDateTime::currentMSecsSinceEpoch();
+                                  if (now - last->load() < 200 && f < 1.0) return;
+                                  last->store(now);
+                                  QMetaObject::invokeMethod(this, [this, assetId, f] { proxyProgressed(assetId, f); }, Qt::QueuedConnection);
+                                },
+                                cancel.get());
+    }
+    QMetaObject::invokeMethod(this, [this, assetId, result, gen] {
+      if (gen == proxyGen_) proxyDone(assetId, result); // else: a project that is gone
+    }, Qt::QueuedConnection);
+  });
+}
+
+void MediaPool::proxyProgressed(const QString& assetId, double fraction) {
+  const auto it = proxies_.find(assetId);
+  if (it == proxies_.end() || (it->second.state != QLatin1String("queued") && it->second.state != QLatin1String("running"))) return;
+  it->second.state = QStringLiteral("running");
+  it->second.progress = fraction;
+  notifyProxyRow(assetId);
+}
+
+void MediaPool::proxyDone(const QString& assetId, const xport::ProxyResult& r) {
+  proxyPending_ = std::max(0, proxyPending_ - 1);
+  const auto it = proxies_.find(assetId);
+  if (it == proxies_.end()) {
+    emit proxiesChanged();
+    return;
+  }
+  if (r.cancelled) it->second.state = QStringLiteral("none");
+  else if (!r.ok) it->second.state = QStringLiteral("failed");
+  else it->second.state = r.unneeded ? QStringLiteral("unneeded") : QStringLiteral("ready");
+  it->second.progress = r.ok ? 1.0 : 0.0;
+  it->second.error = r.error;
+  notifyProxyRow(assetId);
+}
+
+void MediaPool::cancelProxies() {
+  // queued jobs never start (they see the old flag set); the running one stops at its next frame; each reports "cancelled"
+  proxyCancel_->store(true);
+  proxyCancel_ = std::make_shared<std::atomic<bool>>(false);
+}
+
+bool MediaPool::waitForProxies(int timeoutMs) {
+  QElapsedTimer t;
+  t.start();
+  while (proxyPending_ > 0 && t.elapsed() < timeoutMs) {
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    QThread::msleep(5);
+  }
+  QCoreApplication::processEvents();
+  return proxyPending_ == 0;
 }
 
 bool MediaPool::waitForIdle(int timeoutMs) {

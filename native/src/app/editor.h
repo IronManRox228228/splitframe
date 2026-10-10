@@ -4,6 +4,7 @@
 // timeline models, controller, inspector, recent files) and keeps the Player in step with the
 // document. Anything that needs a dialog (save as, unsaved changes) is a signal the QML answers.
 
+#include "app/export_controller.h"
 #include "app/player.h"
 #include "editor/inspector.h"
 #include "editor/media_pool.h"
@@ -31,6 +32,7 @@ class Editor : public QObject {
   Q_PROPERTY(sf::editor::Inspector* inspector READ inspector CONSTANT)
   Q_PROPERTY(sf::editor::RecentProjects* recent READ recent CONSTANT)
   Q_PROPERTY(sf::app::Player* player READ player CONSTANT)
+  Q_PROPERTY(sf::app::ExportController* exporter READ exporter CONSTANT)
   Q_PROPERTY(QString windowTitle READ windowTitle NOTIFY titleChanged)
   Q_PROPERTY(QString projectName READ projectName NOTIFY titleChanged)
   Q_PROPERTY(QString projectPath READ projectPath NOTIFY titleChanged)
@@ -40,6 +42,8 @@ class Editor : public QObject {
   Q_PROPERTY(QString undoLabel READ undoLabel NOTIFY historyChanged)
   Q_PROPERTY(bool hasSelection READ hasSelection NOTIFY selectionChanged)
   Q_PROPERTY(int selectionCount READ selectionCount NOTIFY selectionChanged)
+  // Preview from proxy files (made in the background for every video asset while on). Export always uses the originals.
+  Q_PROPERTY(bool useProxies READ useProxies WRITE setUseProxies NOTIFY useProxiesChanged)
 
 public:
   struct Options {
@@ -58,6 +62,7 @@ public:
   editor::Inspector* inspector() { return &inspector_; }
   editor::RecentProjects* recent() { return &recent_; }
   Player* player() { return &player_; }
+  ExportController* exporter() { return &export_; }
 
   QString windowTitle() const;
   QString projectName() const { return project_.name(); }
@@ -66,6 +71,8 @@ public:
   bool canUndo() const { return project_.canUndo(); }
   bool canRedo() const { return project_.canRedo(); }
   QString undoLabel() const { return project_.undoLabel(); }
+  bool useProxies() const { return useProxies_; }
+  void setUseProxies(bool on);
   bool hasSelection() const { return !project_.selection().isEmpty(); }
   int selectionCount() const { return static_cast<int>(project_.selection().size()); }
 
@@ -100,6 +107,7 @@ signals:
   void historyChanged();
   void selectionChanged();
   void saveAsRequested();
+  void useProxiesChanged();
   // kind: info, error, undo (the toast offers Undo)
   void toastRequested(const QString& text, const QString& kind);
 
@@ -119,7 +127,10 @@ private:
   editor::TimelineController controller_;
   editor::Inspector inspector_;
   editor::RecentProjects recent_;
+  ExportController export_;
   bool adoptingPlayhead_ = false;
+  bool useProxies_ = false;
+  QString proxyKey_;
 };
 
 } // namespace sf::app

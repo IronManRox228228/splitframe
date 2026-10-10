@@ -10,4 +10,4 @@ add_library(sf_editor STATIC
   recent_projects.h recent_projects.cpp
 )
 target_include_directories(sf_editor PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(sf_editor PUBLIC sf_core sf_media Qt6::Gui PRIVATE sf_options)
+target_link_libraries(sf_editor PUBLIC sf_core sf_media sf_export Qt6::Gui PRIVATE sf_options)

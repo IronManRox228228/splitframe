@@ -60,3 +60,6 @@ add_subdirectory(bench)
 
 # Audio engine (mixer, effects, loudness, output device, CLAP host). Defined last so existing targets keep their order.
 add_subdirectory(src/audio)
+
+# Export and proxies (render + audio + media). sf_editor's media pool links it for proxy generation.
+add_subdirectory(src/export)

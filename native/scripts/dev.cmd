@@ -6,7 +6,7 @@ rem   scripts\dev.cmd ctest --preset debug
 rem Override QT_ROOT / FFMPEG_ROOT / OCIO_ROOT in the environment if they live elsewhere.
 setlocal
 if not defined QT_ROOT set "QT_ROOT=C:\Qt\6.8.3\msvc2022_64"
-if not defined FFMPEG_ROOT set "FFMPEG_ROOT=C:\dev\ffmpeg-8.1"
+if not defined FFMPEG_ROOT set "FFMPEG_ROOT=C:\dev\ffmpeg-8.1-gpl"
 if not defined OCIO_ROOT set "OCIO_ROOT=C:\dev\ocio"
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
 for /f "usebackq delims=" %%i in (`call "%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
