@@ -32,6 +32,7 @@ hosts the local model server.
 | `src/export` | Render + encode (NVENC/AMF/QSV/software) to file. | render, audio |
 | `src/agent` | Harness v1 port: router, facade tools, plans, verifier, modes. llama-server over HTTP. | core |
 | `src/editor` | Editing logic without Qt Quick: `Project` (document, undo history, selection, save/open/autosave/recovery), `MediaPool`, timeline models, `TimelineController` (drag/trim/split/delete as ops), `Inspector`. | core, media |
+| `src/engine` | Headless engine (`sf_engine`): one typed command surface over open projects, local JSON-RPC API (HTTP + SSE + stdio), MCP server, `splitframe-cli`. | editor, export, render, audio |
 | `src/app` | Qt Quick UI: window, QML panels, painted `TimelineView`, `Editor` facade, `Player`. | everything |
 | `tests` | QtTest, one executable per area; `ctest` runs all. | |
 
@@ -52,3 +53,19 @@ Electron app's gamma blending. OpenColorIO 2.x is optional: build it once (share
 Python, tests off; `-DOCIO_INSTALL_EXT_PACKAGES=ALL` fetches its dependencies) into `C:\dev\ocio`, or point `OCIO_ROOT`
 at another prefix. `scripts\dev.cmd` puts `%OCIO_ROOT%\bin` on PATH and the build copies the DLL next to the binaries.
 Without it only the built-in sRGB / BT.709 / BT.1886 / PQ / HLG pipeline is available.
+
+## Engine, local API, MCP and CLI (M5a)
+
+`src/engine` is the machine front end. `Engine::call(name, args) -> Result` runs one of 52 commands (`engine.commands` /
+`splitframe-cli commands` list them with JSON schema, `domain` = editor | colour | audio | engine, and `mutates`); errors are values
+(`{code, message, details}`), mutating commands take an `origin` recorded in the history entry. Edits are core ops, so undo/redo and the
+Electron app's op log semantics are unchanged.
+
+- `splitframe-cli` (console, no window): `info`, `timeline`, `apply <ops.json> [--save|--out]`, `render-frame`, `export` (the `--export` code),
+  `call <command> [json]`, `commands`, `serve [--stdio]`, `mcp`; `--json` for machine output. Exit codes: 0 ok, 1 command failed, 2 usage,
+  3 export cancelled, 4 project can't be opened.
+- `splitframe-cli serve` / the GUI (`splitframe.exe --api [--api-port n]` or File > Local API): JSON-RPC 2.0 on `POST /rpc` and Server-Sent Events on
+  `GET /events`, 127.0.0.1 only. Every request needs `Authorization: Bearer <token>` (random per start, written to
+  `<AppConfigLocation>/api-token`, i.e. `%LOCALAPPDATA%/SplitFrame/SplitFrame/api-token`); foreign `Host` / `Origin` headers are rejected.
+- `splitframe.exe --mcp [project.json]` or `splitframe-cli mcp`: MCP over stdio (tools = the engine commands with `.` written `_`, resources
+  `splitframe://timeline|project|assets|frame/{n}`).

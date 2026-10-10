@@ -58,12 +58,16 @@ const Asset* Project::asset(const QString& id) const {
 
 // ---------- editing ----------
 
-bool Project::apply(const std::vector<Op>& ops, const QString& label) {
+bool Project::apply(const std::vector<Op>& ops, const QString& label) { return apply(ops, label, QStringLiteral("user")); }
+
+bool Project::apply(const std::vector<Op>& ops, const QString& label, const QString& actor) {
   if (ops.empty()) return true;
   try {
     ApplyResult r = applyOps(bundle_.doc, ops);
     bundle_.doc = std::move(r.doc);
-    history_.push(ops, r.inverse, label.isEmpty() ? std::nullopt : std::optional<QString>(label), QStringLiteral("user"));
+    lastInverse_ = r.inverse;
+    lastActor_ = actor;
+    history_.push(ops, r.inverse, label.isEmpty() ? std::nullopt : std::optional<QString>(label), actor);
   } catch (const std::exception& e) {
     lastError_ = QString::fromUtf8(e.what());
     emit editRejected(lastError_);
@@ -73,6 +77,11 @@ bool Project::apply(const std::vector<Op>& ops, const QString& label) {
   changed(true);
   emit opsApplied(ops, label);
   return true;
+}
+
+void Project::setColorManagement(std::optional<ColorManagement> cm) {
+  bundle_.doc.project.colorManagement = std::move(cm);
+  changed(true);
 }
 
 void Project::beginGroup(const QString& label) {

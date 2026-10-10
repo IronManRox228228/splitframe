@@ -11,6 +11,7 @@
 #include <QJsonObject>
 
 #include <cstdio>
+#include <cmath>
 #include <mutex>
 
 #ifdef Q_OS_WIN
@@ -77,6 +78,115 @@ bool loadProjectForExport(const QString& path, TimelineDoc* doc, render::AssetTa
   }
 }
 
+bool exportSettingsFromJson(const QJsonObject& o, const TimelineDoc& doc, ExportSettings* out, QString* error) {
+  auto fail = [&](const QString& msg) {
+    if (error) *error = msg;
+    return false;
+  };
+  auto has = [&](const char* k) { return o.contains(QString::fromLatin1(k)) && !o.value(QString::fromLatin1(k)).isNull(); };
+  auto str = [&](const char* k) {
+    const QJsonValue v = o.value(QString::fromLatin1(k));
+    return v.isDouble() ? QString::number(v.toDouble(), 'g', 15) : v.toString();
+  };
+  auto truthy = [&](const char* k) { return o.value(QString::fromLatin1(k)).toBool(false); };
+  // numbers arrive as JSON numbers or as text (the command line)
+  auto number = [&](const char* k, double* v) {
+    const QJsonValue j = o.value(QString::fromLatin1(k));
+    if (j.isDouble()) {
+      *v = j.toDouble();
+      return true;
+    }
+    bool good = false;
+    *v = j.toString().toDouble(&good);
+    return good;
+  };
+
+  ExportSettings s;
+  s.outputPath = str("out");
+  s.overwrite = truthy("overwrite");
+  bool ok = true;
+  auto intOf = [&](const char* key, int* dst) {
+    if (!has(key)) return;
+    double v = 0;
+    if (!number(key, &v) || v != std::floor(v)) ok = false;
+    else *dst = static_cast<int>(v);
+  };
+  if (has("codec")) {
+    const auto c = videoCodecFromName(str("codec"));
+    if (!c) return fail(QStringLiteral("unknown codec \"%1\"").arg(str("codec")));
+    s.video = *c;
+  }
+  if (has("container")) {
+    const auto c = containerFromName(str("container"));
+    if (!c) return fail(QStringLiteral("unknown container \"%1\"").arg(str("container")));
+    s.container = *c;
+  }
+  if (has("audioCodec")) {
+    const auto c = audioCodecFromName(str("audioCodec"));
+    if (!c) return fail(QStringLiteral("unknown audio codec \"%1\"").arg(str("audioCodec")));
+    s.audio = *c;
+  }
+  if (truthy("noAudio")) s.audio = AudioCodec::None;
+  if (truthy("audioOnly")) s.video = VideoCodec::None;
+  if (truthy("hw")) s.hardware = Hardware::Auto;
+  s.hardwareDecode = truthy("hwDecode");
+  s.tenBit = truthy("tenBit");
+  // preset and quality first so explicit options override them
+  if (has("preset")) {
+    QString name = str("preset");
+    if (name.compare(QLatin1String("vertical"), Qt::CaseInsensitive) == 0) name = QStringLiteral("Vertical");
+    if (!applyPreset(s, name, static_cast<int>(doc.project.width), static_cast<int>(doc.project.height)))
+      return fail(QStringLiteral("unknown preset \"%1\" (see --list-presets)").arg(name));
+  }
+  if (has("quality") && !applyQuality(s, str("quality"))) return fail(QStringLiteral("unknown quality \"%1\"").arg(str("quality")));
+  intOf("crf", &s.crf);
+  intOf("bitrate", &s.videoBitrateK);
+  intOf("width", &s.width);
+  intOf("height", &s.height);
+  if (!ok) return fail(QStringLiteral("a numeric option is not a number"));
+  if (has("encoderPreset")) s.encoderPreset = str("encoderPreset");
+  if (has("proresProfile")) {
+    const QString v = str("proresProfile").toLower();
+    if (v == QLatin1String("proxy")) s.proresProfile = ProResProfile::Proxy;
+    else if (v == QLatin1String("lt")) s.proresProfile = ProResProfile::Lt;
+    else if (v == QLatin1String("standard")) s.proresProfile = ProResProfile::Standard;
+    else if (v == QLatin1String("hq")) s.proresProfile = ProResProfile::Hq;
+    else if (v == QLatin1String("4444")) s.proresProfile = ProResProfile::P4444;
+    else return fail(QStringLiteral("unknown ProRes profile \"%1\"").arg(v));
+  }
+  if (has("dnxProfile")) {
+    QString v = str("dnxProfile").toLower();
+    if (!v.startsWith(QLatin1String("dnxhr_"))) v = QStringLiteral("dnxhr_") + v;
+    s.dnxProfile = v;
+  }
+  if (has("lufs")) {
+    double v = 0;
+    if (!number("lufs", &v)) return fail(QStringLiteral("--lufs needs a number"));
+    s.loudnessLufs = v;
+  }
+  if (has("truePeak")) {
+    double v = 0;
+    if (!number("truePeak", &v)) return fail(QStringLiteral("--true-peak needs a number"));
+    s.truePeakCeilingDb = v;
+  }
+  if (has("range")) {
+    const QJsonValue r = o.value(QStringLiteral("range"));
+    QStringList parts;
+    if (r.isArray()) {
+      for (const QJsonValue& e : r.toArray()) parts << QString::number(e.toDouble(), 'f', 0);
+    } else {
+      parts = r.toString().split(QLatin1Char(':'));
+    }
+    bool a = false, b = false;
+    const qint64 in = parts.value(0).toLongLong(&a), outF = parts.value(1).toLongLong(&b);
+    if (parts.size() != 2 || !a || !b) return fail(QStringLiteral("--range needs \"in:out\" in frames"));
+    s.inFrame = in;
+    s.outFrame = outF;
+  }
+  *out = std::move(s);
+  return true;
+}
+
 int runExportCli(const QStringList& args) {
   QCommandLineParser cli;
   cli.setApplicationDescription(QStringLiteral("SplitFrame headless export"));
@@ -136,84 +246,38 @@ int runExportCli(const QStringList& args) {
   QString err;
   if (!loadProjectForExport(projectPath, &doc, &assets, &err)) return usage(err);
 
-  ExportSettings s;
-  s.outputPath = cli.value(outOpt);
-  s.overwrite = cli.isSet(overwriteOpt);
-  bool ok = true;
-  auto intOf = [&](const QCommandLineOption& o, int* out) {
-    if (!cli.isSet(o)) return;
-    bool good = false;
-    const int v = cli.value(o).toInt(&good);
-    if (!good) ok = false;
-    else *out = v;
+  QJsonObject opts;
+  opts.insert(QStringLiteral("out"), cli.value(outOpt));
+  auto flag = [&](const QCommandLineOption& o, const char* key) {
+    if (cli.isSet(o)) opts.insert(QString::fromLatin1(key), true);
   };
-  if (cli.isSet(codecOpt)) {
-    const auto c = videoCodecFromName(cli.value(codecOpt));
-    if (!c) return usage(QStringLiteral("unknown codec \"%1\"").arg(cli.value(codecOpt)));
-    s.video = *c;
-  }
-  if (cli.isSet(containerOpt)) {
-    const auto c = containerFromName(cli.value(containerOpt));
-    if (!c) return usage(QStringLiteral("unknown container \"%1\"").arg(cli.value(containerOpt)));
-    s.container = *c;
-  }
-  if (cli.isSet(audioCodecOpt)) {
-    const auto c = audioCodecFromName(cli.value(audioCodecOpt));
-    if (!c) return usage(QStringLiteral("unknown audio codec \"%1\"").arg(cli.value(audioCodecOpt)));
-    s.audio = *c;
-  }
-  if (cli.isSet(noAudioOpt)) s.audio = AudioCodec::None;
-  if (cli.isSet(audioOnlyOpt)) s.video = VideoCodec::None;
-  if (cli.isSet(hwOpt)) s.hardware = Hardware::Auto;
-  s.hardwareDecode = cli.isSet(hwDecodeOpt);
-  s.tenBit = cli.isSet(tenBitOpt);
-  // preset and quality first so explicit options override them
-  if (cli.isSet(presetOpt)) {
-    QString name = cli.value(presetOpt);
-    if (name.compare(QLatin1String("vertical"), Qt::CaseInsensitive) == 0) name = QStringLiteral("Vertical");
-    if (!applyPreset(s, name, static_cast<int>(doc.project.width), static_cast<int>(doc.project.height))) return usage(QStringLiteral("unknown preset \"%1\" (see --list-presets)").arg(name));
-  }
-  if (cli.isSet(qualityOpt) && !applyQuality(s, cli.value(qualityOpt))) return usage(QStringLiteral("unknown quality \"%1\"").arg(cli.value(qualityOpt)));
-  intOf(crfOpt, &s.crf);
-  intOf(bitrateOpt, &s.videoBitrateK);
-  intOf(widthOpt, &s.width);
-  intOf(heightOpt, &s.height);
-  if (!ok) return usage(QStringLiteral("a numeric option is not a number"));
-  if (cli.isSet(encPresetOpt)) s.encoderPreset = cli.value(encPresetOpt);
-  if (cli.isSet(proresOpt)) {
-    const QString v = cli.value(proresOpt).toLower();
-    if (v == QLatin1String("proxy")) s.proresProfile = ProResProfile::Proxy;
-    else if (v == QLatin1String("lt")) s.proresProfile = ProResProfile::Lt;
-    else if (v == QLatin1String("standard")) s.proresProfile = ProResProfile::Standard;
-    else if (v == QLatin1String("hq")) s.proresProfile = ProResProfile::Hq;
-    else if (v == QLatin1String("4444")) s.proresProfile = ProResProfile::P4444;
-    else return usage(QStringLiteral("unknown ProRes profile \"%1\"").arg(v));
-  }
-  if (cli.isSet(dnxOpt)) {
-    QString v = cli.value(dnxOpt).toLower();
-    if (!v.startsWith(QLatin1String("dnxhr_"))) v = QStringLiteral("dnxhr_") + v;
-    s.dnxProfile = v;
-  }
-  if (cli.isSet(lufsOpt)) {
-    bool good = false;
-    const double v = cli.value(lufsOpt).toDouble(&good);
-    if (!good) return usage(QStringLiteral("--lufs needs a number"));
-    s.loudnessLufs = v;
-  }
-  if (cli.isSet(peakOpt)) {
-    bool good = false;
-    const double v = cli.value(peakOpt).toDouble(&good);
-    if (!good) return usage(QStringLiteral("--true-peak needs a number"));
-    s.truePeakCeilingDb = v;
-  }
-  if (cli.isSet(rangeOpt)) {
-    const QStringList parts = cli.value(rangeOpt).split(QLatin1Char(':'));
-    bool a = false, b = false;
-    const qint64 in = parts.value(0).toLongLong(&a), out = parts.value(1).toLongLong(&b);
-    if (parts.size() != 2 || !a || !b) return usage(QStringLiteral("--range needs \"in:out\" in frames"));
-    s.inFrame = in;
-    s.outFrame = out;
-  }
+  auto text = [&](const QCommandLineOption& o, const char* key) {
+    if (cli.isSet(o)) opts.insert(QString::fromLatin1(key), cli.value(o));
+  };
+  // numbers stay text here: exportSettingsFromJson rejects a non-numeric value with the same message as before
+  flag(overwriteOpt, "overwrite");
+  flag(noAudioOpt, "noAudio");
+  flag(audioOnlyOpt, "audioOnly");
+  flag(hwOpt, "hw");
+  flag(hwDecodeOpt, "hwDecode");
+  flag(tenBitOpt, "tenBit");
+  text(codecOpt, "codec");
+  text(containerOpt, "container");
+  text(audioCodecOpt, "audioCodec");
+  text(presetOpt, "preset");
+  text(qualityOpt, "quality");
+  text(crfOpt, "crf");
+  text(bitrateOpt, "bitrate");
+  text(widthOpt, "width");
+  text(heightOpt, "height");
+  text(encPresetOpt, "encoderPreset");
+  text(proresOpt, "proresProfile");
+  text(dnxOpt, "dnxProfile");
+  text(lufsOpt, "lufs");
+  text(peakOpt, "truePeak");
+  text(rangeOpt, "range");
+  ExportSettings s;
+  if (!exportSettingsFromJson(opts, doc, &s, &err)) return usage(err);
 
   const auto plan = planExport(doc, s, &err);
   if (!plan) return usage(err);

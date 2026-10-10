@@ -13,7 +13,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 option(SF_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 option(SF_SANITIZE_ADDRESS "Build with AddressSanitizer" OFF)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick QuickControls2 ShaderTools Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Quick QuickControls2 ShaderTools Test)
 find_package(FFmpeg REQUIRED)
 # OpenColorIO 2.x is optional: without it the compositor keeps its built-in sRGB / BT.709 / PQ / HLG
 # colour pipeline and only OCIO config spaces, views and LUT files are unavailable (see render/color_manager.h).
@@ -63,3 +63,6 @@ add_subdirectory(src/audio)
 
 # Export and proxies (render + audio + media). sf_editor's media pool links it for proxy generation.
 add_subdirectory(src/export)
+
+# Headless engine, local API, MCP server and the splitframe-cli executable. Last: it builds on every library above.
+add_subdirectory(src/engine)

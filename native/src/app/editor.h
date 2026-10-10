@@ -13,6 +13,9 @@
 #include "editor/timeline_controller.h"
 #include "editor/timeline_model.h"
 
+#include "engine/api_server.h"
+#include "engine/engine.h"
+
 #include <QObject>
 #include <QQmlEngine>
 #include <QUrl>
@@ -44,6 +47,9 @@ class Editor : public QObject {
   Q_PROPERTY(int selectionCount READ selectionCount NOTIFY selectionChanged)
   // Preview from proxy files (made in the background for every video asset while on). Export always uses the originals.
   Q_PROPERTY(bool useProxies READ useProxies WRITE setUseProxies NOTIFY useProxiesChanged)
+  // The local JSON-RPC / SSE API (engine/api_server.h) on 127.0.0.1, driving THIS project live. Off by default.
+  Q_PROPERTY(bool apiEnabled READ apiEnabled WRITE setApiEnabled NOTIFY apiChanged)
+  Q_PROPERTY(QString apiStatus READ apiStatus NOTIFY apiChanged)
 
 public:
   struct Options {
@@ -73,6 +79,10 @@ public:
   QString undoLabel() const { return project_.undoLabel(); }
   bool useProxies() const { return useProxies_; }
   void setUseProxies(bool on);
+  bool apiEnabled() const { return api_ && api_->running(); }
+  void setApiEnabled(bool on);
+  void setApiPort(quint16 port) { apiPort_ = port; } // before enabling; 0 = any free port
+  QString apiStatus() const;
   bool hasSelection() const { return !project_.selection().isEmpty(); }
   int selectionCount() const { return static_cast<int>(project_.selection().size()); }
 
@@ -108,6 +118,7 @@ signals:
   void selectionChanged();
   void saveAsRequested();
   void useProxiesChanged();
+  void apiChanged();
   // kind: info, error, undo (the toast offers Undo)
   void toastRequested(const QString& text, const QString& kind);
 
@@ -131,6 +142,9 @@ private:
   bool adoptingPlayhead_ = false;
   bool useProxies_ = false;
   QString proxyKey_;
+  std::unique_ptr<engine::Engine> apiEngine_;
+  std::unique_ptr<engine::ApiServer> api_;
+  quint16 apiPort_ = 0;
 };
 
 } // namespace sf::app

@@ -24,6 +24,36 @@ QString names(const QStringList& list) { return list.size() <= 2 ? list.join(QSt
 
 } // namespace
 
+void Editor::setApiEnabled(bool on) {
+  if (on == apiEnabled()) return;
+  if (!on) {
+    api_.reset();
+    apiEngine_.reset();
+    toast(QStringLiteral("Local API stopped"));
+    emit apiChanged();
+    return;
+  }
+  apiEngine_ = std::make_unique<engine::Engine>();
+  apiEngine_->attach(&project_, &pool_);
+  engine::ApiServer::Options o;
+  o.port = apiPort_;
+  api_ = std::make_unique<engine::ApiServer>(*apiEngine_, o);
+  QString err;
+  if (!api_->start(&err)) {
+    api_.reset();
+    apiEngine_.reset();
+    toast(QStringLiteral("Local API failed: %1").arg(err), QStringLiteral("error"));
+  } else {
+    toast(QStringLiteral("Local API on %1").arg(apiStatus()));
+  }
+  emit apiChanged();
+}
+
+QString Editor::apiStatus() const {
+  if (!apiEnabled()) return QStringLiteral("off");
+  return QStringLiteral("http://127.0.0.1:%1 (token: %2)").arg(api_->port()).arg(QDir::toNativeSeparators(api_->tokenFile()));
+}
+
 Editor::Editor(Player& player, const Options& options, QObject* parent)
     : QObject(parent),
       player_(player),

@@ -1,6 +1,7 @@
 #include "app/editor.h"
 #include "app/player.h"
 #include "app/pool_image_provider.h"
+#include "engine/headless.h"
 #include "export/export_cli.h"
 #include "media/gpu_frame.h"
 #include "media/probe.h"
@@ -29,6 +30,19 @@ int main(int argc, char* argv[]) {
       return sf::xport::runExportCli(QCoreApplication::arguments());
     }
   }
+  // MCP server on stdio (engine/mcp.h): `splitframe.exe --mcp [project.json]`. No window; stdout carries only protocol messages.
+  for (int i = 1; i < argc; ++i) {
+    if (QByteArray(argv[i]) == "--mcp") {
+      QGuiApplication mcpApp(argc, argv);
+      QGuiApplication::setApplicationName(QStringLiteral("SplitFrame"));
+      QGuiApplication::setOrganizationName(QStringLiteral("SplitFrame"));
+      QGuiApplication::setApplicationVersion(QStringLiteral(PROJECT_VERSION_STRING));
+      QString project;
+      for (int j = 1; j < argc; ++j)
+        if (!QByteArray(argv[j]).startsWith("--")) project = QString::fromLocal8Bit(argv[j]);
+      return sf::engine::runMcp(project);
+    }
+  }
   // The compositor samples decoded D3D11 surfaces directly, so Qt Quick has to run on D3D11
   if (qEnvironmentVariableIsEmpty("QSG_RHI_BACKEND")) QQuickWindow::setGraphicsApi(QSGRendererInterface::Direct3D11);
   QQuickStyle::setStyle(QStringLiteral("Basic")); // the one style that follows our dark palette everywhere
@@ -54,6 +68,9 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption recoveryOpt(QStringLiteral("recovery-dir"), QStringLiteral("Where autosaves go (default: the app's local data folder)."), QStringLiteral("dir"));
   const QCommandLineOption selectOpt(QStringLiteral("select"), QStringLiteral("Select clips by index in timeline order, comma separated (screenshots)."), QStringLiteral("indices"));
   const QCommandLineOption fitOpt(QStringLiteral("fit"), QStringLiteral("Zoom the timeline to fit the project."));
+  const QCommandLineOption apiOpt(QStringLiteral("api"), QStringLiteral("Start the local JSON-RPC / SSE API on 127.0.0.1 for the open project (also in the File menu)."));
+  const QCommandLineOption apiPortOpt(QStringLiteral("api-port"), QStringLiteral("Port for --api (default: any free port)."), QStringLiteral("port"));
+  for (const auto* o : {&apiOpt, &apiPortOpt}) cli.addOption(*o);
   for (const auto* o : {&screenshotOpt, &frameOpt, &cpuOpt, &swOpt, &playOpt, &settingsOpt, &recoveryOpt, &selectOpt, &fitOpt}) cli.addOption(*o);
   cli.process(app);
 
@@ -65,6 +82,8 @@ int main(int argc, char* argv[]) {
   options.settingsFile = cli.value(settingsOpt);
   options.recoveryDir = cli.value(recoveryOpt);
   sf::app::Editor editor(player, options);
+  if (cli.isSet(apiPortOpt)) editor.setApiPort(static_cast<quint16>(cli.value(apiPortOpt).toUInt()));
+  if (cli.isSet(apiOpt)) editor.setApiEnabled(true);
 
   QQmlApplicationEngine engine;
   engine.addImageProvider(QStringLiteral("pool"), new sf::app::PoolImageProvider(editor.pool()));

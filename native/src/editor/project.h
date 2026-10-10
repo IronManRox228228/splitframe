@@ -49,6 +49,12 @@ public:
   // set and editRejected emitted, when an op is malformed or cannot apply.
   bool apply(const std::vector<Op>& ops, const QString& label = {});
   bool apply(const Op& op, const QString& label = {}) { return apply(std::vector<Op>{op}, label); }
+  // Same, recording who made the change (history entry's actor: "user", "agent:editor", ...).
+  bool apply(const std::vector<Op>& ops, const QString& label, const QString& actor);
+  // The inverse ops and the actor of the newest successful apply (headless engine, API events).
+  const std::vector<Op>& lastInverse() const { return lastInverse_; }
+  const QString& lastActor() const { return lastActor_; }
+  const History& history() const { return history_; }
 
   // Everything applied between begin and end is one undo step (a slider drag). Nesting is not
   // supported; begin while open closes the previous group.
@@ -62,6 +68,10 @@ public:
   bool canRedo() const { return history_.canRedo(); }
   QString undoLabel() const { return history_.undoLabel().value_or(QString()); }
   const QString& lastError() const { return lastError_; }
+
+  // Native-only project colour management (core has no op for it): applied directly, NOT undoable, marks the
+  // project dirty. nullopt clears it.
+  void setColorManagement(std::optional<ColorManagement> cm);
 
   // ---- selection ----
   const QStringList& selection() const { return selection_; }
@@ -132,6 +142,8 @@ private:
   QStringList selection_;
   QString path_;
   QString lastError_;
+  std::vector<Op> lastInverse_;
+  QString lastActor_;
   bool dirty_ = false;
   bool forceDirty_ = false;
   QString recoveryDir_;

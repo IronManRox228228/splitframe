@@ -16,6 +16,7 @@
 #include "export/export_settings.h"
 #include "render/media_provider.h"
 
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 
@@ -24,6 +25,12 @@ namespace sf::xport {
 // Reads a project bundle (or a bare timeline document) and resolves relative asset paths against the file.
 // False with *error set when it can't be read.
 bool loadProjectForExport(const QString& path, TimelineDoc* doc, render::AssetTable* assets, QString* error);
+
+// The option set shared by --export and the engine's export.start: `o` uses the keys out, overwrite, preset, quality, codec,
+// container, audioCodec, noAudio, audioOnly, crf, encoderPreset, bitrate, width, height, range ("in:out" or [in, out]), tenBit,
+// proresProfile, dnxProfile, lufs, truePeak, hw, hwDecode. Numbers may be JSON numbers or text. False with *error set (the
+// same messages --export prints) when an option is unknown or invalid.
+bool exportSettingsFromJson(const QJsonObject& o, const TimelineDoc& doc, ExportSettings* settings, QString* error);
 
 // Parses the command line (args[0] is the program) and runs. Needs a QGuiApplication to exist.
 int runExportCli(const QStringList& args);

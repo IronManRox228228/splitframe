@@ -64,6 +64,10 @@ class History {
     }
   }
 
+  // Committed groups, oldest first; the first position() of them are applied (read-only view for listings).
+  const std::deque<UndoGroup>& groups() const { return stack_; }
+  std::size_t position() const { return index_; }
+
   bool canUndo() const { return index_ > 0; }
   bool canRedo() const { return index_ < stack_.size(); }
 
