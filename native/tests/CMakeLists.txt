@@ -186,3 +186,29 @@ sf_add_engine_test(tst_mcp DEFS "SF_APP_EXE=\"$<TARGET_FILE:splitframe>\"" "SF_C
 add_dependencies(tst_mcp splitframe splitframe-cli)
 sf_add_engine_test(tst_cli DEFS "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")
 add_dependencies(tst_cli splitframe-cli)
+
+# Agent harness: router, peer bus, specialists, and multi-agent coordinator.
+function(sf_add_agent_test name)
+  cmake_parse_arguments(T "" "" "SOURCES;DEFS" ${ARGN})
+  qt_add_executable(${name} ${name}.cpp ${T_SOURCES})
+  target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
+  target_link_libraries(${name} PRIVATE sf_agent sf_engine sf_options Qt6::Test Qt6::Network)
+  if(T_DEFS)
+    target_compile_definitions(${name} PRIVATE ${T_DEFS})
+  endif()
+  add_test(NAME ${name} COMMAND ${name})
+  get_target_property(_qtcore Qt6::Core IMPORTED_LOCATION_RELEASE)
+  if(NOT _qtcore)
+    get_target_property(_qtcore Qt6::Core IMPORTED_LOCATION_DEBUG)
+  endif()
+  get_filename_component(_qtbin "${_qtcore}" DIRECTORY)
+  set_tests_properties(${name} PROPERTIES
+    ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_qtbin};PATH=path_list_prepend:${FFMPEG_ROOT}/bin;PATH=path_list_prepend:$ENV{OCIO_ROOT}/bin"
+    ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE}")
+endfunction()
+
+sf_add_agent_test(tst_agent_router)
+sf_add_agent_test(tst_agent_peer_bus)
+sf_add_agent_test(tst_agent_specialists)
+sf_add_agent_test(tst_agent_harness)
+

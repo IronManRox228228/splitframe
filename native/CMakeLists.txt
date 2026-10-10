@@ -66,3 +66,7 @@ add_subdirectory(src/export)
 
 # Headless engine, local API, MCP server and the splitframe-cli executable. Last: it builds on every library above.
 add_subdirectory(src/engine)
+
+# Agent harness: specialists (editor, colourist, audio), peer bus, router, and modes.
+add_subdirectory(src/agent)
+
