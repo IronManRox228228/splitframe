@@ -552,6 +552,19 @@ BeatMap parseBeatMap(const Rd& r) {
   return b;
 }
 
+BranchRecord parseBranchRecord(const Rd& r) {
+  r.requireObject();
+  BranchRecord b;
+  b.id = r.field(QStringLiteral("id")).str();
+  b.name = r.field(QStringLiteral("name")).str();
+  b.author = r.field(QStringLiteral("author")).strOr(QStringLiteral("user"));
+  b.baseBranch = r.field(QStringLiteral("baseBranch")).strOr(QStringLiteral("main"));
+  b.createdAt = r.field(QStringLiteral("createdAt")).str();
+  b.updatedAt = r.field(QStringLiteral("updatedAt")).str();
+  b.doc = parseTimelineDoc(r.field(QStringLiteral("doc")));
+  return b;
+}
+
 ProjectBundle parseProjectBundle(const Rd& r) {
   r.requireObject();
   ProjectBundle b;
@@ -560,6 +573,10 @@ ProjectBundle parseProjectBundle(const Rd& r) {
   b.transcripts = r.field(QStringLiteral("transcripts")).list(parseTranscript);
   b.scenes = r.field(QStringLiteral("scenes")).list(parseScene);
   b.beatMaps = r.field(QStringLiteral("beatMaps")).list(parseBeatMap);
+  const Rd br = r.field(QStringLiteral("branches"));
+  if (!br.missing()) {
+    b.branches = br.listOr(parseBranchRecord);
+  }
   return b;
 }
 
@@ -847,12 +864,26 @@ QJsonObject toJson(const BeatMap& b) {
            })}};
 }
 
+QJsonObject toJson(const BranchRecord& b) {
+  return {{QStringLiteral("id"), b.id},
+          {QStringLiteral("name"), b.name},
+          {QStringLiteral("author"), b.author},
+          {QStringLiteral("baseBranch"), b.baseBranch},
+          {QStringLiteral("createdAt"), b.createdAt},
+          {QStringLiteral("updatedAt"), b.updatedAt},
+          {QStringLiteral("doc"), toJson(b.doc)}};
+}
+
 QJsonObject toJson(const ProjectBundle& b) {
-  return {{QStringLiteral("doc"), toJson(b.doc)},
-          {QStringLiteral("assets"), arr(b.assets, [](const Asset& x) { return toJson(x); })},
-          {QStringLiteral("transcripts"), arr(b.transcripts, [](const Transcript& x) { return toJson(x); })},
-          {QStringLiteral("scenes"), arr(b.scenes, [](const Scene& x) { return toJson(x); })},
-          {QStringLiteral("beatMaps"), arr(b.beatMaps, [](const BeatMap& x) { return toJson(x); })}};
+  QJsonObject o{{QStringLiteral("doc"), toJson(b.doc)},
+                {QStringLiteral("assets"), arr(b.assets, [](const Asset& x) { return toJson(x); })},
+                {QStringLiteral("transcripts"), arr(b.transcripts, [](const Transcript& x) { return toJson(x); })},
+                {QStringLiteral("scenes"), arr(b.scenes, [](const Scene& x) { return toJson(x); })},
+                {QStringLiteral("beatMaps"), arr(b.beatMaps, [](const BeatMap& x) { return toJson(x); })}};
+  if (!b.branches.empty()) {
+    o.insert(QStringLiteral("branches"), arr(b.branches, [](const BranchRecord& x) { return toJson(x); }));
+  }
+  return o;
 }
 
 // ---------- whole documents ----------

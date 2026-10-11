@@ -73,6 +73,9 @@ public:
   // project dirty. nullopt clears it.
   void setColorManagement(std::optional<ColorManagement> cm);
 
+  // Native-only timeline branches:
+  void setBranches(std::vector<BranchRecord> branches) { bundle_.branches = std::move(branches); }
+
   // ---- selection ----
   const QStringList& selection() const { return selection_; }
   bool isSelected(const QString& id) const { return selection_.contains(id); }

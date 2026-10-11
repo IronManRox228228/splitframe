@@ -501,12 +501,24 @@ struct BeatMap {
   bool operator==(const BeatMap&) const = default;
 };
 
+struct BranchRecord {
+  QString id;
+  QString name;
+  QString author = QStringLiteral("user");
+  QString baseBranch = QStringLiteral("main");
+  QString createdAt;
+  QString updatedAt;
+  TimelineDoc doc;
+  bool operator==(const BranchRecord&) const = default;
+};
+
 struct ProjectBundle {
   TimelineDoc doc;
   std::vector<Asset> assets;
   std::vector<Transcript> transcripts;
   std::vector<Scene> scenes;
   std::vector<BeatMap> beatMaps;
+  std::vector<BranchRecord> branches;
   bool operator==(const ProjectBundle&) const = default;
 };
 
@@ -548,6 +560,7 @@ Asset parseAsset(const Rd& r);
 Transcript parseTranscript(const Rd& r);
 Scene parseScene(const Rd& r);
 BeatMap parseBeatMap(const Rd& r);
+BranchRecord parseBranchRecord(const Rd& r);
 ProjectBundle parseProjectBundle(const Rd& r);
 
 QJsonObject toJson(const Keyframe&);
@@ -574,6 +587,7 @@ QJsonObject toJson(const Asset&);
 QJsonObject toJson(const Transcript&);
 QJsonObject toJson(const Scene&);
 QJsonObject toJson(const BeatMap&);
+QJsonObject toJson(const BranchRecord&);
 QJsonObject toJson(const ProjectBundle&);
 
 // Whole-document convenience: text in, text out, and files (saves go through QSaveFile so a crash

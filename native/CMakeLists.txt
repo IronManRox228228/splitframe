@@ -73,3 +73,6 @@ add_subdirectory(src/agent)
 # Footage indexing and understanding: catalog, video/audio analysis, OCR, VLM tags, search.
 add_subdirectory(src/index)
 
+# Copilot in-editor: next-edit suggestions, edit lint engine, branching timelines, and self-review.
+add_subdirectory(src/copilot)
+
