@@ -20,7 +20,7 @@ export type VlmProvider = 'none' | 'ollama' | 'anthropic' | 'openai';
 
 export interface AiSettings {
   /** chat model provider for the built-in agent */
-  agentProvider?: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'llamacpp';
+  agentProvider?: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'llamacpp' | 'meterless';
   agentModel?: string;
   /** which agent harness answers chat: the planner/executor harness or the classic single tool loop */
   harness?: 'v1' | 'classic';
@@ -34,13 +34,22 @@ export interface AiSettings {
   ollamaUrl?: string;
   /** llama.cpp `llama-server` base URL (OpenAI-compatible) */
   llamacppUrl?: string;
+  /** Meterless serverless base URL (OpenAI-compatible) */
+  meterlessUrl?: string;
   anthropicKeyEnc?: string;
   openaiKeyEnc?: string;
+}
+
+export interface ZetarisSettings {
+  enabled?: boolean;
+  endpoint?: string;
+  catalogName?: string;
 }
 
 export interface Settings {
   mcp: McpSettings;
   ai?: AiSettings;
+  zetaris?: ZetarisSettings;
   asr?: { model?: string };
   /** deterministic per-scene footage notes (ffmpeg metrics + OCR) computed at import; default on */
   analysis?: { footageNotes?: boolean };
@@ -53,6 +62,7 @@ export interface Settings {
 const DEFAULTS: Settings = {
   mcp: { enabled: false, port: 8629, token: randomBytes(24).toString('hex') },
   ai: { vlmProvider: 'none' },
+  zetaris: { enabled: true, endpoint: 'https://api.zetaris.com/v1/federation/query', catalogName: 'production_media_catalog' },
   asr: { model: 'base.en' },
   analysis: { footageNotes: true },
 };
@@ -72,6 +82,7 @@ export async function getSettings(): Promise<Settings> {
     loaded = {
       mcp: { ...DEFAULTS.mcp, ...parsed.mcp },
       ai: { ...DEFAULTS.ai, ...parsed.ai },
+      zetaris: { ...DEFAULTS.zetaris, ...parsed.zetaris },
       asr: { ...DEFAULTS.asr, ...parsed.asr },
       analysis: { ...DEFAULTS.analysis, ...parsed.analysis },
       export: typeof parsed.export?.lastDir === 'string' ? { lastDir: parsed.export.lastDir } : {},
@@ -109,6 +120,7 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   cache = {
     mcp: { ...current.mcp, ...patch.mcp ?? current.mcp },
     ai: { ...current.ai, ...patch.ai ?? {} },
+    zetaris: { ...current.zetaris, ...patch.zetaris },
     asr: { ...current.asr ?? DEFAULTS.asr, ...patch.asr ?? {} },
     analysis: { ...DEFAULTS.analysis, ...current.analysis, ...patch.analysis },
     export: { ...current.export, ...patch.export },

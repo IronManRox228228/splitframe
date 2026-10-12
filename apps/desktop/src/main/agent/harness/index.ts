@@ -9,7 +9,7 @@ import { waitForDecision } from '../pending.ts';
 export { runHarness } from './run.ts';
 
 /** Providers the harness can drive: OpenAI-compatible chat completions with JSON-schema output and tool calls. */
-const SUPPORTED = new Set(['llamacpp', 'ollama', 'openai']);
+const SUPPORTED = new Set(['llamacpp', 'ollama', 'openai', 'meterless']);
 
 export async function harnessSupported(): Promise<boolean> {
   const s = await getSettings();
@@ -28,6 +28,12 @@ async function llmFor(role: 'planner' | 'executor'): Promise<Llm> {
   }
   if (provider === 'ollama') return createLlm({ baseUrl: trim(ai.ollamaUrl ?? 'http://127.0.0.1:11434'), apiKey: 'ollama', model: model || 'qwen2.5:7b', noThinking: false });
   if (provider === 'openai') return createLlm({ baseUrl: 'https://api.openai.com', apiKey: (await getAgentKey('openai')) ?? '', model: model || 'gpt-4o-mini', noThinking: false });
+  if (provider === 'meterless') {
+    const raw = trim(ai.meterlessUrl ?? 'https://api.meterless.ai/v1');
+    const baseUrl = raw.endsWith('/v1') ? raw.slice(0, -3) : raw;
+    const key = (await getAgentKey('meterless')) ?? '';
+    return createLlm({ baseUrl, apiKey: key || 'none', model: model || 'qwen-2.5-coder-32b', noThinking: false });
+  }
   throw new Error(`The v1 harness does not support the ${provider} provider; switch to the classic harness in settings.`);
 }
 

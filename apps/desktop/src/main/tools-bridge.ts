@@ -10,6 +10,7 @@ import { detectBeats } from './analysis/beats.ts';
 import { getDb } from './db.ts';
 import { validateMotionCode } from '@cutboard/renderer';
 import { analyzeReferenceStyle, getReferenceProfile } from './analysis/reference.ts';
+import { defaultZetarisClient, importFederatedAssetToProject } from './analysis/zetaris.ts';
 
 /**
  * Tool registry bridge (addendum §2): one registry, two front doors — the built-in chat
@@ -96,6 +97,8 @@ export function makeToolContext(actor: Actor): ToolContext {
       return analyzeReferenceStyle(assetId, projectService.dir);
     },
     getReferenceProfile: (assetId) => getReferenceProfile(assetId),
+    searchFederatedMedia: async (q) => defaultZetarisClient.query(q as never),
+    importFederatedAsset: async (a) => importFederatedAssetToProject(a as never),
   };
 }
 

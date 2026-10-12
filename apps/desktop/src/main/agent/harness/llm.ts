@@ -49,7 +49,7 @@ interface ChatResponse {
 }
 
 export function createLlm(cfg: LlmConfig): Llm {
-  const base = cfg.baseUrl.replace(/\/+$/, '');
+  const base = cfg.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
 
   async function chat(body: Record<string, unknown>, signal?: AbortSignal): Promise<ChatResponse> {
     const res = await fetch(`${base}/v1/chat/completions`, {

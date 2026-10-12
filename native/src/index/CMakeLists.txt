@@ -8,6 +8,7 @@ add_library(sf_index STATIC
   vlm_descriptor.h vlm_descriptor.cpp
   index_manager.h index_manager.cpp
   index_commands.h index_commands.cpp
+  zetaris_provider.h zetaris_provider.cpp
 )
 
 target_include_directories(sf_index PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
@@ -18,7 +19,9 @@ target_link_libraries(sf_index
     sf_audio
     sf_agent
     sf_engine
+    sf_editor
     Qt6::Core
+    Qt6::Network
     Qt6::Sql
     Qt6::Gui
     FFmpeg::avfilter

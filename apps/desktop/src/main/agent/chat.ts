@@ -54,6 +54,15 @@ function providerModel(provider: string, model: string, key: string, ai: AiSetti
       const llamacpp = createOpenAI({ baseURL: `${trimSlash(ai.llamacppUrl ?? 'http://127.0.0.1:8080')}/v1`, apiKey: key || 'llamacpp' });
       return llamacpp.chat(model || 'default');
     }
+    case 'meterless': {
+      const rawBase = trimSlash(ai.meterlessUrl ?? 'https://api.meterless.ai/v1');
+      const baseURL = rawBase.endsWith('/v1') ? rawBase : `${rawBase}/v1`;
+      const meterless = createOpenAI({
+        baseURL,
+        apiKey: key || 'none',
+      });
+      return meterless.chat(model || 'qwen-2.5-coder-32b');
+    }
     case 'anthropic':
     default: {
       const anthropic = createAnthropic({ apiKey: key });
@@ -127,7 +136,8 @@ export async function runChatTurn(
   const model = settings.ai?.agentModel ?? '';
   // llama.cpp gets its own key slot so a cloud key is never sent to a self-hosted URL
   const key = (provider === 'llamacpp' ? await getSecret('llamacppKey') : await getAgentKey(provider)) ?? '';
-  if (!LOCAL_PROVIDERS.has(provider) && !key) {
+  const isLocalMeterless = provider === 'meterless' && Boolean(settings.ai?.meterlessUrl && /localhost|127\.0\.0\.1/i.test(settings.ai.meterlessUrl));
+  if (!LOCAL_PROVIDERS.has(provider) && !isLocalMeterless && !key) {
     sink.emit('chat:done', {
       error: `No API key configured for ${provider}. Open Settings → AI and add one (or switch to Ollama / llama.cpp for a local model).`,
     });

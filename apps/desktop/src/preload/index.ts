@@ -91,6 +91,10 @@ export interface CutboardApi {
   searchQuery(query: string): Promise<{ words: unknown[]; scenes: unknown[]; vectorSearch: boolean }>;
   aiGetConfig(): Promise<unknown>;
   aiSetConfig(patch: Record<string, unknown>): Promise<boolean>;
+  zetarisGetConfig(): Promise<{ enabled: boolean; endpoint: string; catalogName: string }>;
+  zetarisSetConfig(patch: { enabled?: boolean; endpoint?: string; catalogName?: string; apiKey?: string }): Promise<boolean>;
+  zetarisQuery(query: { naturalLanguage?: string; filterTags?: string[]; storageFilter?: string[]; minWidth?: number; minHeight?: number; limit?: number }): Promise<unknown[]>;
+  zetarisImport(asset: unknown): Promise<{ assetId: string; ok: boolean; error?: string }>;
   sendChat(chatId: string, message: string, history?: { role: 'user' | 'assistant'; content: string }[], opts?: { revise?: boolean }): void;
   abortChat(chatId: string): void;
   /** run the plan stored for this project (the card's Run button); streams into `chatId` */
@@ -165,6 +169,10 @@ const api: CutboardApi = {
   searchQuery: (query) => ipcRenderer.invoke('search:query', query),
   aiGetConfig: () => ipcRenderer.invoke('ai:getConfig'),
   aiSetConfig: (patch) => ipcRenderer.invoke('ai:setConfig', patch),
+  zetarisGetConfig: () => ipcRenderer.invoke('zetaris:getConfig'),
+  zetarisSetConfig: (patch) => ipcRenderer.invoke('zetaris:setConfig', patch),
+  zetarisQuery: (query) => ipcRenderer.invoke('zetaris:query', query),
+  zetarisImport: (asset) => ipcRenderer.invoke('zetaris:import', asset),
   sendChat: (chatId, message, history, opts) => ipcRenderer.send('chat:send', { chatId, message, history, revise: opts?.revise }),
   abortChat: (chatId) => ipcRenderer.send('chat:abort', chatId),
   runPlan: (chatId) => ipcRenderer.send('chat:runPlan', chatId),
