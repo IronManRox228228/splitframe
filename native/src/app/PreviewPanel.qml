@@ -3,10 +3,11 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import SplitFrame
 
-// The preview surface with its transport bar underneath.
-Rectangle {
+// The preview surface with its transport bar underneath. `overlayContent` is an optional Component drawn over the
+// picture's top-right corner (the Colour page's before/after).
+GlassPanel {
     id: root
-    color: Theme.panel
+    property Component overlayContent
 
     ColumnLayout {
         anchors.fill: parent
@@ -16,13 +17,20 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "#0a0b0d"
-            radius: 6
+            color: "#030404"
+            radius: 14
             clip: true
 
             PreviewItem {
                 anchors.fill: parent
                 player: appPlayer
+            }
+
+            Loader {
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 10
+                sourceComponent: root.overlayContent
             }
 
             Text {

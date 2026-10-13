@@ -33,8 +33,8 @@ Item {
                 id: toast
                 width: stack.width
                 height: row.implicitHeight + 16
-                radius: 8
-                color: "#1b1e25"
+                radius: 14
+                color: Theme.glassStrong
                 border.color: model.kind === "error" ? Theme.danger : Theme.lineStrong
                 Row {
                     id: row

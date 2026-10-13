@@ -4,9 +4,8 @@ import QtQuick.Layouts
 import SplitFrame
 
 // Toolbar, track headers and the painted timeline, with the playhead drawn on top.
-Rectangle {
+GlassPanel {
     id: root
-    color: Theme.bg
 
     property alias view: view
     readonly property int headerWidth: 176
@@ -23,13 +22,14 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: 6 // keeps the lanes clear of the slab's rounded corners
         spacing: 0
 
         // ---- toolbar ----
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            color: Theme.panel
+            color: "transparent"
 
             RowLayout {
                 anchors.fill: parent
@@ -174,7 +174,7 @@ Rectangle {
                             font.pixelSize: 12
                             color: Theme.text
                             selectByMouse: true
-                            background: Rectangle { radius: 4; color: Theme.field; border.color: Theme.accent }
+                            background: Rectangle { radius: Theme.radiusField; color: Theme.field; border.color: Theme.accent }
                             onEditingFinished: {
                                 if (visible) {
                                     visible = false

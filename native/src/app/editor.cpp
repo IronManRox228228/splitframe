@@ -63,7 +63,10 @@ Editor::Editor(Player& player, const Options& options, QObject* parent)
       controller_(project_),
       inspector_(project_),
       recent_(options.settingsFile),
-      export_(project_) {
+      export_(project_),
+      mixer_(project_),
+      colour_(project_, &pool_, &player) {
+  mixer_.setPlayer(&player_);
   project_.setRecoveryDir(options.recoveryDir.isEmpty() ? defaultRecoveryDir() : options.recoveryDir);
   project_.setAutosaveInterval(options.autosaveMs);
   controller_.setSnapEnabled(recent_.value(QStringLiteral("snap"), true).toBool());

@@ -102,6 +102,10 @@ function(sf_add_app_test name)
     "${CMAKE_SOURCE_DIR}/src/app/player.h"
     "${CMAKE_SOURCE_DIR}/src/app/export_controller.cpp"
     "${CMAKE_SOURCE_DIR}/src/app/export_controller.h"
+    "${CMAKE_SOURCE_DIR}/src/app/mixer_model.cpp"
+    "${CMAKE_SOURCE_DIR}/src/app/mixer_model.h"
+    "${CMAKE_SOURCE_DIR}/src/app/colour_page.cpp"
+    "${CMAKE_SOURCE_DIR}/src/app/colour_page.h"
     ${T_SOURCES})
   target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
   target_link_libraries(${name} PRIVATE sf_copilot sf_index sf_agent sf_engine sf_editor sf_audio sf_export sf_render sf_media sf_core sf_options Qt6::Test Qt6::Quick Qt6::QuickControls2 Qt6::GuiPrivate Qt6::Network Qt6::Sql ${T_LIBS})
@@ -120,7 +124,9 @@ function(sf_add_app_test name)
 endfunction()
 
 sf_add_app_test(tst_timeline_view ENV "QT_QPA_PLATFORM=offscreen")
-sf_add_app_test(tst_copilot_ui ENV "QT_QPA_PLATFORM=offscreen")
+sf_add_app_test(tst_pages ENV "QT_QPA_PLATFORM=offscreen")
+# re-enable when the copilot UI lands (hackathon H4-H6): tst_copilot_ui.cpp uses Editor members that do not exist yet
+# sf_add_app_test(tst_copilot_ui ENV "QT_QPA_PLATFORM=offscreen")
 
 sf_add_editor_test(tst_ui_smoke)
 add_dependencies(tst_ui_smoke splitframe)

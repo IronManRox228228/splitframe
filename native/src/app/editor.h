@@ -4,7 +4,9 @@
 // timeline models, controller, inspector, recent files) and keeps the Player in step with the
 // document. Anything that needs a dialog (save as, unsaved changes) is a signal the QML answers.
 
+#include "app/colour_page.h"
 #include "app/export_controller.h"
+#include "app/mixer_model.h"
 #include "app/player.h"
 #include "editor/inspector.h"
 #include "editor/media_pool.h"
@@ -36,6 +38,8 @@ class Editor : public QObject {
   Q_PROPERTY(sf::editor::RecentProjects* recent READ recent CONSTANT)
   Q_PROPERTY(sf::app::Player* player READ player CONSTANT)
   Q_PROPERTY(sf::app::ExportController* exporter READ exporter CONSTANT)
+  Q_PROPERTY(sf::app::MixerModel* mixer READ mixer CONSTANT)
+  Q_PROPERTY(sf::app::ColourPage* colour READ colour CONSTANT)
   Q_PROPERTY(QString windowTitle READ windowTitle NOTIFY titleChanged)
   Q_PROPERTY(QString projectName READ projectName NOTIFY titleChanged)
   Q_PROPERTY(QString projectPath READ projectPath NOTIFY titleChanged)
@@ -69,6 +73,8 @@ public:
   editor::RecentProjects* recent() { return &recent_; }
   Player* player() { return &player_; }
   ExportController* exporter() { return &export_; }
+  MixerModel* mixer() { return &mixer_; }
+  ColourPage* colour() { return &colour_; }
 
   QString windowTitle() const;
   QString projectName() const { return project_.name(); }
@@ -139,6 +145,8 @@ private:
   editor::Inspector inspector_;
   editor::RecentProjects recent_;
   ExportController export_;
+  MixerModel mixer_;
+  ColourPage colour_;
   bool adoptingPlayhead_ = false;
   bool useProxies_ = false;
   QString proxyKey_;

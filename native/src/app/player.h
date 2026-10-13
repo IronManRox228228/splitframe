@@ -7,6 +7,7 @@
 #include "audio/preview_audio.h"
 #include "core/schema.h"
 #include "media/frame_service.h"
+#include "render/color_manager.h"
 #include "render/media_provider.h"
 #include "render/playback_clock.h"
 
@@ -51,6 +52,8 @@ class Player : public QObject {
   Q_PROPERTY(QString timecode READ timecode NOTIFY transportChanged)
   Q_PROPERTY(QString durationTimecode READ durationTimecode NOTIFY sessionChanged)
   Q_PROPERTY(QString stats READ stats NOTIFY statsChanged)
+  // Preview without any colour management (item colour blocks and the project's): the Colour page's before/after
+  Q_PROPERTY(bool colourBypass READ colourBypass WRITE setColourBypass NOTIFY colourBypassChanged)
 
 public:
   explicit Player(QObject* parent = nullptr);
@@ -79,6 +82,10 @@ public:
   // Preview from the assets' proxy files (AssetRef::proxyPath) where they exist. Export never does.
   void setUseProxies(bool on);
   bool useProxies() const { return useProxies_; }
+  bool colourBypass() const { return colourBypass_; }
+  void setColourBypass(bool on);
+  // The OpenColorIO config behind the preview and the Colour page, loaded on first use (any thread).
+  std::shared_ptr<render::ColorManager> colorManager();
 
   bool loaded() const { return static_cast<bool>(session_); }
   bool playing() const { return clock_.playing(); }
@@ -112,6 +119,7 @@ signals:
   void statsChanged();
   void renderRequested(); // something changed that needs a repaint
   void mediaReady();      // a decoded frame arrived
+  void colourBypassChanged();
 
 private:
   void refreshTransport();
@@ -127,6 +135,10 @@ private:
   std::shared_ptr<audio::FileProvider> audioFiles_ = std::make_shared<audio::FileProvider>();
   mutable std::mutex m_;
   std::shared_ptr<Session> session_;
+  TimelineDoc fullDoc_; // the document as edited; session_ holds it minus colour while bypassed
+  bool colourBypass_ = false;
+  std::mutex colourMutex_;
+  std::shared_ptr<render::ColorManager> colorManager_;
   render::PlaybackClock clock_;
   render::PacingStats pacing_; // guarded by m_
   qint64 frame_ = 0;

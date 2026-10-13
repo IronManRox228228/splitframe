@@ -92,7 +92,7 @@ Dialog {
                     selectByMouse: true
                     enabled: !root.ex.running
                     onTextEdited: root.refresh()
-                    background: Rectangle { radius: 5; color: Theme.field; border.color: pathField.activeFocus ? Theme.accent : Theme.line }
+                    background: Rectangle { radius: Theme.radiusField; color: Theme.field; border.color: pathField.activeFocus ? Theme.accent : Theme.line }
                 }
                 Btn { text: "Browse…"; enabled: !root.ex.running; onClicked: saveFile.open() }
             }

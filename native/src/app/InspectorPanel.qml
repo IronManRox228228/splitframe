@@ -4,9 +4,8 @@ import QtQuick.Layouts
 
 // Properties of the selected clip(s); with nothing selected, the project's own settings. Every edit
 // goes through the Inspector object (-> ops). Sliders apply live and close one undo step on release.
-Rectangle {
+GlassPanel {
     id: root
-    color: Theme.panel
 
     signal focusReleased
 
@@ -103,7 +102,7 @@ Rectangle {
             horizontalAlignment: Text.AlignRight
             validator: DoubleValidator { bottom: nr.min; top: nr.max; decimals: nr.decimals; notation: DoubleValidator.StandardNotation }
             text: nr.value.toFixed(nr.decimals)
-            background: Rectangle { radius: 5; color: Theme.field; border.color: field.activeFocus ? Theme.accent : Theme.line }
+            background: Rectangle { radius: Theme.radiusField; color: Theme.field; border.color: field.activeFocus ? Theme.accent : Theme.line }
             onEditingFinished: {
                 const n = parseFloat(text)
                 if (!isNaN(n) && n !== nr.value) {
@@ -289,7 +288,7 @@ Rectangle {
                         wrapMode: TextEdit.Wrap
                         selectByMouse: true
                         text: root.v.text !== undefined ? root.v.text : ""
-                        background: Rectangle { radius: 5; color: Theme.field; border.color: textBox.activeFocus ? Theme.accent : Theme.line }
+                        background: Rectangle { radius: Theme.radiusField; color: Theme.field; border.color: textBox.activeFocus ? Theme.accent : Theme.line }
                         // the clip is edited when the box loses focus (the reference commits on blur too)
                         onActiveFocusChanged: {
                             if (!activeFocus) {
@@ -517,7 +516,7 @@ Rectangle {
                         color: Theme.text
                         selectByMouse: true
                         text: root.pv.name
-                        background: Rectangle { radius: 5; color: Theme.field; border.color: nameField.activeFocus ? Theme.accent : Theme.line }
+                        background: Rectangle { radius: Theme.radiusField; color: Theme.field; border.color: nameField.activeFocus ? Theme.accent : Theme.line }
                         onEditingFinished: {
                             root.insp.editProject("name", text)
                             text = Qt.binding(() => root.pv.name)

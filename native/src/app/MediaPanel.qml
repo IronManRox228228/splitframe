@@ -5,9 +5,8 @@ import QtQuick.Layouts
 // The media pool: import button, search and kind filter, and a grid of cards. Cards drag onto the
 // timeline (the window maps the pointer; this panel only reports where it is) and double-click adds
 // the clip at the playhead.
-Rectangle {
+GlassPanel {
     id: root
-    color: Theme.panel
 
     signal importRequested
     signal assetDragStarted(string assetId, string name)

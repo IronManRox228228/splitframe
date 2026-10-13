@@ -90,6 +90,20 @@ private slots:
     expectNoQmlWarnings(r.err);
   }
 
+  // each page builds without QML errors, on an empty project and on the multi-track one
+  void pagesLoadWithoutWarnings() {
+    for (const QString page : {QStringLiteral("edit"), QStringLiteral("colour"), QStringLiteral("audio")}) {
+      const QString shot = shotDir(dir_) + QStringLiteral("/ui_page_%1.png").arg(page);
+      const Run r = runApp({QStringLiteral("--page"), page, QStringLiteral("--frame"), QStringLiteral("100"), QStringLiteral("--select"), QStringLiteral("1"), project_}, shot);
+      QVERIFY2(r.exitCode == 0, qPrintable(page + ": " + r.err));
+      expectNoQmlWarnings(r.err);
+      QVERIFY2(QImage(shot).width() > 800, qPrintable(page));
+      const Run empty = runApp({QStringLiteral("--page"), page}, shotDir(dir_) + QStringLiteral("/ui_page_%1_empty.png").arg(page));
+      QVERIFY2(empty.exitCode == 0, qPrintable(page + " (empty): " + empty.err));
+      expectNoQmlWarnings(empty.err);
+    }
+  }
+
   void mediaFileOpensAsOneClipProject() {
     const QString shot = shotDir(dir_) + QStringLiteral("/ui_media.png");
     const Run r = runApp({dir_.filePath(QStringLiteral("clip_a.mp4"))}, shot);

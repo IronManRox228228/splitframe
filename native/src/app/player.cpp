@@ -33,6 +33,13 @@ std::shared_ptr<Media> makeMedia() {
 // (where a new clip is appended, or a split-at-end is refused) and an empty project has a frame 0.
 Frame clockFrames(const TimelineDoc& doc) { return docDurationFrames(doc) + 1; }
 
+// What the preview shows while the Colour page's before/after is on "before": no item colour, no project colour management.
+TimelineDoc withoutColour(TimelineDoc doc) {
+  doc.project.colorManagement.reset();
+  for (Item& it : doc.items) it.color.reset();
+  return doc;
+}
+
 } // namespace
 
 Player::Player(QObject* parent)
@@ -103,7 +110,8 @@ void Player::loadProject(TimelineDoc doc, render::AssetTable assets) {
   clock_.setTimeline(static_cast<double>(doc.project.fps), clockFrames(doc));
   clock_.seek(0);
   syncAudioSession(doc);
-  s->doc = std::move(doc);
+  fullDoc_ = doc;
+  s->doc = colourBypass_ ? withoutColour(std::move(doc)) : std::move(doc);
   {
     const std::lock_guard lock(m_);
     session_ = std::move(s);
@@ -125,11 +133,31 @@ void Player::setDocument(TimelineDoc doc) {
   s->media = current->media;
   clock_.setTimeline(static_cast<double>(doc.project.fps), clockFrames(doc));
   syncAudioSession(doc);
-  s->doc = std::move(doc);
+  fullDoc_ = doc;
+  s->doc = colourBypass_ ? withoutColour(std::move(doc)) : std::move(doc);
   publish(std::move(s));
   refreshTransport();
   emit sessionChanged();
   emit renderRequested();
+}
+
+void Player::setColourBypass(bool on) {
+  if (on == colourBypass_) return;
+  colourBypass_ = on;
+  if (const auto current = session()) {
+    auto s = std::make_shared<Session>();
+    s->media = current->media;
+    s->doc = on ? withoutColour(fullDoc_) : fullDoc_;
+    publish(std::move(s));
+    emit renderRequested();
+  }
+  emit colourBypassChanged();
+}
+
+std::shared_ptr<render::ColorManager> Player::colorManager() {
+  const std::lock_guard lock(colourMutex_);
+  if (!colorManager_) colorManager_ = render::ColorManager::create();
+  return colorManager_;
 }
 
 void Player::setAssets(render::AssetTable assets) {

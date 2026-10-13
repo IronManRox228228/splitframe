@@ -10,11 +10,20 @@ namespace sf::app {
 
 namespace {
 
+// Only documents that ask for colour management pay for loading the OpenColorIO config.
+bool usesColour(const TimelineDoc& doc) {
+  if (const auto& cm = doc.project.colorManagement; cm && (cm->workingSpace || cm->displayView || cm->outputSpace)) return true;
+  for (const Item& it : doc.items)
+    if (it.color) return true;
+  return false;
+}
+
 class PreviewRenderer final : public QQuickRhiItemRenderer {
 public:
   void initialize(QRhiCommandBuffer*) override {
     if (rhi() != rhi_) {
       compositor_.reset(); // the previous one belonged to the old device
+      colourSet_ = false;
       rhi_ = rhi();
       compositor_ = std::make_unique<render::Compositor>(rhi_);
     }
@@ -45,6 +54,10 @@ public:
     const bool fresh = session_ != composited_ || frame_ != compositedFrame_ || !compositedComplete_;
     if (fresh) {
       const int dir = playing_ ? (rate_ < 0 ? -1 : 1) : 0;
+      if (!colourSet_ && usesColour(session_->doc)) {
+        compositor_->setColorManager(player_->colorManager());
+        colourSet_ = true;
+      }
       session_->media->provider->prepare(session_->doc, frame_, dir);
       const render::RenderStats stats = compositor_->render(cb, session_->doc, frame_, *session_->media->provider);
       composited_ = session_;
@@ -58,6 +71,7 @@ public:
 
 private:
   QRhi* rhi_ = nullptr;
+  bool colourSet_ = false;
   std::unique_ptr<render::Compositor> compositor_;
   QPointer<Player> player_;
   std::shared_ptr<Session> session_;

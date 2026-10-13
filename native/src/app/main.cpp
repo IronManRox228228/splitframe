@@ -1,6 +1,7 @@
 #include "app/editor.h"
 #include "app/player.h"
 #include "app/pool_image_provider.h"
+#include "app/window_recorder.h"
 #include "engine/headless.h"
 #include "export/export_cli.h"
 #include "media/gpu_frame.h"
@@ -8,6 +9,8 @@
 
 #include <QCommandLineParser>
 #include <QElapsedTimer>
+#include <QFont>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -17,6 +20,7 @@
 #include <QSGRendererInterface>
 #include <QTimer>
 
+#include <algorithm>
 #include <memory>
 
 int main(int argc, char* argv[]) {
@@ -52,6 +56,15 @@ int main(int argc, char* argv[]) {
   QGuiApplication::setOrganizationName(QStringLiteral("SplitFrame"));
   QGuiApplication::setApplicationVersion(QStringLiteral(PROJECT_VERSION_STRING));
 
+  // Geist / Geist Mono (SIL OFL 1.1, shipped as variable woff2). Where the platform's font engine will not take them
+  // the app falls back to Segoe UI / Consolas, which is what the substitutions below are for.
+  const int geist = QFontDatabase::addApplicationFont(QStringLiteral(":/qt/qml/SplitFrame/fonts/Geist-Variable.woff2"));
+  const int geistMono = QFontDatabase::addApplicationFont(QStringLiteral(":/qt/qml/SplitFrame/fonts/GeistMono-Variable.woff2"));
+  if (geist < 0 || geistMono < 0) qInfo("Geist fonts not accepted (%d, %d): using Segoe UI and Consolas", geist, geistMono);
+  QFont::insertSubstitution(QStringLiteral("Geist"), QStringLiteral("Segoe UI"));
+  QFont::insertSubstitution(QStringLiteral("Geist Mono"), QStringLiteral("Consolas"));
+  QGuiApplication::setFont(QFont(QStringLiteral("Geist")));
+
   QCommandLineParser cli;
   cli.addHelpOption();
   cli.addPositionalArgument(QStringLiteral("media"), QStringLiteral("A project .json, or a video, image or audio file to open as a one-clip project"));
@@ -70,8 +83,14 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption fitOpt(QStringLiteral("fit"), QStringLiteral("Zoom the timeline to fit the project."));
   const QCommandLineOption apiOpt(QStringLiteral("api"), QStringLiteral("Start the local JSON-RPC / SSE API on 127.0.0.1 for the open project (also in the File menu)."));
   const QCommandLineOption apiPortOpt(QStringLiteral("api-port"), QStringLiteral("Port for --api (default: any free port)."), QStringLiteral("port"));
-  for (const auto* o : {&apiOpt, &apiPortOpt}) cli.addOption(*o);
-  for (const auto* o : {&screenshotOpt, &frameOpt, &cpuOpt, &swOpt, &playOpt, &settingsOpt, &recoveryOpt, &selectOpt, &fitOpt}) cli.addOption(*o);
+  const QCommandLineOption pageOpt(QStringLiteral("page"), QStringLiteral("Open on this page: edit, colour or audio."), QStringLiteral("page"));
+  const QCommandLineOption recordDirOpt(QStringList{QStringLiteral("record"), QStringLiteral("record-dir")}, QStringLiteral("Directory to write recorded window PNG frames into (create it if missing)."), QStringLiteral("dir"));
+  const QCommandLineOption recordFpsOpt(QStringLiteral("record-fps"), QStringLiteral("Recording framerate in fps (default 30, clamp to 1..60)."), QStringLiteral("n"));
+  const QCommandLineOption recordSecOpt(QStringList{QStringLiteral("record-seconds"), QStringLiteral("record-sec")}, QStringLiteral("Duration in seconds to record (default 0 = record until the app quits)."), QStringLiteral("s"));
+  const QCommandLineOption recordDelayOpt(QStringLiteral("record-delay"), QStringLiteral("Seconds to wait after the window first shows before recording starts (default 0)."), QStringLiteral("s"));
+  for (const auto* o : {&apiOpt, &apiPortOpt, &pageOpt}) cli.addOption(*o);
+  for (const auto* o : {&screenshotOpt, &frameOpt, &cpuOpt, &swOpt, &playOpt, &settingsOpt, &recoveryOpt, &selectOpt, &fitOpt,
+                        &recordDirOpt, &recordFpsOpt, &recordSecOpt, &recordDelayOpt}) cli.addOption(*o);
   cli.process(app);
 
   sf::app::Player player;
@@ -90,13 +109,35 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("appPlayer"), &player);
   engine.rootContext()->setContextProperty(QStringLiteral("appEditor"), &editor);
   engine.rootContext()->setContextProperty(QStringLiteral("appOptions"),
-                                           QVariantMap{{QStringLiteral("fit"), cli.isSet(fitOpt)}, {QStringLiteral("startup"), cli.positionalArguments().isEmpty()}});
+                                           QVariantMap{{QStringLiteral("fit"), cli.isSet(fitOpt)}, {QStringLiteral("page"), cli.value(pageOpt)}, {QStringLiteral("startup"), cli.positionalArguments().isEmpty()}});
   QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); },
                    Qt::QueuedConnection);
   engine.loadFromModule(QStringLiteral("SplitFrame"), QStringLiteral("Main"));
   if (engine.rootObjects().isEmpty()) return 1;
   auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
   if (!window) return 1;
+
+  if (cli.isSet(recordDirOpt)) {
+    sf::app::WindowRecorder::Options recOpt;
+    recOpt.dir = cli.value(recordDirOpt);
+    if (cli.isSet(recordFpsOpt)) {
+      bool ok = false;
+      const int fps = cli.value(recordFpsOpt).toInt(&ok);
+      if (ok) recOpt.fps = std::clamp(fps, 1, 60);
+    }
+    if (cli.isSet(recordSecOpt)) {
+      bool ok = false;
+      const double sec = cli.value(recordSecOpt).toDouble(&ok);
+      if (ok && sec > 0.0) recOpt.sec = sec;
+    }
+    if (cli.isSet(recordDelayOpt)) {
+      bool ok = false;
+      const double delay = cli.value(recordDelayOpt).toDouble(&ok);
+      if (ok && delay > 0.0) recOpt.delaySec = delay;
+    }
+    auto* recorder = new sf::app::WindowRecorder(window, recOpt, window);
+    recorder->start();
+  }
 
   // Put the window's device on the high-performance GPU, where the decoders will run too.
   if (const auto gpu = sf::preferredGpuAdapter()) window->setGraphicsDevice(QQuickGraphicsDevice::fromAdapter(gpu->luidLow, gpu->luidHigh));
@@ -156,10 +197,12 @@ int main(int argc, char* argv[]) {
     auto wait = std::make_shared<Wait>();
     wait->clock.start();
     timer->setInterval(50);
-    QObject::connect(timer, &QTimer::timeout, window, [wait, window, out, opened, &player, &editor] {
+    // the Audio page has no preview, so no frame is ever composited for it
+    const bool wantFrame = cli.value(pageOpt) != QLatin1String("audio");
+    QObject::connect(timer, &QTimer::timeout, window, [wait, window, out, opened, wantFrame, &player, &editor] {
       // wait for the playhead's frame to be fully composited (decoders caught up) and the thumbnails to
       // exist, then a few frames more so the window has presented it; give up after a while and shoot what is there
-      const bool ready = *opened && editor.pool()->pending() == 0 && player.loaded() && player.settled();
+      const bool ready = *opened && editor.pool()->pending() == 0 && player.loaded() && (!wantFrame || player.settled());
       wait->steady = ready ? wait->steady + 1 : 0;
       const bool timedOut = wait->clock.elapsed() > 20000;
       if (wait->steady >= 6 || timedOut) {

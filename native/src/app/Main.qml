@@ -17,23 +17,23 @@ ApplicationWindow {
 
     // Basic-style controls follow this palette, so menus, dialogs and tooltips come out dark
     palette {
-        window: "#1b1e25"
-        windowText: "#e8e8ea"
-        base: "#0b0c0f"
-        alternateBase: "#14161a"
-        text: "#e8e8ea"
-        button: "#1b1e25"
-        buttonText: "#e8e8ea"
-        light: "#2c3340"
-        midlight: "#262a33"
-        mid: "#2c303a"
-        dark: "#23262d"
+        window: "#0D0F0E"
+        windowText: "#ECEEEC"
+        base: "#0D0F0E"
+        alternateBase: "#0A0C0B"
+        text: "#ECEEEC"
+        button: "#0D0F0E"
+        buttonText: "#ECEEEC"
+        light: "#343A37"
+        midlight: "#1B1F1D"
+        mid: "#343A37"
+        dark: "#1B1F1D"
         shadow: "#000000"
         highlight: "#5FB7A1"
-        highlightedText: "#0e0f12"
-        placeholderText: "#8b909a"
-        toolTipBase: "#1b1e25"
-        toolTipText: "#e8e8ea"
+        highlightedText: "#050606"
+        placeholderText: "#78837E"
+        toolTipBase: "#101211"
+        toolTipText: "#ECEEEC"
     }
 
     // ---------------------------------------------------------------- commands
@@ -77,11 +77,16 @@ ApplicationWindow {
     Act { id: aPrevEdge; text: "Previous clip edge"; key: "Up"; onTriggered: appEditor.gotoEdge(-1) }
     Act { id: aNextEdge; text: "Next clip edge"; key: "Down"; onTriggered: appEditor.gotoEdge(1) }
 
-    Act { id: aZoomIn; text: "Zoom in"; key: "Ctrl+="; onTriggered: timeline.view.zoomBy(1.25) }
-    Act { id: aZoomOut; text: "Zoom out"; key: "Ctrl+-"; onTriggered: timeline.view.zoomBy(1 / 1.25) }
-    Act { id: aZoomFit; text: "Zoom to fit"; key: "Shift+Z"; onTriggered: timeline.view.zoomFit() }
+    Act { id: aZoomIn; text: "Zoom in"; key: "Ctrl+="; onTriggered: editPage.timeline.view.zoomBy(1.25) }
+    Act { id: aZoomOut; text: "Zoom out"; key: "Ctrl+-"; onTriggered: editPage.timeline.view.zoomBy(1 / 1.25) }
+    Act { id: aZoomFit; text: "Zoom to fit"; key: "Shift+Z"; onTriggered: editPage.timeline.view.zoomFit() }
     Act { id: aSnap; text: "Snapping"; key: "N"; checkable: true; checked: appEditor.controller.snapEnabled; onTriggered: appEditor.controller.snapEnabled = !appEditor.controller.snapEnabled }
     Act { id: aRipple; text: "Ripple edits"; key: ""; checkable: true; checked: appEditor.controller.rippleEnabled; onTriggered: appEditor.controller.rippleEnabled = !appEditor.controller.rippleEnabled }
+
+    // pages: Shift+5/6/7 as asked, Ctrl+1/2/3 as the safe alternative
+    Shortcut { sequences: ["Ctrl+1", "Shift+5"]; onActivated: root.page = 0 }
+    Shortcut { sequences: ["Ctrl+2", "Shift+6"]; onActivated: root.page = 1 }
+    Shortcut { sequences: ["Ctrl+3", "Shift+7"]; onActivated: root.page = 2 }
 
     // second keys for commands that have two (Action holds one sequence)
     Shortcut { sequences: ["Backspace"]; onActivated: aDelete.trigger() }
@@ -89,6 +94,18 @@ ApplicationWindow {
     Shortcut { sequences: ["=", "+", "Ctrl++"]; onActivated: aZoomIn.trigger() }
     Shortcut { sequences: ["-"]; onActivated: aZoomOut.trigger() }
 
+    // ---------------------------------------------------------------- pages
+    // 0 Edit, 1 Colour, 2 Audio. The Colour and Audio pages are built the first time they are shown.
+    readonly property var pageNames: ["edit", "colour", "audio"]
+    property int page: Math.max(0, pageNames.indexOf(appOptions.page === "color" ? "colour" : appOptions.page))
+    property var visited: [true, false, false]
+    onPageChanged: {
+        const v = visited.slice()
+        v[page] = true
+        visited = v
+        appEditor.mixer.metering = page === 2
+        keys.forceActiveFocus()
+    }
     // ---------------------------------------------------------------- unsaved changes
     property var afterSave: null
 
@@ -152,7 +169,10 @@ ApplicationWindow {
     }
 
     menuBar: MenuBar {
-        background: Rectangle { color: Theme.panel }
+        background: Rectangle {
+            color: Theme.bg
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
+        }
         Menu {
             title: "&File"
             Cmd { act: aNew }
@@ -225,6 +245,47 @@ ApplicationWindow {
         }
     }
 
+    // ---------------------------------------------------------------- top bar
+    header: Item {
+        height: 46
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
+
+        RowLayout {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: 14
+            spacing: 8
+            Rectangle {
+                width: 8
+                height: 8
+                radius: 4
+                color: appEditor.dirty ? Theme.warn : Theme.accent
+            }
+            Text {
+                text: appEditor.projectName
+                color: Theme.text
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+            }
+        }
+
+        PageSwitcher {
+            anchors.centerIn: parent
+            current: root.page
+            onPicked: i => root.page = i
+        }
+
+        RowLayout {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.rightMargin: 14
+            spacing: 6
+            Btn { text: "Undo"; enabled: appEditor.canUndo; tip: "Undo (Ctrl+Z)"; onClicked: aUndo.trigger() }
+            Btn { text: "Redo"; enabled: appEditor.canRedo; tip: "Redo (Ctrl+Shift+Z)"; onClicked: aRedo.trigger() }
+            Btn { text: "Export"; accentFill: true; tip: "Export (Ctrl+E)"; onClicked: aExport.trigger() }
+        }
+    }
+
     // ---------------------------------------------------------------- layout
     // keyboard focus lives here unless a text field has it
     Item {
@@ -232,61 +293,31 @@ ApplicationWindow {
         anchors.fill: parent
         focus: true
 
-        SplitView {
-            id: vertical
+        StackLayout {
             anchors.fill: parent
-            orientation: Qt.Vertical
-            handle: Rectangle {
-                implicitWidth: 6
-                implicitHeight: 6
-                color: SplitHandle.pressed ? Theme.accent : (SplitHandle.hovered ? Theme.lineStrong : Theme.bg)
-            }
+            currentIndex: root.page
 
-            SplitView {
-                id: upper
-                SplitView.fillHeight: true
-                SplitView.minimumHeight: 240
-                orientation: Qt.Horizontal
-                handle: Rectangle {
-                    implicitWidth: 6
-                    implicitHeight: 6
-                    color: SplitHandle.pressed ? Theme.accent : (SplitHandle.hovered ? Theme.lineStrong : Theme.bg)
-                }
-
-                MediaPanel {
-                    id: media
-                    SplitView.preferredWidth: 300
-                    SplitView.minimumWidth: 220
-                    SplitView.maximumWidth: 520
-                    onImportRequested: importDialog.open()
-                    onFocusReleased: keys.forceActiveFocus()
-                    onAssetDragStarted: (id, name) => {
-                        root.draggedAsset = id
-                        ghostLabel.text = name
-                    }
-                    onAssetDragMoved: (id, gx, gy) => root.poolDrag(id, gx, gy)
-                    onAssetDropped: (id, gx, gy) => root.poolDrop(id, gx, gy)
-                }
-                PreviewPanel {
-                    SplitView.fillWidth: true
-                    SplitView.minimumWidth: 320
-                }
-                InspectorPanel {
-                    SplitView.preferredWidth: 310
-                    SplitView.minimumWidth: 240
-                    SplitView.maximumWidth: 520
-                    onFocusReleased: keys.forceActiveFocus()
-                }
-            }
-
-            TimelinePanel {
-                id: timeline
-                SplitView.preferredHeight: 330
-                SplitView.minimumHeight: 170
+            EditPage {
+                id: editPage
+                onImportRequested: importDialog.open()
                 onFocusReleased: keys.forceActiveFocus()
+                onAssetDragStarted: (id, name) => {
+                    root.draggedAsset = id
+                    ghostLabel.text = name
+                }
+                onAssetDragMoved: (id, gx, gy) => root.poolDrag(id, gx, gy)
+                onAssetDropped: (id, gx, gy) => root.poolDrop(id, gx, gy)
                 onSplitRequested: aSplit.trigger()
                 onDeleteRequested: aDelete.trigger()
                 onCloneRequested: aClone.trigger()
+            }
+            Loader {
+                active: root.visited[1]
+                sourceComponent: ColourPage { onFocusReleased: keys.forceActiveFocus() }
+            }
+            Loader {
+                active: root.visited[2]
+                sourceComponent: AudioPage { onFocusReleased: keys.forceActiveFocus() }
             }
         }
     }
@@ -295,21 +326,21 @@ ApplicationWindow {
     property string draggedAsset: ""
 
     function inTimeline(p) {
-        return p.x >= 0 && p.y >= 0 && p.x < timeline.view.width && p.y < timeline.view.height
+        return p.x >= 0 && p.y >= 0 && p.x < editPage.timeline.view.width && p.y < editPage.timeline.view.height
     }
     function poolDrag(id, gx, gy) {
         const p = keys.mapFromGlobal(gx, gy)
         ghost.x = p.x + 10
         ghost.y = p.y + 10
-        const lp = timeline.view.mapFromGlobal(gx, gy)
-        if (inTimeline(lp)) timeline.view.showDropPreview(lp.x, lp.y, id)
-        else timeline.view.clearDropPreview()
+        const lp = editPage.timeline.view.mapFromGlobal(gx, gy)
+        if (inTimeline(lp)) editPage.timeline.view.showDropPreview(lp.x, lp.y, id)
+        else editPage.timeline.view.clearDropPreview()
     }
     function poolDrop(id, gx, gy) {
-        const lp = timeline.view.mapFromGlobal(gx, gy)
-        timeline.view.clearDropPreview()
+        const lp = editPage.timeline.view.mapFromGlobal(gx, gy)
+        editPage.timeline.view.clearDropPreview()
         draggedAsset = ""
-        if (inTimeline(lp)) timeline.view.dropAsset(lp.x, lp.y, id)
+        if (inTimeline(lp)) editPage.timeline.view.dropAsset(lp.x, lp.y, id)
         keys.forceActiveFocus()
     }
 
@@ -472,6 +503,10 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        const v = visited.slice()
+        v[page] = true
+        visited = v
+        appEditor.mixer.metering = page === 2
         keys.forceActiveFocus()
         if (appOptions.startup) {
             const found = appEditor.recoveries()
@@ -487,7 +522,7 @@ ApplicationWindow {
         target: appEditor.project
         function onLoaded() {
             Qt.callLater(() => {
-                const v = timeline.view
+                const v = editPage.timeline.view
                 if (appOptions.fit || appEditor.controller.durationFrames * v.pxPerFrame > v.width - 40)
                     v.zoomFit()
                 else
