@@ -230,13 +230,18 @@ Item {
 
         // ---------------------------------------------------------------- mixer
         RowLayout {
+            id: mixerRow
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: Theme.gap
 
             GlassPanel {
-                Layout.fillWidth: true
+                id: stripPanel
+                // Sized to its strips so Master and Loudness dock right after the last one (a few tracks no
+                // longer leave a wide empty band); with many tracks it fills what's left and scrolls.
                 Layout.fillHeight: true
+                Layout.preferredWidth: Math.max(260, stripList.contentWidth + 20)
+                Layout.maximumWidth: Math.max(260, mixerRow.width - masterStrip.width - loudPanel.width - 2 * mixerRow.spacing)
 
                 Text {
                     anchors.centerIn: parent
@@ -301,6 +306,7 @@ Item {
 
             // ---- loudness ----
             GlassPanel {
+                id: loudPanel
                 Layout.preferredWidth: 230
                 Layout.fillHeight: true
 
@@ -398,6 +404,8 @@ Item {
                     Item { Layout.fillHeight: true }
                 }
             }
+
+            Item { Layout.fillWidth: true } // spare width stays to the right of the mixer
         }
     }
 }
