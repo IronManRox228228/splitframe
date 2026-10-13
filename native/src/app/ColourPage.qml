@@ -27,6 +27,64 @@ Item {
         font.pixelSize: 13
         font.weight: Font.DemiBold
     }
+    // One primary-correction control: label, value, slider. Dragging is one undo step (endDrag on release);
+    // double-click puts it back to neutral.
+    component PrimarySlider: ColumnLayout {
+        id: ps
+        property string key
+        property string title
+        property real from: 0
+        property real to: 1
+        property real neutral: 0
+        property int decimals: 2
+        readonly property real current: page.col.primaries[key]
+        Layout.fillWidth: true
+        spacing: 0
+        RowLayout {
+            Layout.fillWidth: true
+            Lbl { text: ps.title }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: (ps.current > 0 && ps.neutral === 0 ? "+" : "") + ps.current.toFixed(ps.decimals)
+                color: ps.current === ps.neutral ? Theme.faint : Theme.fg2
+                font.pixelSize: 12
+                font.family: Theme.mono
+            }
+        }
+        GlassSlider {
+            Layout.fillWidth: true
+            from: ps.from
+            to: ps.to
+            value: ps.current
+            onMoved: page.col.dragPrimary(ps.key, value)
+            onReleased: page.col.endDrag()
+            TapHandler { onDoubleTapped: page.col.resetPrimary(ps.key) }
+        }
+    }
+    // Lift / gamma / gain: a master slider and, when `fine`, a slider per channel
+    component GradeGroup: ColumnLayout {
+        id: gg
+        property string group
+        property string title
+        property real from: 0
+        property real to: 1
+        property real neutral: 0
+        property bool fine: false
+        Layout.fillWidth: true
+        spacing: 2
+        PrimarySlider { key: gg.group + ".master"; title: gg.title; from: gg.from; to: gg.to; neutral: gg.neutral }
+        Repeater {
+            model: gg.fine ? ["r", "g", "b"] : []
+            PrimarySlider {
+                required property string modelData
+                key: gg.group + "." + modelData
+                title: modelData.toUpperCase()
+                from: gg.from
+                to: gg.to
+                neutral: gg.neutral
+            }
+        }
+    }
     component Hairline: Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 1
@@ -197,53 +255,6 @@ Item {
                         text: "This build has no OpenColorIO: only the built-in sRGB / Rec.709 path exists."
                     }
 
-                    // ---------- project ----------
-                    Section { text: "Project" }
-                    Lbl { text: "Working space" }
-                    GlassCombo {
-                        id: workingCombo
-                        Layout.fillWidth: true
-                        enabled: page.col.available
-                        readonly property var values: page.col.workingSpaces
-                        model: values.map(s => s === "" ? "Built-in linear Rec.709" : s)
-                        currentIndex: Math.max(0, values.indexOf(page.col.workingSpace))
-                        onActivated: i => page.col.setWorkingSpace(values[i])
-                    }
-                    Lbl { text: "Display / view" }
-                    GlassCombo {
-                        id: viewCombo
-                        Layout.fillWidth: true
-                        enabled: page.col.available
-                        readonly property var values: [""].concat(page.col.displayViews)
-                        model: values.map(s => s === "" ? "Built-in sRGB" : s)
-                        currentIndex: Math.max(0, values.indexOf(page.col.displayView))
-                        onActivated: i => page.col.setDisplayView(values[i])
-                    }
-                    Lbl { text: "Blend in" }
-                    Row {
-                        spacing: 6
-                        Pill {
-                            text: "Linear light"
-                            active: page.col.blendSpace === "linear"
-                            onClicked: page.col.setBlendSpace("linear")
-                        }
-                        Pill {
-                            text: "Display"
-                            active: page.col.blendSpace === "display"
-                            onClicked: page.col.setBlendSpace("display")
-                        }
-                    }
-                    Lbl {
-                        Layout.fillWidth: true
-                        wrapMode: Text.Wrap
-                        elide: Text.ElideNone
-                        font.pixelSize: 11
-                        color: Theme.faint
-                        text: "Project colour settings are saved with the project but are not part of undo."
-                    }
-
-                    Hairline { Layout.topMargin: 6 }
-
                     // ---------- clip ----------
                     Section { text: page.has ? "Clip: " + page.col.clipName : "Clip" }
                     Lbl {
@@ -256,6 +267,44 @@ Item {
                         visible: page.has
                         spacing: 8
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: "Primaries"
+                                color: Theme.text
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                            }
+                            Item { Layout.fillWidth: true }
+                            Pill {
+                                id: fineToggle
+                                text: "Fine RGB"
+                                active: false
+                                onClicked: active = !active
+                            }
+                            Btn {
+                                text: "Reset primaries"
+                                enabled: page.col.hasPrimaries
+                                onClicked: page.col.resetPrimaries()
+                            }
+                        }
+                        Lbl {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            elide: Text.ElideNone
+                            font.pixelSize: 11
+                            color: Theme.faint
+                            text: "Linear light, after the input transform and LUT. Double-click a slider to reset it."
+                        }
+                        PrimarySlider { key: "exposure"; title: "Exposure (stops)"; from: -4; to: 4; neutral: 0 }
+                        PrimarySlider { key: "temperature"; title: "Temperature (cool / warm)"; from: -1; to: 1; neutral: 0 }
+                        PrimarySlider { key: "tint"; title: "Tint (green / magenta)"; from: -1; to: 1; neutral: 0 }
+                        PrimarySlider { key: "contrast"; title: "Contrast"; from: 0; to: 2; neutral: 1 }
+                        PrimarySlider { key: "saturation"; title: "Saturation"; from: 0; to: 2; neutral: 1 }
+                        GradeGroup { group: "lift"; title: "Lift"; from: -0.5; to: 0.5; neutral: 0; fine: fineToggle.active }
+                        GradeGroup { group: "gamma"; title: "Gamma"; from: 0.2; to: 5; neutral: 1; fine: fineToggle.active }
+                        GradeGroup { group: "gain"; title: "Gain"; from: 0; to: 4; neutral: 1; fine: fineToggle.active }
+                        Hairline { Layout.topMargin: 4 }
                         Lbl { text: "Input space" }
                         GlassCombo {
                             Layout.fillWidth: true
@@ -322,11 +371,60 @@ Item {
                             onReleased: page.col.endDrag()
                         }
 
+                        Hairline { Layout.topMargin: 4 }
+
                         Btn {
                             text: "Reset clip colour"
                             enabled: page.col.hasColour
                             onClicked: page.col.resetClip()
                         }
+                    }
+
+                    Hairline { Layout.topMargin: 6 }
+
+                    // ---------- project ----------
+                    Section { text: "Project" }
+                    Lbl { text: "Working space" }
+                    GlassCombo {
+                        id: workingCombo
+                        Layout.fillWidth: true
+                        enabled: page.col.available
+                        readonly property var values: page.col.workingSpaces
+                        model: values.map(s => s === "" ? "Built-in linear Rec.709" : s)
+                        currentIndex: Math.max(0, values.indexOf(page.col.workingSpace))
+                        onActivated: i => page.col.setWorkingSpace(values[i])
+                    }
+                    Lbl { text: "Display / view" }
+                    GlassCombo {
+                        id: viewCombo
+                        Layout.fillWidth: true
+                        enabled: page.col.available
+                        readonly property var values: [""].concat(page.col.displayViews)
+                        model: values.map(s => s === "" ? "Built-in sRGB" : s)
+                        currentIndex: Math.max(0, values.indexOf(page.col.displayView))
+                        onActivated: i => page.col.setDisplayView(values[i])
+                    }
+                    Lbl { text: "Blend in" }
+                    Row {
+                        spacing: 6
+                        Pill {
+                            text: "Linear light"
+                            active: page.col.blendSpace === "linear"
+                            onClicked: page.col.setBlendSpace("linear")
+                        }
+                        Pill {
+                            text: "Display"
+                            active: page.col.blendSpace === "display"
+                            onClicked: page.col.setBlendSpace("display")
+                        }
+                    }
+                    Lbl {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
+                        font.pixelSize: 11
+                        color: Theme.faint
+                        text: "Project colour settings are saved with the project but are not part of undo."
                     }
                 }
             }

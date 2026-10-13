@@ -176,6 +176,73 @@ bool ColourPage::hasColour() const {
   return it && it->color;
 }
 
+namespace {
+
+struct PrimaryField {
+  const char* key;
+  double PrimaryGrade::*scalar;
+  Rgb3 PrimaryGrade::*rgb;
+  double Rgb3::*channel;
+  double neutral, min, max;
+};
+
+// every control the Colour page exposes, with the range the schema validates against
+const std::vector<PrimaryField>& primaryFields() {
+  static const std::vector<PrimaryField> fields = [] {
+    std::vector<PrimaryField> f{{"exposure", &PrimaryGrade::exposure, nullptr, nullptr, 0, -4, 4},
+                                {"temperature", &PrimaryGrade::temperature, nullptr, nullptr, 0, -1, 1},
+                                {"tint", &PrimaryGrade::tint, nullptr, nullptr, 0, -1, 1},
+                                {"contrast", &PrimaryGrade::contrast, nullptr, nullptr, 1, 0, 2},
+                                {"saturation", &PrimaryGrade::saturation, nullptr, nullptr, 1, 0, 2},
+                                {"lift.master", &PrimaryGrade::liftMaster, nullptr, nullptr, 0, -0.5, 0.5},
+                                {"gamma.master", &PrimaryGrade::gammaMaster, nullptr, nullptr, 1, 0.2, 5},
+                                {"gain.master", &PrimaryGrade::gainMaster, nullptr, nullptr, 1, 0, 4}};
+    const struct {
+      const char* name;
+      Rgb3 PrimaryGrade::*rgb;
+      double neutral, min, max;
+    } groups[] = {{"lift", &PrimaryGrade::lift, 0, -0.5, 0.5}, {"gamma", &PrimaryGrade::gamma, 1, 0.2, 5}, {"gain", &PrimaryGrade::gain, 1, 0, 4}, {"offset", &PrimaryGrade::offset, 0, -1, 1}};
+    static std::vector<std::string> names; // keeps the c-strings alive
+    names.reserve(16);
+    for (const auto& g : groups) {
+      const struct {
+        char c;
+        double Rgb3::*m;
+      } ch[] = {{'r', &Rgb3::r}, {'g', &Rgb3::g}, {'b', &Rgb3::b}};
+      for (const auto& c : ch) {
+        names.push_back(std::string(g.name) + "." + c.c);
+        f.push_back({names.back().c_str(), nullptr, g.rgb, c.m, g.neutral, g.min, g.max});
+      }
+    }
+    return f;
+  }();
+  return fields;
+}
+
+const PrimaryField* findPrimary(const QString& key) {
+  for (const PrimaryField& f : primaryFields())
+    if (key == QLatin1String(f.key)) return &f;
+  return nullptr;
+}
+
+double& primaryRef(PrimaryGrade& g, const PrimaryField& f) { return f.scalar ? g.*f.scalar : (g.*f.rgb).*f.channel; }
+double primaryValue(const PrimaryGrade& g, const PrimaryField& f) { return f.scalar ? g.*f.scalar : (g.*f.rgb).*f.channel; }
+
+} // namespace
+
+QVariantMap ColourPage::primaries() const {
+  const Item* it = clip();
+  const PrimaryGrade g = it && it->color && it->color->primaries ? *it->color->primaries : PrimaryGrade{};
+  QVariantMap m;
+  for (const PrimaryField& f : primaryFields()) m.insert(QLatin1String(f.key), primaryValue(g, f));
+  return m;
+}
+
+bool ColourPage::hasPrimaries() const {
+  const Item* it = clip();
+  return it && it->color && it->color->primaries;
+}
+
 // ---------- the current clip ----------
 
 bool ColourPage::editClip(const std::function<void(ItemColor&)>& change, const QString& label, bool live) {
@@ -184,6 +251,7 @@ bool ColourPage::editClip(const std::function<void(ItemColor&)>& change, const Q
   ItemColor c = it->color.value_or(ItemColor{});
   const ItemColor before = c;
   change(c);
+  if (c.primaries && *c.primaries == PrimaryGrade{}) c.primaries.reset(); // neutral = absent
   if (c == before) return false;
   ItemPatch patch;
   patch.color = c; // a default block clears it
@@ -222,6 +290,35 @@ bool ColourPage::clearLut() {
 }
 
 bool ColourPage::dragIntensity(double value) { return editClip([&](ItemColor& c) { c.lutIntensity = std::clamp(value, 0.0, 1.0); }, QStringLiteral("LUT intensity"), true); }
+
+bool ColourPage::dragPrimary(const QString& key, double value) {
+  const PrimaryField* f = findPrimary(key);
+  if (!f) return false;
+  return editClip(
+      [&](ItemColor& c) {
+        PrimaryGrade g = c.primaries.value_or(PrimaryGrade{});
+        primaryRef(g, *f) = std::clamp(value, f->min, f->max);
+        c.primaries = g;
+      },
+      QStringLiteral("Primary correction"), true);
+}
+
+bool ColourPage::resetPrimary(const QString& key) {
+  endDrag();
+  const PrimaryField* f = findPrimary(key);
+  if (!f) return false;
+  return editClip(
+      [&](ItemColor& c) {
+        if (!c.primaries) return;
+        primaryRef(*c.primaries, *f) = f->neutral;
+      },
+      QStringLiteral("Reset primary"));
+}
+
+bool ColourPage::resetPrimaries() {
+  endDrag();
+  return editClip([](ItemColor& c) { c.primaries.reset(); }, QStringLiteral("Reset primaries"));
+}
 
 void ColourPage::endDrag() {
   if (!dragging_) return;

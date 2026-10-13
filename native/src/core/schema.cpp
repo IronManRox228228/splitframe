@@ -292,12 +292,46 @@ ColorManagement parseColorManagement(const Rd& r) {
   return c;
 }
 
+// {"master": m, "r": .., "g": .., "b": ..}; missing keys are neutral
+void parseGradeTriple(const Rd& r, double neutral, NumBounds b, double& master, Rgb3& rgb) {
+  if (r.missing()) return;
+  r.requireObject();
+  master = r.field(QStringLiteral("master")).numOr(neutral, b);
+  rgb.r = r.field(QStringLiteral("r")).numOr(neutral, b);
+  rgb.g = r.field(QStringLiteral("g")).numOr(neutral, b);
+  rgb.b = r.field(QStringLiteral("b")).numOr(neutral, b);
+}
+
+PrimaryGrade parsePrimaryGrade(const Rd& r) {
+  r.requireObject();
+  PrimaryGrade g;
+  g.exposure = r.field(QStringLiteral("exposure")).numOr(0, {.min = -4, .max = 4});
+  g.temperature = r.field(QStringLiteral("temperature")).numOr(0, {.min = -1, .max = 1});
+  g.tint = r.field(QStringLiteral("tint")).numOr(0, {.min = -1, .max = 1});
+  g.contrast = r.field(QStringLiteral("contrast")).numOr(1, {.min = 0, .max = 2});
+  g.pivot = r.field(QStringLiteral("pivot")).numOr(0.18, {.min = 0.001, .max = 10});
+  g.saturation = r.field(QStringLiteral("saturation")).numOr(1, {.min = 0, .max = 2});
+  parseGradeTriple(r.field(QStringLiteral("lift")), 0, {.min = -0.5, .max = 0.5}, g.liftMaster, g.lift);
+  parseGradeTriple(r.field(QStringLiteral("gamma")), 1, {.min = 0.2, .max = 5}, g.gammaMaster, g.gamma);
+  parseGradeTriple(r.field(QStringLiteral("gain")), 1, {.min = 0, .max = 4}, g.gainMaster, g.gain);
+  const Rd off = r.field(QStringLiteral("offset"));
+  if (!off.missing()) {
+    off.requireObject();
+    g.offset.r = off.field(QStringLiteral("r")).numOr(0, {.min = -1, .max = 1});
+    g.offset.g = off.field(QStringLiteral("g")).numOr(0, {.min = -1, .max = 1});
+    g.offset.b = off.field(QStringLiteral("b")).numOr(0, {.min = -1, .max = 1});
+  }
+  return g;
+}
+
 ItemColor parseItemColor(const Rd& r) {
   r.requireObject();
   ItemColor c;
   c.inputSpace = r.field(QStringLiteral("inputSpace")).optStr();
   c.lutPath = r.field(QStringLiteral("lutPath")).optStr();
   c.lutIntensity = r.field(QStringLiteral("lutIntensity")).numOr(1, {.min = 0, .max = 1});
+  c.primaries = r.field(QStringLiteral("primaries")).opt(parsePrimaryGrade);
+  if (c.primaries && *c.primaries == PrimaryGrade{}) c.primaries.reset(); // neutral = absent
   return c;
 }
 
@@ -681,10 +715,44 @@ QJsonObject toJson(const ColorManagement& c) {
   return o;
 }
 
+namespace {
+void putIf(QJsonObject& o, const char* key, double v, double neutral) {
+  if (v != neutral) o.insert(QLatin1String(key), v);
+}
+void putTriple(QJsonObject& o, const char* key, double master, const Rgb3& rgb, double neutral) {
+  QJsonObject t;
+  putIf(t, "master", master, neutral);
+  putIf(t, "r", rgb.r, neutral);
+  putIf(t, "g", rgb.g, neutral);
+  putIf(t, "b", rgb.b, neutral);
+  if (!t.isEmpty()) o.insert(QLatin1String(key), t);
+}
+} // namespace
+
+QJsonObject toJson(const PrimaryGrade& g) {
+  QJsonObject o;
+  putIf(o, "exposure", g.exposure, 0);
+  putIf(o, "temperature", g.temperature, 0);
+  putIf(o, "tint", g.tint, 0);
+  putIf(o, "contrast", g.contrast, 1);
+  putIf(o, "pivot", g.pivot, 0.18);
+  putIf(o, "saturation", g.saturation, 1);
+  putTriple(o, "lift", g.liftMaster, g.lift, 0);
+  putTriple(o, "gamma", g.gammaMaster, g.gamma, 1);
+  putTriple(o, "gain", g.gainMaster, g.gain, 1);
+  QJsonObject off;
+  putIf(off, "r", g.offset.r, 0);
+  putIf(off, "g", g.offset.g, 0);
+  putIf(off, "b", g.offset.b, 0);
+  if (!off.isEmpty()) o.insert(QStringLiteral("offset"), off);
+  return o;
+}
+
 QJsonObject toJson(const ItemColor& c) {
   QJsonObject o{{QStringLiteral("lutIntensity"), c.lutIntensity}};
   putOpt(o, "inputSpace", c.inputSpace);
   putOpt(o, "lutPath", c.lutPath);
+  if (c.primaries && !(*c.primaries == PrimaryGrade{})) o.insert(QStringLiteral("primaries"), toJson(*c.primaries));
   return o;
 }
 

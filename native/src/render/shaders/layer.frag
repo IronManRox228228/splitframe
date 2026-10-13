@@ -17,7 +17,7 @@ layout(std140, binding = 0) uniform U {
   vec4 fxG;
   vec4 fxB;
   vec4 params; // x opacity, y mode (0 RGBA straight alpha, 1 RGBA premultiplied, 2 NV12/P010), z transfer id, w canvas encoding
-  vec4 flags;  // x bits (1 LUT, 2 HDR tone map, 4 effects), y LUT coord scale, z LUT coord offset
+  vec4 flags;  // x bits (1 LUT, 2 HDR tone map, 4 effects, 8 primary grade), y LUT coord scale, z LUT coord offset
   vec4 primR;
   vec4 primG;
   vec4 primB;
@@ -27,6 +27,11 @@ layout(std140, binding = 0) uniform U {
   vec4 fromDispR;
   vec4 fromDispG;
   vec4 fromDispB;
+  vec4 gradeMul;   // rgb exposure * white balance, w contrast
+  vec4 gradeOff;   // rgb offset, w pivot
+  vec4 gradeLift;  // rgb lift, w saturation
+  vec4 gradeGamma; // rgb 1 / gamma
+  vec4 gradeGain;  // rgb gain
 } u;
 
 layout(binding = 1) uniform sampler2D tex0; // RGBA, or the Y plane (R8 / R16)
@@ -83,6 +88,16 @@ vec3 toneMap(vec3 l) {
   return l * (mapped / m);
 }
 
+// primary correction: the CPU twin is applyGrade() in color.cpp (tst_color checks them against each other)
+vec3 grade(vec3 x) {
+  vec3 v = (x + u.gradeOff.rgb) * u.gradeMul.rgb;
+  v = u.gradeGain.rgb * (v + u.gradeLift.rgb * max(vec3(1.0) - v, vec3(0.0)));
+  v = pow(max(v, vec3(0.0)), u.gradeGamma.rgb);
+  v = u.gradeOff.w * pow(max(v, vec3(1e-6)) / u.gradeOff.w, vec3(u.gradeMul.w));
+  float luma = dot(v, vec3(0.2126, 0.7152, 0.0722));
+  return max(vec3(luma) + (v - vec3(luma)) * u.gradeLift.w, vec3(0.0));
+}
+
 void main() {
   int mode = int(u.params.y + 0.5);
   int bits = int(u.flags.x + 0.5);
@@ -104,6 +119,7 @@ void main() {
     if ((bits & 2) != 0) lin = toneMap(lin);
   }
   lin = max(lin, vec3(0.0));
+  if ((bits & 8) != 0) lin = grade(lin);
 
   if ((bits & 4) != 0) {
     // colour effects are CSS-filter style maths on display-referred (sRGB-encoded) colour, as in the reference

@@ -98,6 +98,69 @@ private slots:
     QVERIFY(itemOf(p, V1).color);
   }
 
+  void primarySlidersWriteTheGradeAndUndo() {
+    Project p;
+    fillProject(p);
+    ColourPage col(p, nullptr, nullptr);
+    QVERIFY(!col.hasPrimaries());
+    QCOMPARE(col.primaries().value(QStringLiteral("contrast")).toDouble(), 1.0);
+    QCOMPARE(col.primaries().value(QStringLiteral("exposure")).toDouble(), 0.0);
+
+    // a drag is one undo step, however many moves
+    QVERIFY(col.dragPrimary(QStringLiteral("exposure"), 0.5));
+    QVERIFY(col.dragPrimary(QStringLiteral("exposure"), 1.25));
+    col.endDrag();
+    QCOMPARE(itemOf(p, V1).color->primaries->exposure, 1.25);
+    QCOMPARE(col.primaries().value(QStringLiteral("exposure")).toDouble(), 1.25);
+    QVERIFY(col.hasPrimaries());
+    QVERIFY(col.dragPrimary(QStringLiteral("lift.master"), 0.1));
+    col.endDrag();
+    QVERIFY(col.dragPrimary(QStringLiteral("gain.r"), 1.4));
+    col.endDrag();
+    QCOMPARE(itemOf(p, V1).color->primaries->liftMaster, 0.1);
+    QCOMPARE(itemOf(p, V1).color->primaries->gain.r, 1.4);
+    QCOMPARE(itemOf(p, V1).color->primaries->gain.g, 1.0);
+    // values are clamped to the schema's range, unknown keys are refused
+    QVERIFY(col.dragPrimary(QStringLiteral("contrast"), 9));
+    col.endDrag();
+    QCOMPARE(itemOf(p, V1).color->primaries->contrast, 2.0);
+    QVERIFY(!col.dragPrimary(QStringLiteral("nope"), 1));
+
+    QVERIFY(p.undo()); // contrast
+    QCOMPARE(itemOf(p, V1).color->primaries->contrast, 1.0);
+    QVERIFY(p.undo()); // gain
+    QCOMPARE(itemOf(p, V1).color->primaries->gain.r, 1.0);
+    QVERIFY(p.undo()); // lift
+    QCOMPARE(itemOf(p, V1).color->primaries->exposure, 1.25);
+    QCOMPARE(itemOf(p, V1).color->primaries->liftMaster, 0.0);
+    QVERIFY(p.undo()); // the whole exposure drag in one step
+    QVERIFY(!itemOf(p, V1).color); // neutral primaries leave no colour block at all
+    QVERIFY(!col.hasPrimaries());
+  }
+
+  void primaryResetsAreOneUndoStep() {
+    Project p;
+    fillProject(p);
+    ColourPage col(p, nullptr, nullptr);
+    QVERIFY(col.setInputSpace(QStringLiteral("ACEScg")));
+    QVERIFY(col.dragPrimary(QStringLiteral("temperature"), 0.4));
+    col.endDrag();
+    QVERIFY(col.dragPrimary(QStringLiteral("saturation"), 0.5));
+    col.endDrag();
+    QVERIFY(col.resetPrimary(QStringLiteral("temperature")));
+    QCOMPARE(itemOf(p, V1).color->primaries->temperature, 0.0);
+    QCOMPARE(itemOf(p, V1).color->primaries->saturation, 0.5);
+    QVERIFY(!col.resetPrimary(QStringLiteral("temperature"))); // already neutral
+    QVERIFY(col.resetPrimaries());
+    QVERIFY(!itemOf(p, V1).color->primaries);
+    QCOMPARE(*itemOf(p, V1).color->inputSpace, QStringLiteral("ACEScg")); // the rest of the block stays
+    QVERIFY(!col.resetPrimaries());
+    QVERIFY(p.undo());
+    QCOMPARE(itemOf(p, V1).color->primaries->saturation, 0.5);
+    QVERIFY(p.undo());
+    QCOMPARE(itemOf(p, V1).color->primaries->temperature, 0.4);
+  }
+
   void editsTouchOnlyTheCurrentClip() {
     Project p;
     fillProject(p);

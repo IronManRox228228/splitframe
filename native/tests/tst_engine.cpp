@@ -428,6 +428,32 @@ private slots:
     QVERIFY2(before > 20 && after < before * 0.25, qPrintable(Q("blue mean %1 -> %2").arg(before).arg(after)));
     ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("clear"), true}});
 
+    // Primary correction reaches frame.render, merges partial updates, and each call is one undo step
+    const double plainBlue = blueMean();
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("primaries"), QJsonObject{{Q("exposure"), -2.0}}}});
+    const double darkBlue = blueMean();
+    QVERIFY2(darkBlue < plainBlue * 0.8, qPrintable(Q("blue mean %1 -> %2").arg(plainBlue).arg(darkBlue)));
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("primaries"), QJsonObject{{Q("lift"), QJsonObject{{Q("master"), 0.1}}}, {Q("gain"), QJsonObject{{Q("r"), 1.5}}}}}});
+    QJsonObject prim = ok(Q("item.get"), {{Q("itemId"), clipItem}}).value(Q("color")).toObject().value(Q("primaries")).toObject();
+    QCOMPARE(prim.value(Q("exposure")).toDouble(), -2.0); // kept
+    QCOMPARE(prim.value(Q("lift")).toObject().value(Q("master")).toDouble(), 0.1);
+    QCOMPARE(prim.value(Q("gain")).toObject().value(Q("r")).toDouble(), 1.5);
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("primaries"), QJsonObject{{Q("lift"), QJsonObject{{Q("g"), 0.05}}}}}});
+    prim = ok(Q("item.get"), {{Q("itemId"), clipItem}}).value(Q("color")).toObject().value(Q("primaries")).toObject();
+    QCOMPARE(prim.value(Q("lift")).toObject().value(Q("master")).toDouble(), 0.1); // the channel merge keeps the master
+    QCOMPARE(prim.value(Q("lift")).toObject().value(Q("g")).toDouble(), 0.05);
+    ok(Q("history.undo"));
+    ok(Q("history.undo"));
+    QCOMPARE(blueMean(), darkBlue); // back to exposure -2 only
+    ok(Q("history.undo"));
+    QCOMPARE(blueMean(), plainBlue);
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), clipItem}}).contains(Q("color")));
+    // out of range is rejected; resetPrimaries drops the primaries (and with them the whole, otherwise empty, block)
+    QVERIFY(!raw(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("primaries"), QJsonObject{{Q("exposure"), 9.0}}}}).ok);
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("primaries"), QJsonObject{{Q("saturation"), 0.0}}}});
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("resetPrimaries"), true}});
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), clipItem}}).contains(Q("color")));
+
     const QJsonObject loud = ok(Q("audio.analyze"), {{Q("targetLufs"), -14}});
     QVERIFY(!loud.value(Q("silent")).toBool());
     QVERIFY(loud.value(Q("integratedLufs")).toDouble() < 0 && loud.value(Q("integratedLufs")).toDouble() > -60);

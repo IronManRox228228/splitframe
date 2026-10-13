@@ -32,11 +32,12 @@ struct Params {
   float prim[3][4];
   float toDisp[3][4];
   float fromDisp[3][4];
+  float grade[5][4]; // mul + contrast, offset + pivot, lift + saturation, 1/gamma, gain (see GradeCoeffs)
 };
-static_assert(sizeof(Params) == 368);
+static_assert(sizeof(Params) == 448);
 
 enum Mode { Straight = 0, Premultiplied = 1, Yuv = 2 };
-enum Bits { kLut = 1, kToneMap = 2, kEffects = 4 };
+enum Bits { kLut = 1, kToneMap = 2, kEffects = 4, kGrade = 8 };
 
 QShader loadShader(const QString& name) {
   QFile f(QStringLiteral(":/sf/render/shaders/") + name);
@@ -76,6 +77,7 @@ struct LayerColor {
   Mat3 prim = kIdentity3;
   std::shared_ptr<const Lut3D> lut;
   bool toneMap = false;
+  std::optional<GradeCoeffs> grade; // manual primaries; engaged only when not neutral
 };
 
 void fillCommon(Params& p, const QMatrix4x4& mvp, const UvMap& uv, const ColorState& cs) {
@@ -116,6 +118,20 @@ void fillLayer(Params& p, const QMatrix4x4& mvp, const UvMap& uv, const ColorMat
     setLut(p, *lc.lut);
   }
   if (lc.toneMap) bits |= kToneMap;
+  if (lc.grade) {
+    bits |= kGrade;
+    const GradeCoeffs& g = *lc.grade;
+    for (size_t i = 0; i < 3; ++i) {
+      p.grade[0][i] = static_cast<float>(g.mul[i]);
+      p.grade[1][i] = static_cast<float>(g.offset[i]);
+      p.grade[2][i] = static_cast<float>(g.lift[i]);
+      p.grade[3][i] = static_cast<float>(g.invGamma[i]);
+      p.grade[4][i] = static_cast<float>(g.gain[i]);
+    }
+    p.grade[0][3] = static_cast<float>(g.contrast);
+    p.grade[1][3] = static_cast<float>(g.pivot);
+    p.grade[2][3] = static_cast<float>(g.saturation);
+  }
   p.flags[0] = static_cast<float>(bits);
 }
 
@@ -542,13 +558,17 @@ struct Compositor::Impl {
 
   // Source values -> working space for one layer. `base` is how its stream is tagged; OCIO settings
   // on the item override it.
-  LayerColor layerColor(const Item* item, Transfer base, ColorPrim prim, bool hdrTagged, RenderStats& stats) {
+  // `gradeOnly`: the layer is a raster (text, shape) whose pixels are already sRGB, so only the item's
+  // manual primaries apply, not its input space or LUT.
+  LayerColor layerColor(const Item* item, Transfer base, ColorPrim prim, bool hdrTagged, RenderStats& stats, bool gradeOnly = false) {
     LayerColor lc;
     lc.transfer = base;
     lc.prim = multiply(color.fromRec709, primariesMatrix(primariesFor(prim), Primaries::Rec709));
     lc.toneMap = hdrTagged && color.toneMapHdr;
     if (!item || !item->color) return lc;
     const ItemColor& ic = *item->color;
+    if (ic.primaries && !gradeIsNeutral(*ic.primaries)) lc.grade = gradeCoeffs(*ic.primaries);
+    if (gradeOnly) return lc;
     if ((!ic.inputSpace || ic.inputSpace->isEmpty()) && (!ic.lutPath || ic.lutPath->isEmpty())) return lc;
     const GpuTransform t = inputTransform(ic);
     switch (t.kind) {
@@ -669,7 +689,7 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
   };
 
   // text, shapes, captions: painted by QPainter into sRGB-encoded premultiplied pixels
-  const auto rasterLayer = [&](std::optional<RasterLayer> r, double opacity) {
+  const auto rasterLayer = [&](std::optional<RasterLayer> r, double opacity, const Item* item) {
     if (!r) return;
     Impl::Slot& slot = slotAt(layers.size());
     const bool changed = slot.kind != Impl::Slot::Kind::Rgba || slot.key != r->key || slot.frame || slot.still;
@@ -679,7 +699,7 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
     QMatrix4x4 model;
     model.translate(static_cast<float>(r->origin.x()), static_cast<float>(r->origin.y()));
     model.scale(static_cast<float>(r->image.width()), static_cast<float>(r->image.height()));
-    const LayerColor lc = s.layerColor(nullptr, Transfer::Srgb, ColorPrim::Unspecified, false, stats);
+    const LayerColor lc = s.layerColor(item, Transfer::Srgb, ColorPrim::Unspecified, false, stats, true);
     if (rgbaLayer(r->image, changed, slot, model, UvMap{}, kIdentityColor, opacity, Premultiplied, lc)) slot.key = r->key;
   };
 
@@ -690,14 +710,14 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
     if (type == ItemType::Audio) continue;
 
     if (type != ItemType::Video && type != ItemType::Image) {
-      rasterLayer(rasterizeItem(doc, *item, frame, size), opacity);
+      rasterLayer(rasterizeItem(doc, *item, frame, size), opacity, item);
       continue;
     }
 
     const Visual v = media.visual(*item, sourceFrameAt(*item, frame), fps);
     if (v.state == Visual::State::Missing) {
       ++stats.missing;
-      rasterLayer(rasterizeMissingMedia(*item, frame, size), opacity);
+      rasterLayer(rasterizeMissingMedia(*item, frame, size), opacity, nullptr);
       continue;
     }
     if (v.state == Visual::State::Pending) ++stats.pending;

@@ -47,6 +47,10 @@ class ColourPage : public QObject {
   Q_PROPERTY(QString lutName READ lutName NOTIFY clipChanged)
   Q_PROPERTY(double lutIntensity READ lutIntensity NOTIFY clipChanged)
   Q_PROPERTY(bool hasColour READ hasColour NOTIFY clipChanged)
+  // primary correction as flat keys: exposure, temperature, tint, contrast, saturation,
+  // lift.master / lift.r / lift.g / lift.b (also gamma.*, gain.*), offset.r / .g / .b
+  Q_PROPERTY(QVariantMap primaries READ primaries NOTIFY clipChanged)
+  Q_PROPERTY(bool hasPrimaries READ hasPrimaries NOTIFY clipChanged)
   // before / after: preview with all colour management off
   Q_PROPERTY(bool bypass READ bypass WRITE setBypass NOTIFY bypassChanged)
 
@@ -68,6 +72,8 @@ public:
   QString lutName() const;
   double lutIntensity() const;
   bool hasColour() const;
+  QVariantMap primaries() const;
+  bool hasPrimaries() const;
   bool bypass() const { return player_ && player_->colourBypass(); }
   void setBypass(bool on);
 
@@ -85,6 +91,10 @@ public:
   Q_INVOKABLE bool dragIntensity(double value);
   Q_INVOKABLE void endDrag();
   Q_INVOKABLE bool resetClip(); // drops the whole colour block
+  // primary correction: `key` as in the `primaries` property; a drag is one undo step (closed by endDrag)
+  Q_INVOKABLE bool dragPrimary(const QString& key, double value);
+  Q_INVOKABLE bool resetPrimary(const QString& key); // back to neutral, one undo step
+  Q_INVOKABLE bool resetPrimaries();
 
 signals:
   void optionsChanged();

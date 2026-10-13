@@ -27,6 +27,11 @@ layout(std140, binding = 0) uniform U {
   vec4 fromDispR; // and back
   vec4 fromDispG;
   vec4 fromDispB;
+  vec4 gradeMul;   // rgb exposure * white balance, w contrast
+  vec4 gradeOff;   // rgb offset, w pivot
+  vec4 gradeLift;  // rgb lift, w saturation
+  vec4 gradeGamma; // rgb 1 / gamma
+  vec4 gradeGain;  // rgb gain
 } u;
 
 out gl_PerVertex {

@@ -27,6 +27,11 @@ layout(std140, binding = 0) uniform U {
   vec4 fromDispR; // Rec.709 -> working space (to undo an sRGB-encoded canvas)
   vec4 fromDispG;
   vec4 fromDispB;
+  vec4 gradeMul;   // rgb exposure * white balance, w contrast
+  vec4 gradeOff;   // rgb offset, w pivot
+  vec4 gradeLift;  // rgb lift, w saturation
+  vec4 gradeGamma; // rgb 1 / gamma
+  vec4 gradeGain;  // rgb gain
 } u;
 
 layout(binding = 1) uniform sampler2D tex0; // the canvas

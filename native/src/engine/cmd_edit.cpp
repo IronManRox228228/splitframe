@@ -408,9 +408,29 @@ void registerEditCommands(Engine& e) {
 
   // ---- colour ----
   e.add(spec("item.color.set", "", "colour", true,
-             QStringLiteral("Colour inputs of one item (native-only): inputSpace (OpenColorIO colour space the source pixels are in, e.g. \"ARRI LogC3 (EI800)\"), lutPath (.cube/.3dl/.clf LUT applied "
-                            "before inputSpace is interpreted) and lutIntensity (0..1). Fields not given keep their value; `clear` removes the block. See project.color.set for the project side."),
-             js::obj({{q("itemId"), js::str()}, {q("inputSpace"), js::str()}, {q("lutPath"), js::str()}, {q("lutIntensity"), js::number(QString(), 0, 1)}, {q("clear"), js::boolean()}}, {q("itemId")}),
+             QStringLiteral("Colour of one item (native-only). Inputs: inputSpace (OpenColorIO colour space the source pixels are in, e.g. \"ARRI LogC3 (EI800)\"), lutPath (.cube/.3dl/.clf LUT applied "
+                            "before inputSpace is interpreted) and lutIntensity (0..1). Primary correction: `primaries`, applied in linear light after the input transform and LUT, in the order "
+                            "offset, exposure, white balance, lift/gamma/gain, contrast, saturation. Keys (all optional, merged into the current values; neutral = omitted): exposure (stops, -4..4, 0 = none), "
+                            "temperature (-1..1, positive = warmer/more orange, negative = cooler/more blue), tint (-1..1, positive = magenta, negative = green), contrast (0..2, 1 = none, around pivot), "
+                            "pivot (0.001..10 linear, 0.18 = mid grey), saturation (0..2, 1 = none, 0 = greyscale), lift/gamma/gain ({master, r, g, b}: lift -0.5..0.5 raises/lowers shadows, 0 = none; "
+                            "gamma 0.2..5, above 1 brightens midtones, 1 = none; gain 0..4 scales highlights, 1 = none; master and channel combine), offset ({r, g, b} -1..1 added to linear, 0 = none). "
+                            "`resetPrimaries` drops the primaries first (combine with `primaries` to set a fresh grade). Fields not given keep their value; `clear` removes the whole colour block. "
+                            "See project.color.set for the project side."),
+             js::obj({{q("itemId"), js::str()}, {q("inputSpace"), js::str()}, {q("lutPath"), js::str()}, {q("lutIntensity"), js::number(QString(), 0, 1)},
+                      {q("primaries"),
+                       js::obj({{q("exposure"), js::number(QStringLiteral("stops, -4..4"), -4, 4)},
+                                {q("temperature"), js::number(QStringLiteral("-1 cool .. +1 warm"), -1, 1)},
+                                {q("tint"), js::number(QStringLiteral("-1 green .. +1 magenta"), -1, 1)},
+                                {q("contrast"), js::number(QStringLiteral("0..2, 1 = none"), 0, 2)},
+                                {q("pivot"), js::number(QStringLiteral("linear, 0.18 = mid grey"), 0.001, 10)},
+                                {q("saturation"), js::number(QStringLiteral("0..2, 1 = none"), 0, 2)},
+                                {q("lift"), js::obj({{q("master"), js::number(QString(), -0.5, 0.5)}, {q("r"), js::number(QString(), -0.5, 0.5)}, {q("g"), js::number(QString(), -0.5, 0.5)}, {q("b"), js::number(QString(), -0.5, 0.5)}}, {})},
+                                {q("gamma"), js::obj({{q("master"), js::number(QString(), 0.2, 5)}, {q("r"), js::number(QString(), 0.2, 5)}, {q("g"), js::number(QString(), 0.2, 5)}, {q("b"), js::number(QString(), 0.2, 5)}}, {})},
+                                {q("gain"), js::obj({{q("master"), js::number(QString(), 0, 4)}, {q("r"), js::number(QString(), 0, 4)}, {q("g"), js::number(QString(), 0, 4)}, {q("b"), js::number(QString(), 0, 4)}}, {})},
+                                {q("offset"), js::obj({{q("r"), js::number(QString(), -1, 1)}, {q("g"), js::number(QString(), -1, 1)}, {q("b"), js::number(QString(), -1, 1)}}, {})}},
+                               {})},
+                      {q("resetPrimaries"), js::boolean()}, {q("clear"), js::boolean()}},
+                     {q("itemId")}),
              [](CallContext& c, const QJsonObject& a) {
                const QString id = a.value(q("itemId")).toString();
                const Item* it = getItem(c.session->project->doc(), id);
@@ -424,6 +444,20 @@ void registerEditCommands(Engine& e) {
                  if (cur.inputSpace) color.insert(q("inputSpace"), *cur.inputSpace);
                  if (cur.lutPath) color.insert(q("lutPath"), *cur.lutPath);
                  color.insert(q("lutIntensity"), cur.lutIntensity);
+                 // primaries: current values (unless reset) overlaid with the given keys; lift/gamma/gain/offset merge per channel
+                 QJsonObject prim = a.value(q("resetPrimaries")).toBool() || !cur.primaries ? QJsonObject{} : toJson(*cur.primaries);
+                 const QJsonObject given = a.value(q("primaries")).toObject();
+                 for (auto g = given.begin(); g != given.end(); ++g) {
+                   if (g.value().isObject()) {
+                     QJsonObject merged = prim.value(g.key()).toObject();
+                     const QJsonObject over = g.value().toObject();
+                     for (auto k = over.begin(); k != over.end(); ++k) merged.insert(k.key(), k.value());
+                     prim.insert(g.key(), merged);
+                   } else {
+                     prim.insert(g.key(), g.value());
+                   }
+                 }
+                 if (!prim.isEmpty()) color.insert(q("primaries"), prim);
                }
                const QJsonObject op{{q("type"), q("item.update")}, {q("itemId"), id}, {q("patch"), QJsonObject{{q("color"), color}}}};
                return applyAndShow(c, parseOps({op}), QStringLiteral("item.color.set"), {id});

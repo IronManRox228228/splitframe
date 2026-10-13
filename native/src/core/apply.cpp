@@ -368,8 +368,10 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemUpdate& o) {
     if (patch.labels->color) t.labels.color = *patch.labels->color;
   }
   if (patch.color) {
-    if (*patch.color == ItemColor{}) t.color.reset();
-    else t.color = *patch.color;
+    ItemColor c = *patch.color;
+    if (c.primaries && *c.primaries == PrimaryGrade{}) c.primaries.reset(); // neutral = absent
+    if (c == ItemColor{}) t.color.reset();
+    else t.color = c;
   }
   if (newProps) t.props = *newProps;
   return {ItemUpdate{o.itemId, inv}};

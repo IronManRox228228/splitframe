@@ -504,6 +504,137 @@ private slots:
     }
   }
 
+  // ---- primary correction ----
+
+  Scene gradedScene(const QString& png, const std::function<void(PrimaryGrade&)>& f, int w = 16, int h = 4) {
+    Scene s = imageScene(png, w, h);
+    PrimaryGrade g;
+    f(g);
+    ItemColor c;
+    c.primaries = g;
+    findItem(s.doc, QStringLiteral("itm_i")).color = c;
+    return s;
+  }
+
+  // GPU result of one grade against the CPU twin (applyGrade) on the sample palette, in the float canvas
+  void expectGradeMatchesTwin(const QString& png, const std::function<void(PrimaryGrade&)>& f, const char* what) {
+    const std::vector<Rgb8> cols = sampleColours();
+    const Scene s = gradedScene(png, f);
+    const QImage lin = run(s, Out::Linear);
+    PrimaryGrade g;
+    f(g);
+    const GradeCoeffs c = gradeCoeffs(g);
+    for (size_t i = 0; i < cols.size(); ++i) {
+      const Rgbd in = {expectedLin(Transfer::Srgb, cols[i].r), expectedLin(Transfer::Srgb, cols[i].g), expectedLin(Transfer::Srgb, cols[i].b)};
+      const Rgbd want = applyGrade(c, in);
+      const auto got = floatPixel(lin, static_cast<int>(i), 2);
+      for (size_t k = 0; k < 3; ++k) {
+        const double tol = 2e-3 + 4e-3 * std::abs(want[k]); // half-float canvas
+        QVERIFY2(std::abs(got[k] - want[k]) <= tol,
+                 qPrintable(QStringLiteral("%1: colour %2 channel %3 gpu %4 cpu %5").arg(QLatin1String(what)).arg(i).arg(k).arg(got[k]).arg(want[k])));
+      }
+    }
+  }
+
+  void neutralPrimariesAreAPixelIdenticalNoOp() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    const QString png = savePng(QStringLiteral("pal"), palette(sampleColours()));
+    const Scene plain = imageScene(png, 16, 4);
+    // an engaged block whose values are all neutral, and a colour block without primaries
+    const Scene neutral = gradedScene(png, [](PrimaryGrade&) {});
+    Scene noPrim = imageScene(png, 16, 4);
+    findItem(noPrim.doc, QStringLiteral("itm_i")).color = ItemColor{};
+    for (const Out out : {Out::Rgba8, Out::Rgba64, Out::Linear}) {
+      const QImage a = run(plain, out);
+      QVERIFY(a == run(neutral, out));
+      QVERIFY(a == run(noPrim, out));
+    }
+    // while a real change is visible
+    const QImage graded = run(gradedScene(png, [](PrimaryGrade& g) { g.exposure = 1; }), Out::Rgba8);
+    QVERIFY(maxAbsDiff(graded, run(plain, Out::Rgba8)) > 20);
+  }
+
+  void primariesMatchTheCpuTwin() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    const QString png = savePng(QStringLiteral("pal"), palette(sampleColours()));
+    expectGradeMatchesTwin(png, [](PrimaryGrade& g) { g.exposure = -1.5; }, "exposure");
+    expectGradeMatchesTwin(png, [](PrimaryGrade& g) { g.temperature = 0.6; g.tint = -0.3; }, "white balance");
+    expectGradeMatchesTwin(png, [](PrimaryGrade& g) { g.contrast = 1.4; g.pivot = 0.25; }, "contrast");
+    expectGradeMatchesTwin(png, [](PrimaryGrade& g) { g.saturation = 1.6; }, "saturation");
+    expectGradeMatchesTwin(png, [](PrimaryGrade& g) { g.liftMaster = 0.05; g.lift = {0.02, 0, -0.03}; g.gammaMaster = 1.2; g.gamma.b = 0.8; g.gainMaster = 0.9; g.gain.r = 1.2; },
+                           "lift gamma gain");
+    expectGradeMatchesTwin(png, [](PrimaryGrade& g) { g.offset = {0.02, -0.01, 0.03}; g.exposure = 0.5; g.contrast = 0.7; g.saturation = 0.5; }, "offset and combination");
+  }
+
+  void primaryControlsBehave() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    const std::vector<Rgb8> cols = sampleColours(); // 4: grey 128, 5: orange, 7: near black, 8: near white, 14: grey 100
+    const QString png = savePng(QStringLiteral("pal"), palette(cols));
+    const QImage base = run(imageScene(png, 16, 4), Out::Linear);
+    const auto at = [&](const QImage& img, int i) { return floatPixel(img, i, 2); };
+
+    // exposure +1 stop doubles linear values (the palette's darker colours: no clipping)
+    const QImage up = run(gradedScene(png, [](PrimaryGrade& g) { g.exposure = 1; }), Out::Linear);
+    for (const int i : {4, 5, 7, 11, 14, 15}) {
+      const auto b = at(base, i), g = at(up, i);
+      for (size_t k = 0; k < 3; ++k) QVERIFY2(std::abs(g[k] - 2 * b[k]) <= 1e-3 + 2e-3 * g[k], qPrintable(QStringLiteral("colour %1").arg(i)));
+    }
+    // saturation 0 gives R = G = B at the Rec.709 luma
+    const QImage grey = run(gradedScene(png, [](PrimaryGrade& g) { g.saturation = 0; }), Out::Linear);
+    for (int i = 0; i < 16; ++i) {
+      const auto g = at(grey, i), b = at(base, i);
+      QVERIFY2(std::abs(g[0] - g[1]) < 1e-3 && std::abs(g[1] - g[2]) < 1e-3, qPrintable(QString::number(i)));
+      QVERIFY(std::abs(g[0] - (0.2126f * b[0] + 0.7152f * b[1] + 0.0722f * b[2])) < 2e-3);
+    }
+    // warm raises R/B and keeps luminance; cool lowers it
+    const QImage warm = run(gradedScene(png, [](PrimaryGrade& g) { g.temperature = 0.5; }), Out::Linear);
+    const QImage cool = run(gradedScene(png, [](PrimaryGrade& g) { g.temperature = -0.5; }), Out::Linear);
+    {
+      const auto b = at(base, 4), w = at(warm, 4), c = at(cool, 4);
+      QVERIFY(w[0] / w[2] > b[0] / b[2] * 1.2f);
+      QVERIFY(c[0] / c[2] < b[0] / b[2] / 1.2f);
+      const auto luma = [](const std::array<float, 3>& v) { return 0.2126f * v[0] + 0.7152f * v[1] + 0.0722f * v[2]; };
+      QVERIFY(std::abs(luma(w) - luma(b)) < 3e-3f);
+    }
+    // contrast > 1 spreads away from the pivot, < 1 pulls towards it
+    const QImage hard = run(gradedScene(png, [](PrimaryGrade& g) { g.contrast = 1.5; }), Out::Linear);
+    const QImage soft = run(gradedScene(png, [](PrimaryGrade& g) { g.contrast = 0.5; }), Out::Linear);
+    const float pivot = 0.18f;
+    for (const int i : {4, 14, 15, 8}) { // grey channels either side of the pivot
+      const float b = at(base, i)[1], h = at(hard, i)[1], s = at(soft, i)[1];
+      QVERIFY2(std::abs(h - pivot) > std::abs(b - pivot) && std::abs(s - pivot) < std::abs(b - pivot), qPrintable(QString::number(i)));
+      QCOMPARE_EQ(h > pivot, b > pivot);
+    }
+    // gain on R only changes R
+    const QImage gainR = run(gradedScene(png, [](PrimaryGrade& g) { g.gain.r = 0.5; }), Out::Linear);
+    for (int i = 0; i < 16; ++i) {
+      const auto g = at(gainR, i), b = at(base, i);
+      QVERIFY(std::abs(g[0] - 0.5f * b[0]) < 1e-3f + 2e-3f * b[0]);
+      QVERIFY(std::abs(g[1] - b[1]) < 1e-3f && std::abs(g[2] - b[2]) < 1e-3f);
+    }
+    // lift raises the blacks, gamma > 1 brightens the midtones
+    const QImage lifted = run(gradedScene(png, [](PrimaryGrade& g) { g.liftMaster = 0.1; }), Out::Linear);
+    QVERIFY(at(lifted, 7)[1] > at(base, 7)[1] + 0.05f);
+    const QImage gam = run(gradedScene(png, [](PrimaryGrade& g) { g.gammaMaster = 2; }), Out::Linear);
+    QVERIFY(at(gam, 4)[1] > at(base, 4)[1] * 1.3f);
+  }
+
+  // The grade is part of the compositor's output, so frame grabs and exports (the offscreen renderer) carry it
+  void gradeReachesTheDeliveredFrame() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    const QString png = savePng(QStringLiteral("grey"), palette({{128, 128, 128}}));
+    const QImage plain = run(imageScene(png, 1, 4), Out::Rgba8);
+    const QImage dark = run(gradedScene(png, [](PrimaryGrade& g) { g.exposure = -1; }, 1, 4), Out::Rgba8);
+    SF_VERIFY_PIXEL(plain, 0, 2, (Rgb{128, 128, 128}), 1);
+    const int half = to8(fromLinear(Transfer::Srgb, 0.5 * expectedLin(Transfer::Srgb, 128))); // one stop down, re-encoded
+    SF_VERIFY_PIXEL(dark, 0, 2, (Rgb{half, half, half}), 1);
+    // the 10-bit delivery path too
+    comp().setDelivery(Delivery{Delivery::Encoding::Srgb, 10, {}});
+    const QImage dark10 = run(gradedScene(png, [](PrimaryGrade& g) { g.exposure = -1; }, 1, 4), Out::Rgba64);
+    const QImage plain10 = run(imageScene(png, 1, 4), Out::Rgba64);
+    QVERIFY(codes(dark10, 0, 2, 1023)[0] < codes(plain10, 0, 2, 1023)[0] - 100);
+  }
+
   // ---- 10-bit sources ----
 
   // A narrow luma ramp: a 10-bit source has four times the steps of an 8-bit one. They must survive the

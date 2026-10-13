@@ -256,6 +256,31 @@ struct Labels {
 // Native-only colour management for one item. Absent on the item = today's behaviour (the stream's own
 // tags, sRGB-style display-referred video). The Electron app's zod schema strips these keys on load,
 // so a project round-tripped through it loses them; the native app reads documents without them fine.
+struct Rgb3 {
+  double r = 0, g = 0, b = 0;
+  bool operator==(const Rgb3&) const = default;
+};
+
+// Manual primary correction of one item, applied in linear working space after the input transform and
+// LUT and before blending, in this order: offset, exposure, white balance, lift/gamma/gain, contrast,
+// saturation. Every default is a mathematical no-op (see render/compositor.cpp for the maths).
+struct PrimaryGrade {
+  double exposure = 0;    // stops, -4..4: linear *= 2^exposure
+  double temperature = 0; // -1..1, +warm (red up, blue down), -cool
+  double tint = 0;        // -1..1, +magenta (green down), -green
+  double contrast = 1;    // 0..2, power curve around `pivot`
+  double pivot = 0.18;    // 0.001..10, linear (0.18 = mid grey)
+  double saturation = 1;  // 0..2, Rec.709 luma weights
+  double liftMaster = 0;  // -0.5..0.5, added to the per-channel lift
+  Rgb3 lift;              // each -0.5..0.5
+  double gammaMaster = 1; // 0.2..5, multiplies the per-channel gamma
+  Rgb3 gamma{1, 1, 1};    // each 0.2..5
+  double gainMaster = 1;  // 0..4, multiplies the per-channel gain
+  Rgb3 gain{1, 1, 1};     // each 0..4
+  Rgb3 offset;            // each -1..1, added to linear
+  bool operator==(const PrimaryGrade&) const = default;
+};
+
 struct ItemColor {
   // OpenColorIO colour space the source pixels are in (e.g. "ARRI LogC3 (EI800)"); absent = by stream tags
   std::optional<QString> inputSpace;
@@ -263,6 +288,8 @@ struct ItemColor {
   // interpreted; its output is what `inputSpace` describes. See render/color_manager.h.
   std::optional<QString> lutPath;
   double lutIntensity = 1; // 0..1 mix of source and LUT output
+  // absent (or all-default) = no manual grade; never written to JSON when neutral
+  std::optional<PrimaryGrade> primaries;
   bool operator==(const ItemColor&) const = default;
 };
 
@@ -563,6 +590,8 @@ BeatMap parseBeatMap(const Rd& r);
 BranchRecord parseBranchRecord(const Rd& r);
 ProjectBundle parseProjectBundle(const Rd& r);
 
+QJsonObject toJson(const PrimaryGrade&); // only the non-default fields
+QJsonObject toJson(const ItemColor&);
 QJsonObject toJson(const Keyframe&);
 QJsonObject toJson(const Effect&);
 QJsonObject toJson(const EffectParams&);

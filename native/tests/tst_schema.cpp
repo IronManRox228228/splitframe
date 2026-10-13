@@ -431,6 +431,57 @@ private slots:
               r["items"] = its;
             }).contains(S("lutIntensity")));
   }
+
+  // Primary correction: neutral is absent (never written), a grade round-trips, bad values name their path
+  void primariesAreOptionalRoundTripAndValidated() {
+    const auto withColor = [](const QString& colorJson) {
+      QJsonObject root = json(kMinimalDoc).toObject();
+      QJsonArray items = root["items"].toArray();
+      QJsonObject item = items[0].toObject();
+      item["color"] = json(colorJson.toUtf8().constData());
+      items[0] = item;
+      root["items"] = items;
+      return root;
+    };
+    // old colour blocks (no primaries) load; an empty or all-default primaries block collapses to absent
+    QVERIFY(!parseTimelineDoc(Rd(withColor(S(R"({"lutIntensity": 0.5})")))).items[0].color->primaries);
+    const TimelineDoc neutral = parseTimelineDoc(Rd(withColor(S(R"x({"primaries": {"exposure": 0, "contrast": 1, "lift": {"master": 0}, "gain": {"r": 1}}})x"))));
+    QVERIFY(!neutral.items[0].color->primaries);
+    QVERIFY(!toJson(neutral)["items"].toArray()[0].toObject()["color"].toObject().contains(S("primaries")));
+
+    const TimelineDoc doc = parseTimelineDoc(Rd(withColor(S(R"x({"primaries": {"exposure": 1.5, "temperature": 0.25, "tint": -0.5, "contrast": 1.2, "pivot": 0.2,
+        "saturation": 0.8, "lift": {"master": 0.05, "b": -0.1}, "gamma": {"g": 1.3}, "gain": {"master": 1.1, "r": 0.9}, "offset": {"r": 0.01}}})x"))));
+    const PrimaryGrade& g = *doc.items[0].color->primaries;
+    QCOMPARE(g.exposure, 1.5);
+    QCOMPARE(g.pivot, 0.2);
+    QCOMPARE(g.liftMaster, 0.05);
+    QCOMPARE(g.lift.b, -0.1);
+    QCOMPARE(g.lift.r, 0.0);
+    QCOMPARE(g.gamma.g, 1.3);
+    QCOMPARE(g.gamma.r, 1.0); // a missing channel is neutral, not zero
+    QCOMPARE(g.gain.r, 0.9);
+    QCOMPARE(g.gain.g, 1.0);
+    QCOMPARE(g.offset.r, 0.01);
+    QCOMPARE(parseTimelineDoc(Rd(toJson(doc))), doc);
+    // only non-default fields are written
+    PrimaryGrade only;
+    only.exposure = 1;
+    QCOMPARE(toJson(only).keys(), QStringList{S("exposure")});
+    QVERIFY(toJson(PrimaryGrade{}).isEmpty());
+
+    for (const char* bad : {R"({"primaries": {"exposure": 5}})", R"({"primaries": {"temperature": -1.5}})", R"({"primaries": {"contrast": 2.5}})",
+                            R"({"primaries": {"saturation": -0.1}})", R"({"primaries": {"lift": {"master": 0.6}}})", R"({"primaries": {"gamma": {"r": 0.1}}})",
+                            R"({"primaries": {"gain": {"b": 4.5}}})", R"({"primaries": {"offset": {"g": 2}}})", R"({"primaries": {"pivot": 0}})", R"({"primaries": 3})"}) {
+      bool threw = false;
+      try {
+        parseTimelineDoc(Rd(withColor(S(bad))));
+      } catch (const SchemaError& e) {
+        threw = true;
+        QVERIFY2(e.path().contains(S("primaries")), bad);
+      }
+      QVERIFY2(threw, bad);
+    }
+  }
 };
 
 QTEST_APPLESS_MAIN(TstSchema)

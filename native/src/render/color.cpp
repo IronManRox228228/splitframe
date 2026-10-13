@@ -187,4 +187,45 @@ bool isHdrDelivery(const Delivery& d) {
   return d.ocioSpace.isEmpty() && (d.encoding == Delivery::Encoding::Rec2100Pq || d.encoding == Delivery::Encoding::Rec2100Hlg);
 }
 
+bool gradeIsNeutral(const PrimaryGrade& g) {
+  return g.exposure == 0 && g.temperature == 0 && g.tint == 0 && g.contrast == 1 && g.saturation == 1 && g.liftMaster == 0 && g.lift == Rgb3{} &&
+         g.gammaMaster == 1 && g.gamma == Rgb3{1, 1, 1} && g.gainMaster == 1 && g.gain == Rgb3{1, 1, 1} && g.offset == Rgb3{};
+}
+
+GradeCoeffs gradeCoeffs(const PrimaryGrade& g) {
+  GradeCoeffs c{};
+  const double wb[3] = {std::exp2(g.temperature * 0.5), std::exp2(-g.tint * 0.5), std::exp2(-g.temperature * 0.5)}; // R, G, B
+  const double norm = 0.2126 * wb[0] + 0.7152 * wb[1] + 0.0722 * wb[2];
+  const double exposure = std::exp2(g.exposure);
+  const double lift[3] = {g.lift.r, g.lift.g, g.lift.b};
+  const double gamma[3] = {g.gamma.r, g.gamma.g, g.gamma.b};
+  const double gain[3] = {g.gain.r, g.gain.g, g.gain.b};
+  const double offset[3] = {g.offset.r, g.offset.g, g.offset.b};
+  for (int i = 0; i < 3; ++i) {
+    c.mul[i] = exposure * wb[i] / norm;
+    c.offset[i] = offset[i];
+    c.lift[i] = g.liftMaster + lift[i];
+    c.invGamma[i] = 1.0 / std::max(g.gammaMaster * gamma[i], 0.01);
+    c.gain[i] = g.gainMaster * gain[i];
+  }
+  c.contrast = g.contrast;
+  c.pivot = std::max(g.pivot, 0.001);
+  c.saturation = g.saturation;
+  return c;
+}
+
+Rgbd applyGrade(const GradeCoeffs& c, const Rgbd& linear) {
+  Rgbd v = linear;
+  for (size_t i = 0; i < 3; ++i) {
+    double x = (v[i] + c.offset[i]) * c.mul[i];
+    x = c.gain[i] * (x + c.lift[i] * std::max(1.0 - x, 0.0));
+    x = std::pow(std::max(x, 0.0), c.invGamma[i]);
+    x = c.pivot * std::pow(std::max(x, 1e-6) / c.pivot, c.contrast);
+    v[i] = x;
+  }
+  const double luma = 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  for (double& x : v) x = std::max(luma + (x - luma) * c.saturation, 0.0);
+  return v;
+}
+
 } // namespace sf::render

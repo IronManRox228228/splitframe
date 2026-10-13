@@ -10,6 +10,7 @@
 // The functions below are the reference the GLSL in shaders/layer.frag and shaders/output.frag is
 // tested against (tst_color); change them together.
 
+#include "core/schema.h"
 #include "media/gpu_frame.h"
 
 #include <QString>
@@ -53,6 +54,29 @@ Mat3 inverse(const Mat3& m);
 // identity up to `kToneMapKnee`, then asymptotic to 1 on the largest channel (hue preserving).
 inline constexpr double kToneMapKnee = 0.75;
 Rgbd toneMapHighlights(const Rgbd& linear);
+
+// Primary correction (PrimaryGrade) resolved to what the shader needs, plus its CPU twin. In linear
+// working space, per pixel x (see grade() in shaders/layer.frag, tested against this):
+//   v = (x + offset) * mul             mul = 2^exposure * white-balance gains
+//   v = gain * (v + lift * max(1 - v, 0))        lift = liftMaster + lift.c, gain = gainMaster * gain.c
+//   v = max(v, 0) ^ (1 / gamma)        gamma = gammaMaster * gamma.c
+//   v = pivot * (max(v, eps) / pivot) ^ contrast
+//   v = luma + (v - luma) * saturation          luma = Rec.709 weights on v
+// White balance: wr = 2^(t/2), wb = 2^(-t/2), wg = 2^(-tint/2), divided by 0.2126 wr + 0.7152 wg + 0.0722 wb
+// so white keeps its luminance (+t warm: R up, B down; +tint magenta: G down).
+struct GradeCoeffs {
+  double mul[3];
+  double offset[3];
+  double lift[3];
+  double invGamma[3];
+  double gain[3];
+  double contrast;
+  double pivot;
+  double saturation;
+};
+bool gradeIsNeutral(const PrimaryGrade& g);
+GradeCoeffs gradeCoeffs(const PrimaryGrade& g);
+Rgbd applyGrade(const GradeCoeffs& c, const Rgbd& linear);
 
 // What the SDR "reference" of the Electron app means in linear light: sRGB-encoded values, which is
 // also how untagged and BT.709-tagged video is shown by browsers. Streams tagged BT.709 are
