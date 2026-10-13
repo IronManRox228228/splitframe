@@ -6,6 +6,7 @@
 #include "media_testutil.h"
 
 #include <QFile>
+#include <QTextStream>
 #include <QImage>
 #include <QJsonDocument>
 #include <QSignalSpy>
@@ -393,6 +394,39 @@ private slots:
     QCOMPARE(small.value(Q("width")).toInt(), 160);
     QCOMPARE(QImage(dir_.filePath(Q("small.png"))).size(), QSize(160, 90));
     QCOMPARE(raw(Q("frame.render"), {{Q("frame"), -1}}).error.code, Q("invalid_params"));
+
+    // A per-clip LUT must reach offscreen renders (frame grabs and exports), not just the preview.
+    // This LUT removes blue entirely, so the graded frame's blue mean has to collapse.
+    const auto blueMean = [&] {
+      const QJsonObject f = ok(Q("frame.render"), {{Q("frame"), 10}, {Q("inline"), true}});
+      QImage img;
+      img.loadFromData(QByteArray::fromBase64(f.value(Q("base64")).toString().toLatin1()), "PNG");
+      img = img.convertToFormat(QImage::Format_RGB32);
+      double sum = 0;
+      for (int y = 0; y < img.height(); ++y)
+        for (int x = 0; x < img.width(); ++x) sum += qBlue(img.pixel(x, y));
+      return sum / (img.width() * img.height());
+    };
+    {
+      QFile lut(dir_.filePath(Q("no_blue.cube")));
+      QVERIFY(lut.open(QIODevice::WriteOnly | QIODevice::Text));
+      QTextStream ts(&lut);
+      const int n = 17;
+      ts << "TITLE \"no_blue\"\nLUT_3D_SIZE " << n << "\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n";
+      for (int b = 0; b < n; ++b)
+        for (int g = 0; g < n; ++g)
+          for (int red = 0; red < n; ++red)
+            ts << QString::number(red / double(n - 1), 'f', 6) << ' ' << QString::number(g / double(n - 1), 'f', 6) << " 0.000000\n";
+    }
+    const double before = blueMean();
+    QString clipItem;
+    for (const QJsonValue v : items())
+      if (v.toObject().value(Q("type")).toString() == Q("video")) clipItem = v.toObject().value(Q("id")).toString();
+    QVERIFY(!clipItem.isEmpty());
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("lutPath"), dir_.filePath(Q("no_blue.cube"))}, {Q("lutIntensity"), 1.0}});
+    const double after = blueMean();
+    QVERIFY2(before > 20 && after < before * 0.25, qPrintable(Q("blue mean %1 -> %2").arg(before).arg(after)));
+    ok(Q("item.color.set"), {{Q("itemId"), clipItem}, {Q("clear"), true}});
 
     const QJsonObject loud = ok(Q("audio.analyze"), {{Q("targetLufs"), -14}});
     QVERIFY(!loud.value(Q("silent")).toBool());

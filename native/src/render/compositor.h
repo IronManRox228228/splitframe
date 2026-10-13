@@ -67,6 +67,8 @@ public:
   // OpenColorIO config for input spaces, LUT files, working space and display views. Without one only
   // the built-in path exists (sRGB / BT.709 / BT.1886 / PQ / HLG in, linear Rec.709 working, sRGB out).
   void setColorManager(std::shared_ptr<ColorManager> manager);
+  // True once setColorManager has been called (with a manager or with null).
+  bool colorManagerSet() const;
   // Overrides the project's blendSpace (nullopt: follow the project; absent there: Linear).
   void setBlendSpace(std::optional<BlendSpace> space);
   // Overrides the project's outputSpace for the delivery texture (nullopt: follow the project).

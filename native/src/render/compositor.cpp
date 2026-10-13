@@ -222,6 +222,7 @@ struct Compositor::Impl {
 
   // colour
   std::shared_ptr<ColorManager> manager;
+  bool managerSet = false; // setColorManager was called, even with null
   std::optional<BlendSpace> blendOverride;
   std::optional<Delivery> deliveryOverride;
   Transfer sdrTransfer = Transfer::Srgb;
@@ -585,8 +586,11 @@ Compositor::~Compositor() = default;
 bool Compositor::ok() const { return d->ready; }
 bool Compositor::gpuCapable() const { return runsOnSharedDevice(d->rhi); }
 void Compositor::setGpuEnabled(bool enabled) { d->gpuEnabled = enabled; }
+bool Compositor::colorManagerSet() const { return d->managerSet; }
+
 void Compositor::setColorManager(std::shared_ptr<ColorManager> manager) {
   d->manager = std::move(manager);
+  d->managerSet = true;
   d->workingCache.clear();
   d->inputCache.clear();
 }

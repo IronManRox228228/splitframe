@@ -1,6 +1,7 @@
 #include "render/offscreen.h"
 
 #include "media/gpu_frame.h"
+#include "render/color_manager.h"
 #include "render/gpu_planes.h"
 
 #include <QtGlobal>
@@ -17,6 +18,20 @@ namespace sf::render {
 struct OffscreenRenderer::Impl {
   std::unique_ptr<QRhi> rhi;
   std::unique_ptr<Compositor> compositor; // destroyed before the rhi it uses
+  bool colourTried = false;
+
+  // Same rule as the preview: only documents that ask for colour management load the OpenColorIO
+  // config. Without this, exports and frame grabs silently dropped LUTs and colour spaces.
+  void ensureColour(const TimelineDoc& doc) {
+    if (colourTried || compositor->colorManagerSet()) return;
+    bool uses = false;
+    if (const auto& cm = doc.project.colorManagement; cm && (cm->workingSpace || cm->displayView || cm->outputSpace)) uses = true;
+    for (const Item& it : doc.items)
+      if (it.color) uses = true;
+    if (!uses) return;
+    colourTried = true;
+    if (std::shared_ptr<ColorManager> m = ColorManager::create()) compositor->setColorManager(std::move(m));
+  }
 };
 
 OffscreenRenderer::OffscreenRenderer() : d(std::make_unique<Impl>()) {}
@@ -56,6 +71,7 @@ std::unique_ptr<OffscreenRenderer> OffscreenRenderer::create(QString* error) {
 RenderStats OffscreenRenderer::renderQueued(const TimelineDoc& doc, Frame frame, MediaProvider& media) {
   RenderStats stats;
   QRhiCommandBuffer* cb = nullptr;
+  d->ensureColour(doc);
   if (d->rhi->beginOffscreenFrame(&cb) != QRhi::FrameOpSuccess) return stats;
   stats = d->compositor->render(cb, doc, frame, media);
   d->rhi->endOffscreenFrame();
@@ -86,6 +102,7 @@ float halfToFloat(quint16 bits) {
 // Renders the frame and reads one of the compositor's textures back in the same frame.
 QImage OffscreenRenderer::renderRead(const TimelineDoc& doc, Frame frame, MediaProvider& media, RenderStats* stats, Readback what) {
   QRhiCommandBuffer* cb = nullptr;
+  d->ensureColour(doc);
   if (d->rhi->beginOffscreenFrame(&cb) != QRhi::FrameOpSuccess) return {};
   const RenderStats s = d->compositor->render(cb, doc, frame, media);
   if (stats) *stats = s;
