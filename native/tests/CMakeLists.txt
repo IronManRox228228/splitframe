@@ -248,6 +248,7 @@ sf_add_agent_test(tst_agent_peer_bus)
 sf_add_agent_test(tst_agent_specialists)
 sf_add_agent_test(tst_agent_harness)
 sf_add_agent_test(tst_meterless)
+sf_add_agent_test(tst_llm_wire)
 
 # Footage understanding and indexing tests (M6)
 function(sf_add_index_test name)
