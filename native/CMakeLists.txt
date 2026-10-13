@@ -76,3 +76,6 @@ add_subdirectory(src/index)
 # Copilot in-editor: next-edit suggestions, edit lint engine, branching timelines, and self-review.
 add_subdirectory(src/copilot)
 
+# AI wiring: registers agent / copilot / branch / index commands into an Engine for the GUI, splitframe-cli and MCP.
+add_subdirectory(src/ai)
+

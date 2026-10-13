@@ -17,6 +17,8 @@ public:
   explicit BranchManager(editor::Project* project = nullptr, QObject* parent = nullptr);
 
   void attachProject(editor::Project* project);
+  // Forgets the project and its branches (a different project was opened into the same object): the next attachProject reloads.
+  void detachProject();
   editor::Project* project() const { return project_; }
 
   QString activeBranch() const { return activeBranch_; }

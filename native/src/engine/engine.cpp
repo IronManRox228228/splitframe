@@ -39,7 +39,7 @@ Engine::Engine(QObject* parent) : QObject(parent) {
            false));
   add(spec("engine.commands", "", "engine", false,
            QStringLiteral("List every command with its JSON schema, domain (editor | colour | audio | engine) and whether it mutates the project."),
-           js::obj({{q("domain"), js::choice({q("editor"), q("colour"), q("audio"), q("engine")})}}),
+           js::obj({{q("domain"), js::choice({q("editor"), q("colour"), q("audio"), q("engine"), q("copilot"), q("branch")})}}),
            [](CallContext& c, const QJsonObject& a) { return Result::success(QJsonObject{{q("commands"), c.engine->describe(a.value(q("domain")).toString())}}); },
            false));
 }
@@ -167,6 +167,17 @@ const CommandSpec* Engine::find(const QString& name) const {
   for (const auto& c : commands_)
     if (!c->alias.isEmpty() && c->alias == name) return c.get();
   return nullptr;
+}
+
+bool Engine::wrap(const QString& name, const std::function<Handler(Handler)>& wrapper) {
+  const CommandSpec* found = find(name);
+  if (!found) return false;
+  for (auto& c : commands_)
+    if (c.get() == found) {
+      c->handler = wrapper(std::move(c->handler));
+      return true;
+    }
+  return false;
 }
 
 QJsonArray Engine::describe(const QString& domain) const {

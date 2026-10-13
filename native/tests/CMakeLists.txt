@@ -108,7 +108,7 @@ function(sf_add_app_test name)
     "${CMAKE_SOURCE_DIR}/src/app/colour_page.h"
     ${T_SOURCES})
   target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
-  target_link_libraries(${name} PRIVATE sf_copilot sf_index sf_agent sf_engine sf_editor sf_audio sf_export sf_render sf_media sf_core sf_options Qt6::Test Qt6::Quick Qt6::QuickControls2 Qt6::GuiPrivate Qt6::Network Qt6::Sql ${T_LIBS})
+  target_link_libraries(${name} PRIVATE sf_ai sf_copilot sf_index sf_agent sf_engine sf_editor sf_audio sf_export sf_render sf_media sf_core sf_options Qt6::Test Qt6::Quick Qt6::QuickControls2 Qt6::GuiPrivate Qt6::Network Qt6::Sql ${T_LIBS})
   if(WIN32)
     target_link_libraries(${name} PRIVATE windowsapp.lib)
   endif()
@@ -125,6 +125,7 @@ endfunction()
 
 sf_add_app_test(tst_timeline_view ENV "QT_QPA_PLATFORM=offscreen")
 sf_add_app_test(tst_pages ENV "QT_QPA_PLATFORM=offscreen")
+sf_add_app_test(tst_ai_gui ENV "QT_QPA_PLATFORM=offscreen")
 # re-enable when the copilot UI lands (hackathon H4-H6): tst_copilot_ui.cpp uses Editor members that do not exist yet
 # sf_add_app_test(tst_copilot_ui ENV "QT_QPA_PLATFORM=offscreen")
 
@@ -194,10 +195,10 @@ add_dependencies(tst_export_cli splitframe)
 # Headless engine, local HTTP API, MCP server and splitframe-cli. Loopback servers and child processes only; frame renders are tiny
 # (<= 320x180, software decode) and NVENC is never used.
 function(sf_add_engine_test name)
-  cmake_parse_arguments(T "" "" "SOURCES;DEFS" ${ARGN})
+  cmake_parse_arguments(T "" "" "SOURCES;DEFS;LIBS" ${ARGN})
   qt_add_executable(${name} ${name}.cpp ${T_SOURCES})
   target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
-  target_link_libraries(${name} PRIVATE sf_engine sf_options Qt6::Test Qt6::Network)
+  target_link_libraries(${name} PRIVATE sf_engine sf_options Qt6::Test Qt6::Network ${T_LIBS})
   if(T_DEFS)
     target_compile_definitions(${name} PRIVATE ${T_DEFS})
   endif()
@@ -214,10 +215,13 @@ endfunction()
 
 sf_add_engine_test(tst_engine)
 sf_add_engine_test(tst_api_http)
-sf_add_engine_test(tst_mcp DEFS "SF_APP_EXE=\"$<TARGET_FILE:splitframe>\"" "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")
+sf_add_engine_test(tst_mcp LIBS sf_ai DEFS "SF_APP_EXE=\"$<TARGET_FILE:splitframe>\"" "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")
 add_dependencies(tst_mcp splitframe splitframe-cli)
 sf_add_engine_test(tst_cli DEFS "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")
 add_dependencies(tst_cli splitframe-cli)
+# The AI commands (agent, copilot, branch, index) in every entry point: the CLI, MCP and an attached (GUI-style) session. Mock model only.
+sf_add_engine_test(tst_ai_wire LIBS sf_ai DEFS "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")
+add_dependencies(tst_ai_wire splitframe-cli)
 
 # Agent harness: router, peer bus, specialists, and multi-agent coordinator.
 function(sf_add_agent_test name)

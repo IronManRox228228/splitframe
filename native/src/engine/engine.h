@@ -95,6 +95,8 @@ public:
   // ---- registry ----
   void add(CommandSpec spec);
   const CommandSpec* find(const QString& name) const; // name, Electron alias, or the name with "_" for "."
+  // Replaces a command's handler with wrapper(old handler) (guards, lazy setup). False when there is no such command.
+  bool wrap(const QString& name, const std::function<Handler(Handler)>& wrapper);
   const std::vector<std::unique_ptr<CommandSpec>>& commands() const { return commands_; }
   // [{name, alias, description, domain, mutates, inputSchema}], optionally one domain only.
   QJsonArray describe(const QString& domain = {}) const;

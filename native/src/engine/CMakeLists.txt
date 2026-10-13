@@ -22,7 +22,7 @@ target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_render sf_audio sf
 
 # Console front end: no window, no QML. FFmpeg / OpenColorIO DLLs land next to it like for the app.
 qt_add_executable(splitframe-cli cli/main.cpp)
-target_link_libraries(splitframe-cli PRIVATE sf_engine sf_options)
+target_link_libraries(splitframe-cli PRIVATE sf_ai sf_engine sf_options)
 add_custom_command(TARGET splitframe-cli POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FFMPEG_RUNTIME_DLLS} "$<TARGET_FILE_DIR:splitframe-cli>"
   COMMAND_EXPAND_LISTS)

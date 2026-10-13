@@ -6,13 +6,22 @@
 //   splitframe-cli [--json] render-frame <project> --frame <n> --out <png> [--max-width <px>]
 //   splitframe-cli export <project> --out <file> [export options of splitframe.exe --export]   (key=value progress lines)
 //   splitframe-cli [--json] call <command> [<json args>] [--project <file>]
-//   splitframe-cli [--json] commands [--domain editor|colour|audio|engine]
+//   splitframe-cli [--json] commands [--domain editor|colour|audio|engine|copilot|branch]
 //   splitframe-cli serve [<project>] [--port <n>] [--token-file <path>] [--stdio]
 //   splitframe-cli mcp [<project>]
+//   splitframe-cli [--json] agent "<request>" [--project <file>] [--save | --out <file>] [--mode plan|ask|default|auto]
+//       one request through the router and the specialists; prints their messages, tool calls and the changes made (default mode: auto)
+//
+// call / commands / serve / mcp / agent also carry the AI commands (agent.*, copilot.*, branch.*, index.*). The model comes from
+// SF_LLM_ENDPOINT / SF_LLM_MODEL (default http://127.0.0.1:8080/v1/chat/completions) or, after the subcommand name,
+// --llm-endpoint <url> / --llm-model <name>; SF_LLM_ENDPOINT=mock (or --llm-endpoint mock) is the offline mock, scripted with
+// SF_LLM_MOCK_SCRIPT / --llm-mock-script <json file>. With no model reachable the AI commands answer error code `unavailable`.
 //
 // Output: human text, or with --json one JSON document {"ok":true,"result":...} / {"ok":false,"error":{code,message,details?}}.
 // Exit codes: 0 ok, 1 the command failed (see error.code), 2 bad usage, 3 export cancelled, 4 the project can't be opened / read.
 
+#include "agent/types.h"
+#include "ai/ai_services.h"
 #include "engine/engine.h"
 #include "engine/headless.h"
 #include "export/export_cli.h"
@@ -27,6 +36,7 @@
 
 #include <cstdio>
 #include <functional>
+#include <memory>
 
 using namespace sf;
 using namespace sf::engine;
@@ -50,8 +60,25 @@ QString pretty(const QJsonValue& v) {
   return QString::fromUtf8(QJsonDocument(QJsonArray{v}).toJson(QJsonDocument::Compact));
 }
 
+// Removes "--name <value>" from the arguments (the last one wins); the value, or "" when absent.
+QString takeValue(QStringList& args, const QString& name, bool* found = nullptr) {
+  QString v;
+  if (found) *found = false;
+  for (int i = 0; i < args.size();) {
+    if (args.at(i) == name && i + 1 < args.size()) {
+      v = args.at(i + 1);
+      args.removeAt(i + 1);
+      args.removeAt(i);
+      if (found) *found = true;
+    } else {
+      ++i;
+    }
+  }
+  return v;
+}
+
 int usage(const QString& message) {
-  err(QStringLiteral("error: %1\nusage: splitframe-cli [--json] <info|timeline|apply|render-frame|export|call|commands|serve|mcp> ... (see the header of cli/main.cpp)").arg(message));
+  err(QStringLiteral("error: %1\nusage: splitframe-cli [--json] <info|timeline|apply|render-frame|export|call|commands|serve|mcp|agent> ... (see the header of cli/main.cpp)").arg(message));
   return 2;
 }
 
@@ -125,6 +152,89 @@ QString timelineText(const QJsonObject& t) {
   return lines.join(QLatin1Char('\n'));
 }
 
+// agent "<request>": one turn through the router and specialists on a project.
+int runAgent(Engine& engine, const QStringList& args, bool json) {
+  const Args a = parse(args, {Q("project"), Q("out"), Q("mode")});
+  if (!a.error.isEmpty()) return usage(a.error);
+  if (a.positional.isEmpty()) return usage(QStringLiteral("agent needs a request, e.g. agent \"add a marker at 2 seconds\" --project p.json"));
+  const QString modeText = a.value(Q("mode"), Q("auto"));
+  if (!agent::parseAgentMode(modeText)) return usage(QStringLiteral("--mode must be plan, ask, default or auto"));
+  int code = 0;
+  if (a.has(Q("project"))) {
+    if (!openProject(engine, a.value(Q("project")), json, &code)) return code;
+  } else {
+    engine.createSession();
+  }
+
+  QJsonArray changes;
+  const QMetaObject::Connection conn = QObject::connect(&engine, &Engine::event, &engine, [&changes](const QString& name, const QJsonObject& d, qint64) {
+    if (name == Q("ops.applied"))
+      changes.append(QJsonObject{{Q("label"), d.value(Q("label"))}, {Q("actor"), d.value(Q("actor"))}, {Q("count"), d.value(Q("count"))}, {Q("created"), d.value(Q("created"))}});
+  });
+  Result r = engine.call(Q("agent.turn"), {{Q("message"), a.positional.join(QLatin1Char(' '))}, {Q("mode"), modeText}});
+  QObject::disconnect(conn);
+
+  bool toolFailed = false;
+  if (r.ok) {
+    QJsonObject turn = r.value.toObject();
+    for (const QJsonValue& tv : turn.value(Q("toolResults")).toArray()) {
+      const QJsonValue ok = tv.toObject().value(Q("result")).toObject().value(Q("ok"));
+      if (ok.isBool() && !ok.toBool()) toolFailed = true;
+    }
+    bool saved = false;
+    if (!toolFailed && (a.has(Q("save")) || a.has(Q("out")))) {
+      const Result s = a.has(Q("out")) ? engine.call(Q("project.saveAs"), {{Q("path"), a.value(Q("out"))}}) : engine.call(Q("project.save"));
+      if (!s.ok) return finish(s, json);
+      saved = true;
+    }
+    turn.insert(Q("changes"), changes);
+    turn.insert(Q("saved"), saved);
+    r = Result::success(turn);
+  }
+  const int exitCode = finish(r, json, [](const QJsonObject& t) {
+    QStringList lines;
+    const QJsonObject route = t.value(Q("route")).toObject();
+    QStringList intents;
+    for (const QJsonValue& i : route.value(Q("intents")).toArray()) intents << i.toString();
+    lines << QStringLiteral("mode: %1   routed to: %2%3").arg(t.value(Q("mode")).toString(), route.value(Q("primary")).toString(), intents.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(intents.join(QStringLiteral(", "))));
+    if (t.contains(Q("plan"))) {
+      lines << QStringLiteral("plan: %1").arg(t.value(Q("plan")).toObject().value(Q("goal")).toString());
+      for (const QJsonValue& sv : t.value(Q("plan")).toObject().value(Q("steps")).toArray())
+        lines << QStringLiteral("  - %1: %2").arg(sv.toObject().value(Q("specialist")).toString(), sv.toObject().value(Q("intent")).toString());
+    }
+    const QString response = t.value(Q("response")).toString();
+    if (!response.isEmpty()) lines << QStringLiteral("agent: %1").arg(response);
+    const QJsonArray calls = t.value(Q("toolResults")).toArray();
+    if (!calls.isEmpty()) lines << QStringLiteral("tool calls:");
+    for (const QJsonValue& cv : calls) {
+      const QJsonObject c = cv.toObject();
+      const QJsonObject res = c.value(Q("result")).toObject();
+      QString outcome = QStringLiteral("ok");
+      if (res.contains(Q("ok")) && !res.value(Q("ok")).toBool())
+        outcome = QStringLiteral("FAILED [%1] %2").arg(res.value(Q("error")).toObject().value(Q("code")).toString(), res.value(Q("error")).toObject().value(Q("message")).toString());
+      else if (res.contains(Q("status")))
+        outcome = res.value(Q("status")).toString();
+      lines << QStringLiteral("  %1 %2 -> %3").arg(c.value(Q("name")).toString(), QString::fromUtf8(QJsonDocument(c.value(Q("arguments")).toObject()).toJson(QJsonDocument::Compact)), outcome);
+    }
+    const QJsonArray made = t.value(Q("changes")).toArray();
+    lines << (made.isEmpty() ? QStringLiteral("changes: none") : QStringLiteral("changes:"));
+    for (const QJsonValue& cv : made) {
+      const QJsonObject c = cv.toObject();
+      const int n = c.value(Q("count")).toInt();
+      lines << QStringLiteral("  [%1] %2 (%3 op%4)").arg(c.value(Q("actor")).toString(), c.value(Q("label")).toString()).arg(n).arg(n == 1 ? QString() : QStringLiteral("s"));
+    }
+    const QJsonArray thread = t.value(Q("teamThread")).toArray();
+    if (!thread.isEmpty()) lines << QStringLiteral("team thread:");
+    for (const QJsonValue& mv : thread) {
+      const QJsonObject m = mv.toObject();
+      lines << QStringLiteral("  %1 -> %2 %3 [%4] %5").arg(m.value(Q("from")).toString(), m.value(Q("to")).toString(), m.value(Q("kind")).toString(), m.value(Q("status")).toString(), m.value(Q("note")).toString());
+    }
+    lines << (t.value(Q("saved")).toBool() ? QStringLiteral("saved") : QStringLiteral("not saved (pass --save or --out <file>)"));
+    return lines.join(QLatin1Char('\n'));
+  });
+  return exitCode == 0 && toolFailed ? 1 : exitCode;
+}
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -137,7 +247,8 @@ int main(int argc, char* argv[]) {
   bool json = false;
   json = args.removeAll(Q("--json")) > 0;
   if (args.isEmpty() || args.first() == Q("--help") || args.first() == Q("-h") || args.first() == Q("help")) {
-    out(QStringLiteral("splitframe-cli [--json] <command>\n  info <project> | timeline <project> | apply <project> <ops.json> | render-frame <project> | export <project> | call <command> [json] | commands | serve | mcp\n"
+    out(QStringLiteral("splitframe-cli [--json] <command>\n  info <project> | timeline <project> | apply <project> <ops.json> | render-frame <project> | export <project> | call <command> [json] | commands | serve | mcp | agent \"<request>\"\n"
+                       "AI options: --llm-endpoint <url|mock> --llm-model <name> (or SF_LLM_ENDPOINT / SF_LLM_MODEL).\n"
                        "Exit codes: 0 ok, 1 command failed, 2 usage, 3 export cancelled, 4 project can't be opened."));
     return args.isEmpty() ? 2 : 0;
   }
@@ -147,13 +258,20 @@ int main(int argc, char* argv[]) {
   }
   const QString cmd = args.takeFirst();
 
+  // the model for the AI commands: environment first, flags override
+  ai::AiOptions aiOptions;
+  bool given = false;
+  if (const QString v = takeValue(args, Q("--llm-endpoint"), &given); given) aiOptions.llm.endpoint = v;
+  if (const QString v = takeValue(args, Q("--llm-model"), &given); given) aiOptions.llm.model = v;
+  if (const QString v = takeValue(args, Q("--llm-mock-script"), &given); given) aiOptions.llm.mockScript = v;
+
   if (cmd == Q("export")) {
     if (args.isEmpty()) return usage(QStringLiteral("export needs a project file"));
     QStringList fwd{QStringLiteral("splitframe-cli"), Q("--export"), args.takeFirst()};
     fwd += args;
     return sf::xport::runExportCli(fwd);
   }
-  if (cmd == Q("mcp")) return runMcp(args.value(0));
+  if (cmd == Q("mcp")) return runMcp(args.value(0), ai::engineSetup(aiOptions));
   if (cmd == Q("serve")) {
     const Args a = parse(args, {Q("port"), Q("token-file")});
     if (!a.error.isEmpty()) return usage(a.error);
@@ -162,11 +280,17 @@ int main(int argc, char* argv[]) {
     so.port = static_cast<quint16>(a.value(Q("port"), Q("0")).toUInt());
     so.tokenFile = a.value(Q("token-file"));
     so.stdio = a.has(Q("stdio"));
+    so.setup = ai::engineSetup(aiOptions);
     return runServe(so);
   }
 
   Engine engine;
   int code = 0;
+  std::unique_ptr<ai::AiServices> aiServices;
+  if (cmd == Q("commands") || cmd == Q("call") || cmd == Q("agent")) aiServices = std::make_unique<ai::AiServices>(engine, aiOptions);
+
+  if (cmd == Q("agent")) return runAgent(engine, args, json);
+
   if (cmd == Q("commands")) {
     const Args a = parse(args, {Q("domain")});
     if (!a.error.isEmpty()) return usage(a.error);

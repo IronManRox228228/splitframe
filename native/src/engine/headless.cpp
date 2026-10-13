@@ -28,8 +28,9 @@ bool openInitialProject(Engine& engine, const QString& path) {
 
 } // namespace
 
-int runMcp(const QString& project) {
+int runMcp(const QString& project, const EngineSetup& setup) {
   Engine engine;
+  const std::shared_ptr<void> extras = setup ? setup(engine) : nullptr;
   if (!openInitialProject(engine, project)) return 4;
   StdioTransport io;
   McpServer mcp(engine, [&io](const QJsonObject& o) { io.send(QJsonDocument(o).toJson(QJsonDocument::Compact)); });
@@ -44,6 +45,7 @@ int runMcp(const QString& project) {
 
 int runServe(const ServeOptions& o) {
   Engine engine;
+  const std::shared_ptr<void> extras = o.setup ? o.setup(engine) : nullptr;
   if (!openInitialProject(engine, o.project)) return 4;
   if (o.stdio) {
     JsonRpc rpc(engine);

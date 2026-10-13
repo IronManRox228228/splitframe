@@ -1,3 +1,4 @@
+#include "ai/ai_services.h"
 #include "app/editor.h"
 #include "app/player.h"
 #include "app/pool_image_provider.h"
@@ -42,9 +43,15 @@ int main(int argc, char* argv[]) {
       QGuiApplication::setOrganizationName(QStringLiteral("SplitFrame"));
       QGuiApplication::setApplicationVersion(QStringLiteral(PROJECT_VERSION_STRING));
       QString project;
-      for (int j = 1; j < argc; ++j)
-        if (!QByteArray(argv[j]).startsWith("--")) project = QString::fromLocal8Bit(argv[j]);
-      return sf::engine::runMcp(project);
+      sf::ai::AiOptions ai; // SF_LLM_* from the environment, --llm-endpoint / --llm-model override
+      for (int j = 1; j < argc; ++j) {
+        const QByteArray a(argv[j]);
+        if (a == "--llm-endpoint" && j + 1 < argc) ai.llm.endpoint = QString::fromLocal8Bit(argv[++j]);
+        else if (a == "--llm-model" && j + 1 < argc) ai.llm.model = QString::fromLocal8Bit(argv[++j]);
+        else if (a == "--llm-mock-script" && j + 1 < argc) ai.llm.mockScript = QString::fromLocal8Bit(argv[++j]);
+        else if (!a.startsWith("--")) project = QString::fromLocal8Bit(argv[j]);
+      }
+      return sf::engine::runMcp(project, sf::ai::engineSetup(ai));
     }
   }
   // The compositor samples decoded D3D11 surfaces directly, so Qt Quick has to run on D3D11
@@ -88,7 +95,9 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption recordFpsOpt(QStringLiteral("record-fps"), QStringLiteral("Recording framerate in fps (default 30, clamp to 1..60)."), QStringLiteral("n"));
   const QCommandLineOption recordSecOpt(QStringList{QStringLiteral("record-seconds"), QStringLiteral("record-sec")}, QStringLiteral("Duration in seconds to record (default 0 = record until the app quits)."), QStringLiteral("s"));
   const QCommandLineOption recordDelayOpt(QStringLiteral("record-delay"), QStringLiteral("Seconds to wait after the window first shows before recording starts (default 0)."), QStringLiteral("s"));
-  for (const auto* o : {&apiOpt, &apiPortOpt, &pageOpt}) cli.addOption(*o);
+  const QCommandLineOption llmEndpointOpt(QStringLiteral("llm-endpoint"), QStringLiteral("Chat-completions URL for the agent commands (default: $SF_LLM_ENDPOINT or http://127.0.0.1:8080/v1/chat/completions; \"mock\" for offline)."), QStringLiteral("url"));
+  const QCommandLineOption llmModelOpt(QStringLiteral("llm-model"), QStringLiteral("Model name for the agent commands (default: $SF_LLM_MODEL)."), QStringLiteral("name"));
+  for (const auto* o : {&apiOpt, &apiPortOpt, &pageOpt, &llmEndpointOpt, &llmModelOpt}) cli.addOption(*o);
   for (const auto* o : {&screenshotOpt, &frameOpt, &cpuOpt, &swOpt, &playOpt, &settingsOpt, &recoveryOpt, &selectOpt, &fitOpt,
                         &recordDirOpt, &recordFpsOpt, &recordSecOpt, &recordDelayOpt}) cli.addOption(*o);
   cli.process(app);
@@ -100,6 +109,8 @@ int main(int argc, char* argv[]) {
   sf::app::Editor::Options options;
   options.settingsFile = cli.value(settingsOpt);
   options.recoveryDir = cli.value(recoveryOpt);
+  if (cli.isSet(llmEndpointOpt)) options.ai.llm.endpoint = cli.value(llmEndpointOpt);
+  if (cli.isSet(llmModelOpt)) options.ai.llm.model = cli.value(llmModelOpt);
   sf::app::Editor editor(player, options);
   if (cli.isSet(apiPortOpt)) editor.setApiPort(static_cast<quint16>(cli.value(apiPortOpt).toUInt()));
   if (cli.isSet(apiOpt)) editor.setApiEnabled(true);

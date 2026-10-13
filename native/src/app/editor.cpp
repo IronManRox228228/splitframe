@@ -24,24 +24,29 @@ QString names(const QStringList& list) { return list.size() <= 2 ? list.join(QSt
 
 } // namespace
 
+engine::Engine* Editor::engine() {
+  if (!engine_) {
+    engine_ = std::make_unique<engine::Engine>();
+    engine_->attach(&project_, &pool_);
+    ai_ = std::make_unique<ai::AiServices>(*engine_, aiOptions_);
+  }
+  return engine_.get();
+}
+
 void Editor::setApiEnabled(bool on) {
   if (on == apiEnabled()) return;
   if (!on) {
     api_.reset();
-    apiEngine_.reset();
     toast(QStringLiteral("Local API stopped"));
     emit apiChanged();
     return;
   }
-  apiEngine_ = std::make_unique<engine::Engine>();
-  apiEngine_->attach(&project_, &pool_);
   engine::ApiServer::Options o;
   o.port = apiPort_;
-  api_ = std::make_unique<engine::ApiServer>(*apiEngine_, o);
+  api_ = std::make_unique<engine::ApiServer>(*engine(), o);
   QString err;
   if (!api_->start(&err)) {
     api_.reset();
-    apiEngine_.reset();
     toast(QStringLiteral("Local API failed: %1").arg(err), QStringLiteral("error"));
   } else {
     toast(QStringLiteral("Local API on %1").arg(apiStatus()));
@@ -90,6 +95,7 @@ Editor::Editor(Player& player, const Options& options, QObject* parent)
     recent_.setValue(QStringLiteral("snap"), controller_.snapEnabled());
     recent_.setValue(QStringLiteral("ripple"), controller_.rippleEnabled());
   });
+  aiOptions_ = options.ai;
   connect(&project_, &Project::loaded, this, &Editor::onLoaded);
   connect(&project_, &Project::docChanged, this, &Editor::pushDocument);
   connect(&project_, &Project::assetsChanged, this, &Editor::pushAssets);

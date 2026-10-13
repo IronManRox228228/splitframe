@@ -348,12 +348,16 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
         );
         toolResults.append(QJsonObject{
           {QStringLiteral("call_id"), callId},
+          {QStringLiteral("name"), fnName},
+          {QStringLiteral("arguments"), fnArgs},
           {QStringLiteral("result"), pr.toJson()}
         });
       } else {
         engine::Result cmdRes = executeCommand(fnName, fnArgs, sessionId);
         toolResults.append(QJsonObject{
           {QStringLiteral("call_id"), callId},
+          {QStringLiteral("name"), fnName},
+          {QStringLiteral("arguments"), fnArgs},
           {QStringLiteral("result"), cmdRes.toJson()}
         });
       }

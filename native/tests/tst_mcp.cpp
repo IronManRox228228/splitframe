@@ -1,6 +1,7 @@
 // MCP server over stdio: drives `splitframe.exe --mcp` (and `splitframe-cli mcp`) as a client would.
 
 #include "engine/engine.h"
+#include "ai/ai_services.h"
 #include "engine/mcp.h"
 #include "media_testutil.h"
 
@@ -163,7 +164,10 @@ private slots:
     QVERIFY(c.started());
     handshake(c);
     const QJsonArray tools = c.request(Q("tools/list")).value(Q("result")).toObject().value(Q("tools")).toArray();
-    Engine local;
+    Engine local; // the server registers the AI commands too
+    ai::AiOptions mockAi;
+    mockAi.llm.endpoint = Q("mock");
+    ai::AiServices aiServices(local, mockAi);
     QCOMPARE(tools.size(), static_cast<int>(local.commands().size()));
     QSet<QString> names;
     for (const QJsonValue& v : tools) {
@@ -181,6 +185,16 @@ private slots:
     }
     QCOMPARE(names.size(), tools.size());
     QVERIFY(names.contains(Q("timeline_get")) && names.contains(Q("ops_apply")) && names.contains(Q("export_start")));
+    // the AI commands are tools with their domain metadata
+    QHash<QString, QJsonObject> byName;
+    for (const QJsonValue& v : tools) byName.insert(v.toObject().value(Q("name")).toString(), v.toObject());
+    const auto domainOf = [&](const char* n) { return byName.value(Q(n)).value(Q("_meta")).toObject().value(Q("splitframe/domain")).toString(); };
+    QCOMPARE(domainOf("agent_turn"), Q("engine"));
+    QCOMPARE(domainOf("index_search"), Q("engine"));
+    QCOMPARE(domainOf("copilot_lint_run"), Q("copilot"));
+    QCOMPARE(domainOf("branch_list"), Q("branch"));
+    QVERIFY(byName.value(Q("agent_turn")).value(Q("annotations")).toObject().value(Q("readOnlyHint")).toBool() == false);
+    QVERIFY(byName.value(Q("branch_list")).value(Q("annotations")).toObject().value(Q("readOnlyHint")).toBool());
   }
 
   void editAndReadBack() {
@@ -290,6 +304,12 @@ private slots:
     const QJsonObject r = c.call(Q("engine_ping"));
     QVERIFY(!isError(r));
     QCOMPARE(structured(r).value(Q("engine")).toString(), Q("splitframe"));
+    // the AI commands answer over MCP too (no model needed for these two)
+    const QJsonObject route = c.call(Q("agent_route"), {{Q("message"), Q("colour grade the clip")}});
+    QVERIFY(!isError(route));
+    QCOMPARE(structured(route).value(Q("primary")).toString(), Q("colourist"));
+    const QJsonObject branches = c.call(Q("branch_list"));
+    QVERIFY(!isError(branches));
   }
 };
 

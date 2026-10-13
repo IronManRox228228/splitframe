@@ -1,0 +1,58 @@
+#pragma once
+
+// The one place that decides which LLM the AI commands talk to: endpoint and model from the environment
+// (SF_LLM_ENDPOINT, SF_LLM_MODEL, SF_LLM_TIMEOUT_MS, SF_LLM_MOCK_SCRIPT) or CLI flags, plus the factory that builds the client.
+// makeLlmClient() is the seam where a smarter client (Meterless routing, Zetaris, a VRAM-aware llama-server manager)
+// plugs in later; today it is the plain OpenAI-compatible HttpLlmClient, or the offline MockLlmClient.
+
+#include "agent/llm_client.h"
+
+#include <QString>
+
+#include <memory>
+
+namespace sf::agent {
+
+struct LlmConfig {
+  static constexpr const char* kDefaultEndpoint = "http://127.0.0.1:8080/v1/chat/completions";
+  static constexpr const char* kDefaultModel = "qwythos-9b-v2";
+  static constexpr const char* kMockEndpoint = "mock";
+
+  QString endpoint = QString::fromLatin1(kDefaultEndpoint);
+  QString model = QString::fromLatin1(kDefaultModel);
+  int timeoutMs = 60000;  // one completion request, bounded so nothing hangs
+  int probeMs = 2000;     // reachability check before a turn starts
+  QString mockScript;     // mock only: JSON file scripting the replies (see loadMockScript)
+
+  bool isMock() const { return endpoint.trimmed().compare(QString::fromLatin1(kMockEndpoint), Qt::CaseInsensitive) == 0; }
+
+  // Defaults overridden by SF_LLM_ENDPOINT / SF_LLM_MODEL / SF_LLM_TIMEOUT_MS / SF_LLM_MOCK_SCRIPT.
+  static LlmConfig fromEnvironment();
+};
+
+// Wraps another client and remembers whether the last completions failed (the HTTP client reports failures as {"error": ...}
+// and the specialists carry on with an empty reply), so a turn can be turned into a clean `unavailable` error.
+class RecordingLlmClient : public LlmClient {
+public:
+  explicit RecordingLlmClient(std::shared_ptr<LlmClient> inner) : inner_(std::move(inner)) {}
+  QJsonObject complete(const QString& systemPrompt, const std::vector<ChatMessage>& messages, const QJsonArray& tools = {}, int slotId = -1) override;
+  void clearError() { lastError_.clear(); }
+  const QString& lastError() const { return lastError_; }
+  const std::shared_ptr<LlmClient>& inner() const { return inner_; }
+
+private:
+  std::shared_ptr<LlmClient> inner_;
+  QString lastError_;
+};
+
+// Mock replies from a JSON file: either one reply object {"content": "...", "tool_calls": [...]} used for every request, or
+// {"default": {reply}, "scripted": [{"trigger": "text", "response": {reply}}, ...]}. False (with `error`) on a bad file.
+bool loadMockScript(MockLlmClient& mock, const QString& path, QString* error);
+
+// The seam: builds the client for a configuration. A bad mock script falls back to the default mock reply and sets *error.
+std::shared_ptr<LlmClient> makeLlmClient(const LlmConfig& config, QString* error = nullptr);
+
+// Quick TCP connect to the endpoint's host:port (a few seconds at most); true for the mock. `error` says why not.
+bool probeLlmEndpoint(const LlmConfig& config, QString* error);
+
+} // namespace sf::agent

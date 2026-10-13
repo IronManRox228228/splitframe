@@ -13,6 +13,12 @@ BranchManager::BranchManager(editor::Project* project, QObject* parent)
   if (project) attachProject(project);
 }
 
+void BranchManager::detachProject() {
+  project_ = nullptr;
+  branches_.clear();
+  activeBranch_ = QStringLiteral("main");
+}
+
 void BranchManager::attachProject(editor::Project* project) {
   if (project_ == project && !branches_.empty()) return;
   project_ = project;

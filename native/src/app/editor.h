@@ -4,6 +4,7 @@
 // timeline models, controller, inspector, recent files) and keeps the Player in step with the
 // document. Anything that needs a dialog (save as, unsaved changes) is a signal the QML answers.
 
+#include "ai/ai_services.h"
 #include "app/colour_page.h"
 #include "app/export_controller.h"
 #include "app/mixer_model.h"
@@ -60,6 +61,7 @@ public:
     QString settingsFile;  // ini file instead of the registry (tests, scripted runs)
     QString recoveryDir;   // autosave folder
     int autosaveMs = 20000;
+    ai::AiOptions ai;      // LLM endpoint / model for the agent commands (SF_LLM_* by default)
   };
 
   explicit Editor(Player& player, const Options& options, QObject* parent = nullptr);
@@ -89,6 +91,10 @@ public:
   void setApiEnabled(bool on);
   void setApiPort(quint16 port) { apiPort_ = port; } // before enabling; 0 = any free port
   QString apiStatus() const;
+  // The engine acting on THIS project live (undo history, window), with the agent / copilot / branch / index commands registered.
+  // Created on first use (the API server, a future agent panel); edits it makes carry their actor ("agent:editor", "api", ...).
+  engine::Engine* engine();
+  ai::AiServices* ai() { engine(); return ai_.get(); }
   bool hasSelection() const { return !project_.selection().isEmpty(); }
   int selectionCount() const { return static_cast<int>(project_.selection().size()); }
 
@@ -150,9 +156,11 @@ private:
   bool adoptingPlayhead_ = false;
   bool useProxies_ = false;
   QString proxyKey_;
-  std::unique_ptr<engine::Engine> apiEngine_;
+  std::unique_ptr<engine::Engine> engine_;
+  std::unique_ptr<ai::AiServices> ai_;
   std::unique_ptr<engine::ApiServer> api_;
   quint16 apiPort_ = 0;
+  ai::AiOptions aiOptions_;
 };
 
 } // namespace sf::app
