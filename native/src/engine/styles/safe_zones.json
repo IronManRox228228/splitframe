@@ -1,0 +1,46 @@
+{
+  "source": "approximate, community-measured",
+  "note": "Rects are normalised to the canvas (x, y from the top-left, w, h). Zones are where a platform draws its own UI over the picture; margins are title/action-safe insets as a fraction of each side. severity: violation | warning | info.",
+  "platforms": {
+    "tiktok": {
+      "aspect": "9:16",
+      "zones": [
+        {"name": "right_action_column", "rect": {"x": 0.84, "y": 0.42, "w": 0.16, "h": 0.46}, "severity": "violation"},
+        {"name": "bottom_caption_area", "rect": {"x": 0.0, "y": 0.80, "w": 1.0, "h": 0.20}, "severity": "violation"},
+        {"name": "top_bar", "rect": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 0.09}, "severity": "violation"}
+      ]
+    },
+    "instagram_reels": {
+      "aspect": "9:16",
+      "zones": [
+        {"name": "right_action_column", "rect": {"x": 0.85, "y": 0.48, "w": 0.15, "h": 0.42}, "severity": "violation"},
+        {"name": "bottom_caption_area", "rect": {"x": 0.0, "y": 0.78, "w": 1.0, "h": 0.22}, "severity": "violation"},
+        {"name": "top_bar", "rect": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 0.08}, "severity": "violation"}
+      ]
+    },
+    "youtube_shorts": {
+      "aspect": "9:16",
+      "zones": [
+        {"name": "right_action_column", "rect": {"x": 0.84, "y": 0.45, "w": 0.16, "h": 0.47}, "severity": "violation"},
+        {"name": "bottom_caption_area", "rect": {"x": 0.0, "y": 0.79, "w": 1.0, "h": 0.21}, "severity": "violation"},
+        {"name": "top_bar", "rect": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 0.08}, "severity": "violation"}
+      ]
+    },
+    "youtube": {
+      "aspect": "16:9",
+      "zones": [],
+      "margins": [
+        {"name": "title_safe_90", "inset": 0.05, "severity": "warning"},
+        {"name": "action_safe_93", "inset": 0.035, "severity": "info"}
+      ]
+    },
+    "broadcast_title_safe": {
+      "aspect": "16:9",
+      "zones": [],
+      "margins": [
+        {"name": "title_safe_90", "inset": 0.05, "severity": "violation"},
+        {"name": "action_safe_93", "inset": 0.035, "severity": "info"}
+      ]
+    }
+  }
+}

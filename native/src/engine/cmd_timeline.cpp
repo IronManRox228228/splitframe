@@ -509,11 +509,36 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
     }
   }
 
+  // optional delivery-safety checks (renders frames, so off by default): safety.check entries join the violations / info
+  QJsonValue safety;
+  if (a.value(q("includeSafety")).toBool(false)) {
+    QJsonObject sa{{q("session"), c.session->id}};
+    if (a.contains(q("safetyPlatform"))) sa.insert(q("platform"), a.value(q("safetyPlatform")));
+    if (a.contains(q("safetyChecks"))) sa.insert(q("checks"), a.value(q("safetyChecks")));
+    const Result sr = c.engine->call(q("safety.check"), sa);
+    if (!sr.ok) {
+      notes.append(QStringLiteral("safety skipped: %1").arg(sr.error.message));
+    } else {
+      const QJsonObject so = sr.value.toObject();
+      const auto asRule = [&](const QJsonValue& ev) {
+        const QJsonObject e = ev.toObject();
+        QJsonObject o = violation(e.value(q("kind")).toString().toUtf8().constData(), std::round(e.value(q("startSec")).toDouble() * f), f, e.value(q("measured")), e.value(q("threshold")), e.value(q("message")).toString(), e.value(q("itemId")).toString());
+        if (e.contains(q("fix"))) o.insert(q("fix"), e.value(q("fix")));
+        return o;
+      };
+      for (const QJsonValue& ev : so.value(q("violations")).toArray()) v.append(asRule(ev));
+      for (const QJsonValue& ev : so.value(q("warnings")).toArray()) info.append(asRule(ev));
+      safety = so;
+    }
+  }
+
   QJsonObject limits{{q("toleranceSec"), tol}, {q("minShotSec"), minShotSec}};
   for (const char* k : {"targetDurationSec", "aspect", "maxOffBeatMs"})
     if (a.contains(q(k))) limits.insert(q(k), a.value(q(k)));
-  return Result::success(QJsonObject{{q("pass"), v.isEmpty()}, {q("violations"), v}, {q("trackId"), track}, {q("shots"), static_cast<int>(shots.size())}, {q("cuts"), static_cast<int>(cuts.size())},
-                                     {q("durationSec"), fin(static_cast<double>(docDurationFrames(d)) / f, 1000.0)}, {q("speechSource"), speechSource}, {q("beat"), beat}, {q("limits"), limits}, {q("info"), info}, {q("notes"), notes}});
+  QJsonObject result{{q("pass"), v.isEmpty()}, {q("violations"), v}, {q("trackId"), track}, {q("shots"), static_cast<int>(shots.size())}, {q("cuts"), static_cast<int>(cuts.size())},
+                                     {q("durationSec"), fin(static_cast<double>(docDurationFrames(d)) / f, 1000.0)}, {q("speechSource"), speechSource}, {q("beat"), beat}, {q("limits"), limits}, {q("info"), info}, {q("notes"), notes}};
+  if (!safety.isNull()) result.insert(q("safety"), safety);
+  return Result::success(result);
 }
 
 } // namespace
@@ -548,9 +573,10 @@ void registerTimelineCommands(Engine& e) {
              QStringLiteral("Verify the edit against a delivery spec. Returns {pass, violations[], limits, beat}; each violation is {rule, frame, timeSec, measured, limit, message}. Rules (on the main video track unless trackId): gap (nothing between shots, "
                             "or before the first shot), overlap (shots on one track overlap), flash_frame (the copilot lint rule: a shot under 3 frames or `minShotSec`, default 0.25), duration (the timeline is off `targetDurationSec` by more than `toleranceSec`, default 0.5), "
                             "aspect_canvas (the canvas is not `aspect`, e.g. \"9:16\"), aspect_mismatch (a clip's aspect differs from the canvas by more than 2 % and, with its transform applied, it neither fills the canvas nor is letter / pillarboxed; letter / pillarboxing is reported in `info`, not as a violation), word_clip (a cut lands inside speech, see edit.safeCutPoint), off_beat (only when `maxOffBeatMs` is given "
-                            "and a beat grid exists: a cut is further than that from the nearest beat). ") + gridDoc + QStringLiteral(" Run it before and after a change."),
+                            "and a beat grid exists: a cut is further than that from the nearest beat). With includeSafety=true the safety.check violations (photosensitive flashes, text contrast, platform safe zones; its warnings go to `info`) are added as rules named by their kind and the full result is returned as `safety`; it renders frames, so it is off by default. ") + gridDoc + QStringLiteral(" Run it before and after a change."),
              js::obj({{q("targetDurationSec"), js::number(QString(), 0)}, {q("toleranceSec"), js::number(QString(), 0, 600)}, {q("aspect"), js::str(QStringLiteral("\"16:9\", \"9:16\", \"1:1\" or a ratio like 1.78"))},
                       {q("maxOffBeatMs"), js::number(QString(), 0, 5000)}, {q("minShotSec"), js::number(QString(), 0, 30)}, {q("trackId"), js::str()}, {q("musicItemId"), js::str()},
+                      {q("includeSafety"), js::boolean(QStringLiteral("Also run safety.check (renders frames; default false)"))}, {q("safetyPlatform"), js::str()}, {q("safetyChecks"), js::array(js::str())},
                       {q("beatFrames"), js::array(js::integer())}, {q("downbeatFrames"), js::array(js::integer())}}),
              checkCmd));
 }

@@ -221,6 +221,7 @@ endfunction()
 
 sf_add_engine_test(tst_engine)
 sf_add_engine_test(tst_timeline_analysis)
+sf_add_engine_test(tst_safety)
 sf_add_engine_test(tst_style_library)
 sf_add_engine_test(tst_system_profile LIBS sf_sys)
 sf_add_engine_test(tst_api_http)

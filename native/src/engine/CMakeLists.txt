@@ -13,6 +13,8 @@ add_library(sf_engine STATIC
   cmd_colour.cpp
   cmd_audio.cpp
   cmd_timeline.cpp
+  cmd_safety.cpp
+  safety_analysis.h safety_analysis.cpp
   timeline_analysis.h timeline_analysis.cpp
   cmd_style.cpp
   cmd_system.cpp
@@ -30,7 +32,7 @@ add_library(sf_engine STATIC
 qt_add_resources(sf_engine "sf_engine_styles"
   PREFIX "/sf/style"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/styles"
-  FILES styles/looks.json styles/pacing.json styles/mix.json styles/audio_presets.json)
+  FILES styles/looks.json styles/pacing.json styles/mix.json styles/audio_presets.json styles/safe_zones.json)
 target_include_directories(sf_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_sys sf_jobs sf_render sf_audio sf_media sf_core Qt6::Core Qt6::Gui Qt6::Network PRIVATE sf_options)
 

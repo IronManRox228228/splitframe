@@ -140,6 +140,7 @@ void registerRenderCommands(Engine& e);
 void registerColourCommands(Engine& e);
 void registerAudioCommands(Engine& e);
 void registerTimelineCommands(Engine& e);
+void registerSafetyCommands(Engine& e);
 void registerStyleCommands(Engine& e);
 void registerSystemCommands(Engine& e);
 void registerExportCommands(Engine& e);

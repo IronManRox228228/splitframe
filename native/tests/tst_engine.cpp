@@ -1518,6 +1518,100 @@ private slots:
     QCOMPARE(ok(Q("transition.add"), {{Q("trackId"), track}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 10}}).value(Q("transitionIds")).toArray().size(), 1);
   }
 
+  // safety.check: flashes, text legibility, safe zones. Shapes and text only (no media), tiny renders (64 px wide analysis).
+  void safetyCheck() {
+    const auto fresh = [&](int w, int h) { ok(Q("project.new"), {{Q("name"), Q("Safety")}, {Q("width"), w}, {Q("height"), h}, {Q("fps"), 30}}); };
+    const auto kinds = [](const QJsonArray& a) {
+      QStringList k;
+      for (const QJsonValue& v : a) k << v.toObject().value(Q("kind")).toString();
+      return k;
+    };
+    // `period` frames white (or `fill`), `period` frames black, `count` times; the shape covers `frac` of the canvas width and height
+    const auto flasher = [&](const QString& fill, int period, int count, double frac = 1.0) {
+      for (int i = 0; i < count; ++i)
+        ok(Q("shape.add"), {{Q("shape"), Q("rect")}, {Q("fill"), fill}, {Q("width"), 320 * frac}, {Q("height"), 180 * frac}, {Q("startFrame"), 2 * i * period}, {Q("durationFrames"), period}});
+    };
+    const QJsonObject photo{{Q("checks"), QJsonArray{Q("photosensitive")}}, {Q("analysisWidth"), 64}};
+    {
+      fresh(320, 180);
+      flasher(Q("#ffffff"), 3, 10);
+      const Result probe = raw(Q("safety.check"), photo);
+      if (!probe.ok && probe.error.code == Q("unavailable") && probe.error.message.contains(Q("renderer"))) QSKIP("no D3D11 device for the offscreen renderer");
+      QVERIFY2(probe.ok, qPrintable(probe.error.message));
+      const QJsonObject r = probe.value.toObject();
+      QVERIFY(r.value(Q("summary")).toObject().value(Q("skipped")).toArray().isEmpty());
+      QVERIFY2(kinds(r.value(Q("violations")).toArray()).contains(Q("photosensitive_general_flash")), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
+      QVERIFY(!r.value(Q("pass")).toBool());
+      const QJsonObject v = r.value(Q("violations")).toArray().at(0).toObject();
+      QVERIFY(v.contains(Q("measured")) && v.contains(Q("threshold")) && v.contains(Q("fix")) && v.contains(Q("startSec")) && v.contains(Q("endSec")));
+      const QJsonObject g = r.value(Q("photosensitive")).toObject().value(Q("general")).toObject();
+      QVERIFY(g.value(Q("worstWindow")).toObject().value(Q("flashes")).toInt() > 3);
+      QVERIFY(g.value(Q("flashesPerSecondWindow")).toArray().size() >= 1);
+      // timeline.check carries it only when asked
+      ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+      ok(Q("clip.add"), {{Q("assetId"), firstAsset(Q("video"))}, {Q("startFrame"), 100}}); // timeline.check needs a story track
+      QVERIFY(!ok(Q("timeline.check")).contains(Q("safety")));
+      const QJsonObject tc = ok(Q("timeline.check"), {{Q("includeSafety"), true}, {Q("safetyChecks"), QJsonArray{Q("photosensitive")}}});
+      QVERIFY(tc.contains(Q("safety")));
+      QVERIFY(!tc.value(Q("pass")).toBool());
+      QVERIFY(rulesOf(tc).contains(Q("photosensitive_general_flash")));
+    }
+    { // slow: 15 frames per state is 1 flash a second
+      fresh(320, 180);
+      flasher(Q("#ffffff"), 15, 3);
+      const QJsonObject r = ok(Q("safety.check"), photo);
+      QVERIFY2(r.value(Q("violations")).toArray().isEmpty(), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
+    }
+    { // red
+      fresh(320, 180);
+      flasher(Q("#ff0000"), 3, 10);
+      const QJsonObject r = ok(Q("safety.check"), photo);
+      QVERIFY2(kinds(r.value(Q("violations")).toArray()).contains(Q("photosensitive_red_flash")), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
+    }
+    { // 9 % of the frame flashing: under the area threshold
+      fresh(320, 180);
+      flasher(Q("#ffffff"), 3, 10, 0.3);
+      const QJsonObject r = ok(Q("safety.check"), photo);
+      QVERIFY2(r.value(Q("violations")).toArray().isEmpty(), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
+    }
+    const QJsonObject legib{{Q("checks"), QJsonArray{Q("text_legibility")}}};
+    { // grey on grey fails, white with a stroke on black passes
+      fresh(320, 180);
+      ok(Q("shape.add"), {{Q("shape"), Q("rect")}, {Q("fill"), Q("#808080")}, {Q("width"), 320}, {Q("height"), 180}, {Q("startFrame"), 0}, {Q("durationFrames"), 90}});
+      ok(Q("text.add"), {{Q("text"), Q("grey on grey")}, {Q("startFrame"), 1}, {Q("durationFrames"), 60}, {Q("style"), QJsonObject{{Q("fontSize"), 40}, {Q("color"), Q("#8a8a8a")}}}});
+      const QJsonObject bad = ok(Q("safety.check"), legib);
+      QVERIFY2(kinds(bad.value(Q("violations")).toArray()).contains(Q("text_contrast")), qPrintable(QString::fromUtf8(QJsonDocument(bad).toJson())));
+      const QJsonObject m = bad.value(Q("violations")).toArray().at(0).toObject().value(Q("measured")).toObject();
+      QVERIFY(m.value(Q("ratio")).toDouble() < 1.5);
+      QVERIFY(bad.value(Q("violations")).toArray().at(0).toObject().value(Q("fix")).toObject().contains(Q("options")));
+      fresh(320, 180);
+      ok(Q("text.add"), {{Q("text"), Q("white on black")}, {Q("startFrame"), 0}, {Q("durationFrames"), 60},
+                         {Q("style"), QJsonObject{{Q("fontSize"), 40}, {Q("color"), Q("#ffffff")}, {Q("strokeColor"), Q("#000000")}, {Q("strokeWidth"), 3}}}});
+      const QJsonObject good = ok(Q("safety.check"), legib);
+      QVERIFY2(good.value(Q("violations")).toArray().isEmpty(), qPrintable(QString::fromUtf8(QJsonDocument(good).toJson())));
+      QVERIFY(good.value(Q("warnings")).toArray().isEmpty());
+    }
+    { // too short for six words
+      fresh(320, 180);
+      ok(Q("text.add"), {{Q("text"), Q("one two three four five six")}, {Q("startFrame"), 0}, {Q("durationFrames"), 20}, {Q("style"), QJsonObject{{Q("fontSize"), 30}, {Q("color"), Q("#ffffff")}}}});
+      const QJsonObject r = ok(Q("safety.check"), legib);
+      QVERIFY2(kinds(r.value(Q("warnings")).toArray()).contains(Q("text_duration")), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
+    }
+    { // TikTok: the right column is taken, the centre is free (9:16 defaults to tiktok)
+      fresh(360, 640);
+      ok(Q("text.add"), {{Q("text"), Q("Hello there")}, {Q("startFrame"), 0}, {Q("durationFrames"), 90}, {Q("x"), 150}, {Q("y"), 0}, {Q("style"), QJsonObject{{Q("fontSize"), 30}}}});
+      const QJsonObject zone{{Q("checks"), QJsonArray{Q("safe_zones")}}};
+      const QJsonObject r = ok(Q("safety.check"), zone);
+      QCOMPARE(r.value(Q("platform")).toString(), Q("tiktok"));
+      QVERIFY2(kinds(r.value(Q("violations")).toArray()).contains(Q("safe_zone_overlap")), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
+      fresh(360, 640);
+      ok(Q("text.add"), {{Q("text"), Q("Hello")}, {Q("startFrame"), 0}, {Q("durationFrames"), 90}, {Q("x"), 0}, {Q("y"), -100}, {Q("style"), QJsonObject{{Q("fontSize"), 30}}}});
+      const QJsonObject clean = ok(Q("safety.check"), zone);
+      QVERIFY2(clean.value(Q("violations")).toArray().isEmpty(), qPrintable(QString::fromUtf8(QJsonDocument(clean).toJson())));
+      QCOMPARE(raw(Q("safety.check"), {{Q("platform"), Q("myspace")}}).error.code, Q("invalid_params"));
+    }
+  }
+
 };
 
 QTEST_MAIN(TstEngine)

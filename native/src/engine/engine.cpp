@@ -29,6 +29,7 @@ Engine::Engine(QObject* parent) : QObject(parent) {
   registerColourCommands(*this);
   registerAudioCommands(*this);
   registerTimelineCommands(*this);
+  registerSafetyCommands(*this);
   registerStyleCommands(*this);
   registerSystemCommands(*this);
   registerExportCommands(*this);
