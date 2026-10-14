@@ -1,0 +1,459 @@
+#include "engine/style_library.h"
+
+#include "engine/jschema.h"
+
+#include <QFile>
+#include <QJsonDocument>
+#include <QRegularExpression>
+
+#include <algorithm>
+#include <cmath>
+#include <set>
+
+namespace sf::engine::style {
+
+namespace {
+
+QString q(const char* s) { return QString::fromLatin1(s); }
+
+// ---------------------------------------------------------------- loading
+
+struct Library {
+  std::vector<Look> looks;
+  std::vector<PacingProfile> pacing;
+  std::vector<MixProfile> mix;
+  QJsonObject raw[3]; // looks, pacing, mix as parsed (empty on a parse error)
+  QStringList errors; // resource could not be read or parsed
+};
+
+const char* const kFiles[3] = {"looks", "pacing", "mix"};
+const char* const kKinds[3] = {"look", "pacing", "mix"};
+
+double numOr(const QJsonObject& o, const char* key, double dflt) { return o.contains(q(key)) ? o.value(q(key)).toDouble(dflt) : dflt; }
+
+Look parseLook(const QJsonObject& o) {
+  Look l;
+  l.name = o.value(q("name")).toString();
+  l.description = o.value(q("description")).toString();
+  for (const QJsonValue& t : o.value(q("tags")).toArray()) l.tags << t.toString();
+  l.params = o.value(q("params")).toObject();
+  l.grade = gradeFromJson(l.params);
+  l.guardsJson = o.value(q("guards")).toObject();
+  l.guards = guardsFromJson(l.guardsJson, {});
+  return l;
+}
+
+PacingProfile parsePacing(const QJsonObject& o) {
+  PacingProfile p;
+  p.name = o.value(q("name")).toString();
+  p.description = o.value(q("description")).toString();
+  const QJsonObject asl = o.value(q("aslSec")).toObject();
+  p.aslMin = asl.value(q("min")).toDouble();
+  p.aslMax = asl.value(q("max")).toDouble();
+  p.cutsOnBeatMinPct = o.value(q("cutsOnBeatMinPct")).toDouble();
+  p.hookMaxSec = o.value(q("hookMaxSec")).toDouble();
+  p.minShotSec = o.value(q("minShotSec")).toDouble();
+  p.maxShotSec = o.value(q("maxShotSec")).toDouble();
+  return p;
+}
+
+MixProfile parseMix(const QJsonObject& o) {
+  MixProfile m;
+  m.name = o.value(q("name")).toString();
+  m.description = o.value(q("description")).toString();
+  m.targetLufs = o.value(q("targetLufs")).toDouble(m.targetLufs);
+  m.toleranceLu = o.value(q("toleranceLu")).toDouble(m.toleranceLu);
+  m.truePeakCeilingDb = o.value(q("truePeakCeilingDb")).toDouble(m.truePeakCeilingDb);
+  m.duckMarginDb = o.value(q("duckMarginDb")).toDouble(m.duckMarginDb);
+  m.attackMs = o.value(q("attackMs")).toDouble(m.attackMs);
+  m.releaseMs = o.value(q("releaseMs")).toDouble(m.releaseMs);
+  if (o.contains(q("altTargetLufs"))) m.altTargetLufs = o.value(q("altTargetLufs")).toDouble();
+  return m;
+}
+
+Library load() {
+  Library l;
+  for (int k = 0; k < 3; ++k) {
+    QFile f(QStringLiteral(":/sf/style/%1.json").arg(q(kFiles[k])));
+    if (!f.open(QIODevice::ReadOnly)) {
+      l.errors << QStringLiteral("%1.json: not compiled into the resources").arg(q(kFiles[k]));
+      continue;
+    }
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+      l.errors << QStringLiteral("%1.json: %2 (offset %3)").arg(q(kFiles[k]), err.errorString()).arg(err.offset);
+      continue;
+    }
+    l.raw[k] = doc.object();
+    for (const QJsonValue& v : l.raw[k].value(q("items")).toArray()) {
+      const QJsonObject o = v.toObject();
+      if (k == 0) l.looks.push_back(parseLook(o));
+      else if (k == 1) l.pacing.push_back(parsePacing(o));
+      else l.mix.push_back(parseMix(o));
+    }
+  }
+  return l;
+}
+
+const Library& lib() {
+  static const Library l = load();
+  return l;
+}
+
+// ---------------------------------------------------------------- schema pieces
+
+QJsonObject trio(double lo, double hi) {
+  return js::obj({{q("master"), js::number(QString(), lo, hi)}, {q("r"), js::number(QString(), lo, hi)}, {q("g"), js::number(QString(), lo, hi)}, {q("b"), js::number(QString(), lo, hi)}});
+}
+
+QJsonObject primariesSchema() {
+  return js::obj({{q("exposure"), js::number(QStringLiteral("stops"), -4, 4)},
+                  {q("temperature"), js::number(QStringLiteral("-1 cool .. +1 warm"), -1, 1)},
+                  {q("tint"), js::number(QStringLiteral("-1 green .. +1 magenta"), -1, 1)},
+                  {q("contrast"), js::number(QStringLiteral("0..2, 1 = none"), 0, 2)},
+                  {q("pivot"), js::number(QStringLiteral("linear, 0.18 = mid grey"), 0.001, 10)},
+                  {q("saturation"), js::number(QStringLiteral("0..2, 1 = none"), 0, 2)},
+                  {q("lift"), trio(-0.5, 0.5)},
+                  {q("gamma"), trio(0.2, 5)},
+                  {q("gain"), trio(0, 4)},
+                  {q("offset"), js::obj({{q("r"), js::number(QString(), -1, 1)}, {q("g"), js::number(QString(), -1, 1)}, {q("b"), js::number(QString(), -1, 1)}})}});
+}
+
+QJsonObject nonEmptyStr(const QString& desc = {}) {
+  QJsonObject o = js::str(desc);
+  o.insert(q("minLength"), 1);
+  return o;
+}
+
+QJsonObject nonEmptyItems(QJsonObject arr) {
+  arr.insert(q("minItems"), 1);
+  return arr;
+}
+
+QJsonObject guardsSchema() {
+  QJsonObject band = js::array(js::number(QString(), 0, 360), QStringLiteral("[min, max] vectorscope degrees the mean skin hue must stay inside (skin line 123)"));
+  band.insert(q("minItems"), 2);
+  band.insert(q("maxItems"), 2);
+  return js::obj({{q("maxChromaP95"), js::number(QStringLiteral("display chroma p95 after the grade"), 0, 1)},
+                  {q("maxGamutLimitPct"), js::number(QStringLiteral("percent of pixels at HSV saturation >= 0.95"), 0, 100)},
+                  {q("maxLiftMaster"), js::number(QStringLiteral("shadow lift of the grade"), 0, 0.5)},
+                  {q("blacksCrushedIncrease"), js::number(QStringLiteral("percentage points"), 0, 100)},
+                  {q("highlightsClippedIncrease"), js::number(QStringLiteral("percentage points"), 0, 100)},
+                  {q("skinHueShiftDeg"), js::number(QStringLiteral("degrees"), 0, 180)},
+                  {q("skinMinPct"), js::number(QStringLiteral("percent of pixels"), 0, 100)},
+                  {q("exposureShiftStops"), js::number(QStringLiteral("stops beyond the look's own exposure change"), 0, 10)},
+                  {q("skinHueBandDeg"), band}});
+}
+
+} // namespace
+
+LookGuards guardsFromJson(const QJsonObject& g, LookGuards b) {
+  b.maxChromaP95 = numOr(g, "maxChromaP95", b.maxChromaP95);
+  b.maxGamutLimitPct = numOr(g, "maxGamutLimitPct", b.maxGamutLimitPct);
+  b.maxLiftMaster = numOr(g, "maxLiftMaster", b.maxLiftMaster);
+  b.blacksCrushedIncrease = numOr(g, "blacksCrushedIncrease", b.blacksCrushedIncrease);
+  b.highlightsClippedIncrease = numOr(g, "highlightsClippedIncrease", b.highlightsClippedIncrease);
+  b.skinHueShiftDeg = numOr(g, "skinHueShiftDeg", b.skinHueShiftDeg);
+  b.skinMinPct = numOr(g, "skinMinPct", b.skinMinPct);
+  b.exposureShiftStops = numOr(g, "exposureShiftStops", b.exposureShiftStops);
+  const QJsonArray band = g.value(q("skinHueBandDeg")).toArray();
+  if (band.size() == 2) {
+    b.skinBandMin = band.at(0).toDouble(b.skinBandMin);
+    b.skinBandMax = band.at(1).toDouble(b.skinBandMax);
+  }
+  return b;
+}
+
+// ---------------------------------------------------------------- library access
+
+const std::vector<Look>& looks() { return lib().looks; }
+const std::vector<PacingProfile>& pacings() { return lib().pacing; }
+const std::vector<MixProfile>& mixes() { return lib().mix; }
+
+const Look* findLook(const QString& name) {
+  for (const Look& l : looks())
+    if (l.name == name) return &l;
+  return nullptr;
+}
+const PacingProfile* findPacing(const QString& name) {
+  for (const PacingProfile& p : pacings())
+    if (p.name == name) return &p;
+  return nullptr;
+}
+const MixProfile* findMix(const QString& name) {
+  for (const MixProfile& m : mixes())
+    if (m.name == name) return &m;
+  return nullptr;
+}
+
+QStringList lookNames() {
+  QStringList n;
+  for (const Look& l : looks()) n << l.name;
+  return n;
+}
+QStringList pacingNames() {
+  QStringList n;
+  for (const PacingProfile& p : pacings()) n << p.name;
+  return n;
+}
+QStringList mixNames() {
+  QStringList n;
+  for (const MixProfile& m : mixes()) n << m.name;
+  return n;
+}
+
+QJsonObject toJson(const Look& l) {
+  const LookGuards& g = l.guards;
+  QJsonArray tags;
+  for (const QString& t : l.tags) tags.append(t);
+  return QJsonObject{{q("name"), l.name}, {q("description"), l.description}, {q("tags"), tags}, {q("params"), l.params},
+                     {q("grade"), sf::toJson(l.grade)},
+                     {q("guards"), QJsonObject{{q("maxChromaP95"), g.maxChromaP95}, {q("maxGamutLimitPct"), g.maxGamutLimitPct}, {q("maxLiftMaster"), g.maxLiftMaster},
+                                               {q("blacksCrushedIncrease"), g.blacksCrushedIncrease}, {q("highlightsClippedIncrease"), g.highlightsClippedIncrease},
+                                               {q("skinHueShiftDeg"), g.skinHueShiftDeg}, {q("skinMinPct"), g.skinMinPct}, {q("exposureShiftStops"), g.exposureShiftStops},
+                                               {q("skinHueBandDeg"), QJsonArray{g.skinBandMin, g.skinBandMax}}}}};
+}
+
+QJsonObject toJson(const PacingProfile& p) {
+  return QJsonObject{{q("name"), p.name}, {q("description"), p.description}, {q("aslSec"), QJsonObject{{q("min"), p.aslMin}, {q("max"), p.aslMax}}}, {q("cutsOnBeatMinPct"), p.cutsOnBeatMinPct},
+                     {q("hookMaxSec"), p.hookMaxSec}, {q("minShotSec"), p.minShotSec}, {q("maxShotSec"), p.maxShotSec}};
+}
+
+QJsonObject toJson(const MixProfile& m) {
+  QJsonObject o{{q("name"), m.name}, {q("description"), m.description}, {q("targetLufs"), m.targetLufs}, {q("toleranceLu"), m.toleranceLu}, {q("truePeakCeilingDb"), m.truePeakCeilingDb},
+                {q("duckMarginDb"), m.duckMarginDb}, {q("attackMs"), m.attackMs}, {q("releaseMs"), m.releaseMs}, {q("minSpeechMarginDb"), m.minSpeechMarginDb()}};
+  if (m.altTargetLufs) o.insert(q("altTargetLufs"), *m.altTargetLufs);
+  return o;
+}
+
+QJsonObject listJson(const QString& kind) {
+  QJsonArray items;
+  QStringList names;
+  if (kind == QLatin1String("look")) {
+    for (const Look& l : looks()) { items.append(toJson(l)); names << l.name; }
+  } else if (kind == QLatin1String("pacing")) {
+    for (const PacingProfile& p : pacings()) { items.append(toJson(p)); names << p.name; }
+  } else {
+    for (const MixProfile& m : mixes()) { items.append(toJson(m)); names << m.name; }
+  }
+  return QJsonObject{{q("kind"), kind}, {q("names"), QJsonArray::fromStringList(names)}, {q("items"), items}, {q("schema"), kind == QLatin1String("look") ? lookSchema() : kind == QLatin1String("pacing") ? pacingSchema() : mixSchema()}};
+}
+
+// ---------------------------------------------------------------- schemas
+
+QJsonObject lookSchema() {
+  return js::obj({{q("name"), nonEmptyStr()}, {q("description"), nonEmptyStr()}, {q("tags"), js::array(js::str())}, {q("params"), primariesSchema()}, {q("guards"), guardsSchema()}}, {q("name"), q("description"), q("params")});
+}
+
+QJsonObject pacingSchema() {
+  return js::obj({{q("name"), nonEmptyStr()},
+                  {q("description"), nonEmptyStr()},
+                  {q("aslSec"), js::obj({{q("min"), js::number(QString(), 0.05, 600)}, {q("max"), js::number(QString(), 0.05, 600)}}, {q("min"), q("max")})},
+                  {q("cutsOnBeatMinPct"), js::number(QStringLiteral("percent of cuts within +-2 frames of a beat; 0 = not checked"), 0, 100)},
+                  {q("hookMaxSec"), js::number(QStringLiteral("the first cut comes within this"), 0.1, 600)},
+                  {q("minShotSec"), js::number(QString(), 0.04, 60)},
+                  {q("maxShotSec"), js::number(QString(), 0.1, 3600)}},
+                 {q("name"), q("description"), q("aslSec"), q("cutsOnBeatMinPct"), q("hookMaxSec"), q("minShotSec"), q("maxShotSec")});
+}
+
+QJsonObject mixSchema() {
+  return js::obj({{q("name"), nonEmptyStr()},
+                  {q("description"), nonEmptyStr()},
+                  {q("targetLufs"), js::number(QStringLiteral("integrated loudness target"), -40, -5)},
+                  {q("toleranceLu"), js::number(QString(), 0, 5)},
+                  {q("truePeakCeilingDb"), js::number(QStringLiteral("dBTP"), -9, 0)},
+                  {q("duckMarginDb"), js::number(QStringLiteral("speech over music while speech plays"), 1, 30)},
+                  {q("attackMs"), js::number(QString(), 1, 2000)},
+                  {q("releaseMs"), js::number(QString(), 1, 5000)},
+                  {q("altTargetLufs"), js::number(QStringLiteral("an alternative standard's target"), -40, -5)}},
+                 {q("name"), q("description"), q("targetLufs"), q("toleranceLu"), q("truePeakCeilingDb"), q("duckMarginDb"), q("attackMs"), q("releaseMs")});
+}
+
+QJsonObject resourceSchema(const QString& kind) {
+  const QJsonObject item = kind == QLatin1String("look") ? lookSchema() : kind == QLatin1String("pacing") ? pacingSchema() : mixSchema();
+  return js::obj({{q("version"), js::integer(QString(), 1, 1)}, {q("kind"), js::choice({kind})}, {q("items"), nonEmptyItems(js::array(item))}}, {q("version"), q("kind"), q("items")});
+}
+
+QJsonObject specSchema() {
+  QJsonObject s = js::obj({{q("look"), js::choice(lookNames(), QStringLiteral("A look from style.list kind=look; omit to leave the grade alone"))},
+                           {q("intensity"), js::number(QStringLiteral("How much of the look, 0 (none) .. 1 (full); default 1"), 0, 1)},
+                           {q("warmth"), js::number(QStringLiteral("Temperature offset added to the look, small: -0.2 (cooler) .. 0.2 (warmer)"), -kMaxWarmthOffset, kMaxWarmthOffset)},
+                           {q("contrast"), js::number(QStringLiteral("Contrast offset: the look's contrast is multiplied by 1 + this, -0.2 .. 0.2"), -kMaxContrastOffset, kMaxContrastOffset)},
+                           {q("saturation"), js::number(QStringLiteral("Saturation offset: multiplied by 1 + this, -0.2 .. 0.2"), -kMaxSaturationOffset, kMaxSaturationOffset)},
+                           {q("pacing"), js::choice(pacingNames(), QStringLiteral("A pacing profile from style.list kind=pacing, checked with pacing.check"))},
+                           {q("mix"), js::choice(mixNames(), QStringLiteral("A mix profile from style.list kind=mix, applied with mix.applyProfile"))}});
+  s.insert(q("title"), q("SplitFrame style spec"));
+  s.insert(q("description"),
+           QStringLiteral("What a model fills in to choose a style. Every field is optional and bounded; the numbers behind each name come from the library, not from the model. look + intensity + warmth / contrast / saturation go to look.apply, "
+                          "pacing to pacing.check, mix to mix.applyProfile."));
+  return s;
+}
+
+// ---------------------------------------------------------------- validation
+
+QStringList validateLibrary() {
+  QStringList errors = lib().errors;
+  static const QRegularExpression nameRx(QStringLiteral("^[a-z0-9]+(-[a-z0-9]+)*$"));
+  for (int k = 0; k < 3; ++k) {
+    const QString file = q(kFiles[k]) + QStringLiteral(".json");
+    const QJsonObject& raw = lib().raw[k];
+    if (raw.isEmpty()) continue;
+    if (const auto e = js::validate(raw, resourceSchema(q(kKinds[k])), file)) errors << *e;
+    std::set<QString> seen;
+    for (const QJsonValue& v : raw.value(q("items")).toArray()) {
+      const QString name = v.toObject().value(q("name")).toString();
+      if (!nameRx.match(name).hasMatch()) errors << QStringLiteral("%1: \"%2\" is not a lowercase-hyphen name").arg(file, name);
+      if (!seen.insert(name).second) errors << QStringLiteral("%1: duplicate name \"%2\"").arg(file, name);
+    }
+  }
+  for (const Look& l : looks()) {
+    if (l.grade == PrimaryGrade{}) errors << QStringLiteral("look %1: its params change nothing").arg(l.name);
+    if (l.guards.skinBandMin >= l.guards.skinBandMax) errors << QStringLiteral("look %1: skinHueBandDeg is empty").arg(l.name);
+    if (!(l.guards.skinBandMin <= 123.0 && 123.0 <= l.guards.skinBandMax)) errors << QStringLiteral("look %1: skinHueBandDeg does not contain the skin line (123)").arg(l.name);
+    if (shadowLift(l.grade) > l.guards.maxLiftMaster + 1e-9) errors << QStringLiteral("look %1: its own shadow lift %2 breaks its maxLiftMaster %3").arg(l.name).arg(shadowLift(l.grade)).arg(l.guards.maxLiftMaster);
+  }
+  for (const PacingProfile& p : pacings()) {
+    if (p.aslMin > p.aslMax) errors << QStringLiteral("pacing %1: aslSec.min > aslSec.max").arg(p.name);
+    if (p.minShotSec > p.aslMin) errors << QStringLiteral("pacing %1: minShotSec is above the shortest allowed average shot").arg(p.name);
+    if (p.maxShotSec < p.aslMax) errors << QStringLiteral("pacing %1: maxShotSec is under the longest allowed average shot").arg(p.name);
+    if (p.hookMaxSec > p.maxShotSec) errors << QStringLiteral("pacing %1: hookMaxSec is beyond maxShotSec").arg(p.name);
+  }
+  for (const MixProfile& m : mixes()) {
+    if (m.altTargetLufs && std::fabs(*m.altTargetLufs - m.targetLufs) > 3.0) errors << QStringLiteral("mix %1: altTargetLufs is more than 3 LU from the target").arg(m.name);
+    if (m.truePeakCeilingDb > -0.1) errors << QStringLiteral("mix %1: the true-peak ceiling leaves no headroom").arg(m.name);
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------- looks
+
+namespace {
+
+double clampD(double v, double lo, double hi) { return std::clamp(v, lo, hi); }
+double lerp(double neutral, double v, double t) { return neutral + (v - neutral) * t; }
+
+Rgb3 mapRgb(const Rgb3& a, const Rgb3& b, double (*f)(double, double)) { return {f(a.r, b.r), f(a.g, b.g), f(a.b, b.b)}; }
+double add(double a, double b) { return a + b; }
+double mul(double a, double b) { return a * b; }
+
+void readTrio(const QJsonObject& o, double neutral, double& master, Rgb3& rgb) {
+  master = numOr(o, "master", neutral);
+  rgb = {numOr(o, "r", neutral), numOr(o, "g", neutral), numOr(o, "b", neutral)};
+}
+
+Rgb3 clampRgb(Rgb3 c, double lo, double hi) { return {clampD(c.r, lo, hi), clampD(c.g, lo, hi), clampD(c.b, lo, hi)}; }
+
+PrimaryGrade clampGrade(PrimaryGrade g) {
+  g.exposure = clampD(g.exposure, -4, 4);
+  g.temperature = clampD(g.temperature, -1, 1);
+  g.tint = clampD(g.tint, -1, 1);
+  g.contrast = clampD(g.contrast, 0, 2);
+  g.pivot = clampD(g.pivot, 0.001, 10);
+  g.saturation = clampD(g.saturation, 0, 2);
+  g.liftMaster = clampD(g.liftMaster, -0.5, 0.5);
+  g.lift = clampRgb(g.lift, -0.5, 0.5);
+  g.gammaMaster = clampD(g.gammaMaster, 0.2, 5);
+  g.gamma = clampRgb(g.gamma, 0.2, 5);
+  g.gainMaster = clampD(g.gainMaster, 0, 4);
+  g.gain = clampRgb(g.gain, 0, 4);
+  g.offset = clampRgb(g.offset, -1, 1);
+  return g;
+}
+
+} // namespace
+
+PrimaryGrade gradeFromJson(const QJsonObject& p) {
+  PrimaryGrade g;
+  g.exposure = numOr(p, "exposure", 0);
+  g.temperature = numOr(p, "temperature", 0);
+  g.tint = numOr(p, "tint", 0);
+  g.contrast = numOr(p, "contrast", 1);
+  g.pivot = numOr(p, "pivot", 0.18);
+  g.saturation = numOr(p, "saturation", 1);
+  readTrio(p.value(q("lift")).toObject(), 0, g.liftMaster, g.lift);
+  readTrio(p.value(q("gamma")).toObject(), 1, g.gammaMaster, g.gamma);
+  readTrio(p.value(q("gain")).toObject(), 1, g.gainMaster, g.gain);
+  const QJsonObject off = p.value(q("offset")).toObject();
+  g.offset = {numOr(off, "r", 0), numOr(off, "g", 0), numOr(off, "b", 0)};
+  return clampGrade(g);
+}
+
+PrimaryGrade scaleGrade(const PrimaryGrade& g, double intensity) {
+  const double t = clampD(intensity, 0, 1);
+  PrimaryGrade o;
+  o.exposure = lerp(0, g.exposure, t);
+  o.temperature = lerp(0, g.temperature, t);
+  o.tint = lerp(0, g.tint, t);
+  o.contrast = lerp(1, g.contrast, t);
+  o.pivot = g.pivot;
+  o.saturation = lerp(1, g.saturation, t);
+  o.liftMaster = lerp(0, g.liftMaster, t);
+  o.lift = {lerp(0, g.lift.r, t), lerp(0, g.lift.g, t), lerp(0, g.lift.b, t)};
+  o.gammaMaster = lerp(1, g.gammaMaster, t);
+  o.gamma = {lerp(1, g.gamma.r, t), lerp(1, g.gamma.g, t), lerp(1, g.gamma.b, t)};
+  o.gainMaster = lerp(1, g.gainMaster, t);
+  o.gain = {lerp(1, g.gain.r, t), lerp(1, g.gain.g, t), lerp(1, g.gain.b, t)};
+  o.offset = {lerp(0, g.offset.r, t), lerp(0, g.offset.g, t), lerp(0, g.offset.b, t)};
+  return o;
+}
+
+PrimaryGrade layerGrade(const PrimaryGrade& base, const PrimaryGrade& d) {
+  PrimaryGrade o = base;
+  o.exposure = base.exposure + d.exposure;
+  o.temperature = base.temperature + d.temperature;
+  o.tint = base.tint + d.tint;
+  o.contrast = base.contrast * d.contrast;
+  o.saturation = base.saturation * d.saturation;
+  o.liftMaster = base.liftMaster + d.liftMaster;
+  o.lift = mapRgb(base.lift, d.lift, add);
+  o.gammaMaster = base.gammaMaster * d.gammaMaster;
+  o.gamma = mapRgb(base.gamma, d.gamma, mul);
+  o.gainMaster = base.gainMaster * d.gainMaster;
+  o.gain = mapRgb(base.gain, d.gain, mul);
+  o.offset = mapRgb(base.offset, d.offset, add);
+  return clampGrade(o);
+}
+
+PrimaryGrade applyOffsets(PrimaryGrade g, const SpecOffsets& o) {
+  g.temperature += clampD(o.warmth, -kMaxWarmthOffset, kMaxWarmthOffset);
+  g.contrast *= 1.0 + clampD(o.contrast, -kMaxContrastOffset, kMaxContrastOffset);
+  g.saturation *= 1.0 + clampD(o.saturation, -kMaxSaturationOffset, kMaxSaturationOffset);
+  return clampGrade(g);
+}
+
+PrimaryGrade proposeLook(const Look& look, double intensity, const SpecOffsets& offsets, const std::optional<PrimaryGrade>& existing) {
+  const PrimaryGrade delta = applyOffsets(scaleGrade(look.grade, intensity), offsets);
+  return existing ? layerGrade(*existing, delta) : clampGrade(delta);
+}
+
+double shadowLift(const PrimaryGrade& g) { return g.liftMaster + std::max({0.0, g.lift.r, g.lift.g, g.lift.b}); }
+
+// ---------------------------------------------------------------- pacing
+
+std::vector<PacingViolation> checkPacing(const PacingProfile& p, const tl::ShotStats& s, std::optional<double> beatSharePct, double fps) {
+  std::vector<PacingViolation> v;
+  if (s.shotCount == 0) return v;
+  if (s.aslSec < p.aslMin)
+    v.push_back({q("asl_too_fast"), s.aslSec, p.aslMin, std::nullopt, QStringLiteral("Shots average %1 s, under the %2 s this profile wants: slow the cutting (longer shots, fewer cuts).").arg(s.aslSec, 0, 'f', 2).arg(p.aslMin, 0, 'f', 2)});
+  if (s.aslSec > p.aslMax)
+    v.push_back({q("asl_too_slow"), s.aslSec, p.aslMax, std::nullopt, QStringLiteral("Shots average %1 s, over the %2 s this profile allows: tighten the cutting.").arg(s.aslSec, 0, 'f', 2).arg(p.aslMax, 0, 'f', 2)});
+  const double hook = s.firstCutSec >= 0 ? s.firstCutSec : s.durationSec;
+  if (hook > p.hookMaxSec)
+    v.push_back({q("hook"), hook, p.hookMaxSec, std::nullopt,
+                 s.firstCutSec >= 0 ? QStringLiteral("The first cut comes at %1 s, after the %2 s hook limit.").arg(hook, 0, 'f', 2).arg(p.hookMaxSec, 0, 'f', 2)
+                                    : QStringLiteral("There is no cut in %1 s; this profile wants the first cut within %2 s.").arg(hook, 0, 'f', 2).arg(p.hookMaxSec, 0, 'f', 2)});
+  if (p.cutsOnBeatMinPct > 0 && beatSharePct && !s.cuts.empty() && *beatSharePct < p.cutsOnBeatMinPct)
+    v.push_back({q("beat_share"), *beatSharePct, p.cutsOnBeatMinPct, std::nullopt,
+                 QStringLiteral("%1% of the cuts land on a beat, under the %2% this profile wants. edit.snapToBeats proposes the fix.").arg(*beatSharePct, 0, 'f', 0).arg(p.cutsOnBeatMinPct, 0, 'f', 0)});
+  for (const tl::ShortShot& sh : s.shortest) {
+    const double sec = fps > 0 ? static_cast<double>(sh.length) / fps : 0;
+    if (sec < p.minShotSec)
+      v.push_back({q("min_shot"), sec, p.minShotSec, sh.start, QStringLiteral("Shot %1 runs %2 s, under the %3 s minimum.").arg(sh.itemId).arg(sec, 0, 'f', 2).arg(p.minShotSec, 0, 'f', 2)});
+  }
+  if (s.maxSec > p.maxShotSec)
+    v.push_back({q("max_shot"), s.maxSec, p.maxShotSec, std::nullopt, QStringLiteral("The longest shot runs %1 s, over the %2 s limit: cut away or trim it.").arg(s.maxSec, 0, 'f', 2).arg(p.maxShotSec, 0, 'f', 2)});
+  return v;
+}
+
+} // namespace sf::engine::style

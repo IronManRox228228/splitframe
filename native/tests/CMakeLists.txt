@@ -216,6 +216,8 @@ function(sf_add_engine_test name)
 endfunction()
 
 sf_add_engine_test(tst_engine)
+sf_add_engine_test(tst_timeline_analysis)
+sf_add_engine_test(tst_style_library)
 sf_add_engine_test(tst_api_http)
 sf_add_engine_test(tst_mcp LIBS sf_ai DEFS "SF_APP_EXE=\"$<TARGET_FILE:splitframe>\"" "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")
 add_dependencies(tst_mcp splitframe splitframe-cli)

@@ -12,6 +12,10 @@ add_library(sf_engine STATIC
   cmd_render.cpp
   cmd_colour.cpp
   cmd_audio.cpp
+  cmd_timeline.cpp
+  timeline_analysis.h timeline_analysis.cpp
+  cmd_style.cpp
+  style_library.h style_library.cpp
   cmd_export.cpp
   rpc.h rpc.cpp
   api_server.h api_server.cpp
@@ -19,6 +23,11 @@ add_library(sf_engine STATIC
   mcp.h mcp.cpp
   headless.h headless.cpp
 )
+# The style library (looks, pacing and mix profiles) is JSON compiled into the library: engine/style_library.h.
+qt_add_resources(sf_engine "sf_engine_styles"
+  PREFIX "/sf/style"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/styles"
+  FILES styles/looks.json styles/pacing.json styles/mix.json)
 target_include_directories(sf_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_render sf_audio sf_media sf_core Qt6::Core Qt6::Gui Qt6::Network PRIVATE sf_options)
 

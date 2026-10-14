@@ -331,7 +331,7 @@ struct SpeechRanges {
 
 // Speech ranges on the timeline: given explicitly, from the footage index's speech spans of the items on the dialogue tracks
 // (when the index commands are registered and know the asset), else from an energy gate on the rendered dialogue.
-Result speechRanges(CallContext& c, const QStringList& tracks, const QJsonArray& explicitRanges, double gapMs, SpeechRanges* out) {
+Result speechRanges(CallContext& c, const QStringList& tracks, const QJsonArray& explicitRanges, double gapMs, SpeechRanges* out, const QStringList* onlyItems = nullptr) {
   const TimelineDoc& d = c.session->project->doc();
   const double f = fps(d);
   std::vector<audio::Span> spans;
@@ -347,6 +347,7 @@ Result speechRanges(CallContext& c, const QStringList& tracks, const QJsonArray&
     const bool haveIndex = c.engine->find(q("index.speech")) != nullptr;
     for (const Item& it : d.items) {
       if (!tracks.contains(it.trackId) || !audible(it) || it.muted || !it.assetId) continue;
+      if (onlyItems && !onlyItems->contains(it.id)) continue;
       bool found = false;
       if (haveIndex) {
         const Result r = c.engine->call(q("index.speech"), {{q("assetId"), *it.assetId}, {q("session"), c.session->id}});
@@ -659,6 +660,23 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
 }
 
 } // namespace
+
+// Shared with cmd_timeline.cpp (declared in cmd_util.h): the track roles and speech ranges audio.duck / audio.check use.
+QStringList guessSpeechTracks(const TimelineDoc& d) { return defaultRoles(d).speech; }
+QStringList guessMusicTracks(const TimelineDoc& d) { return defaultRoles(d).music; }
+
+Result itemSpeechRanges(CallContext& c, const QStringList& itemIds, double gapMs, std::vector<std::pair<Frame, Frame>>* out, QString* source) {
+  const TimelineDoc& d = c.session->project->doc();
+  QStringList tracks;
+  for (const QString& id : itemIds)
+    if (const Item* it = getItem(d, id); it && !tracks.contains(it->trackId)) tracks << it->trackId;
+  SpeechRanges sr;
+  if (Result r = speechRanges(c, tracks, QJsonArray(), gapMs, &sr, &itemIds); !r.ok) return r;
+  out->clear();
+  for (const audio::Span& s : sr.frames) out->push_back({s.start, s.end});
+  if (source) *source = sr.source;
+  return Result::success();
+}
 
 void registerAudioCommands(Engine& e) {
   const QString scopeDoc = QStringLiteral("\"master\" (the whole mix, default), a track id, an item id or (audio.measure only) an asset id.");

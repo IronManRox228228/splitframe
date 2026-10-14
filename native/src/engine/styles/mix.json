@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "mix",
+  "items": [
+    {
+      "name": "podcast",
+      "description": "Spoken word: -16 LUFS integrated, music well under the voice (12 dB), slow recovery after speech.",
+      "targetLufs": -16,
+      "toleranceLu": 1,
+      "truePeakCeilingDb": -1,
+      "duckMarginDb": 12,
+      "attackMs": 120,
+      "releaseMs": 600
+    },
+    {
+      "name": "streaming",
+      "description": "Online video platforms: -14 LUFS integrated, -1 dBTP, music 9 dB under speech.",
+      "targetLufs": -14,
+      "toleranceLu": 1,
+      "truePeakCeilingDb": -1,
+      "duckMarginDb": 9,
+      "attackMs": 150,
+      "releaseMs": 500
+    },
+    {
+      "name": "cinematic",
+      "description": "Broadcast and cinema deliverables: -23 LUFS (EBU R128; -24 LKFS for ATSC A/85 via altTargetLufs), wide dynamics, music 8 dB under speech, long soft ducks.",
+      "targetLufs": -23,
+      "toleranceLu": 0.5,
+      "truePeakCeilingDb": -1,
+      "duckMarginDb": 8,
+      "attackMs": 250,
+      "releaseMs": 900,
+      "altTargetLufs": -24
+    },
+    {
+      "name": "social",
+      "description": "Loud feeds: -14 LUFS with -1 dBTP, music kept present (7 dB under speech), quick snappy ducks.",
+      "targetLufs": -14,
+      "toleranceLu": 1.5,
+      "truePeakCeilingDb": -1,
+      "duckMarginDb": 7,
+      "attackMs": 80,
+      "releaseMs": 300
+    }
+  ]
+}

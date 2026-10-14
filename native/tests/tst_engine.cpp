@@ -19,13 +19,47 @@ using namespace sf::test;
 
 namespace {
 QString Q(const char* s) { return QString::fromLatin1(s); }
+
+// A 16-bit stereo 48 kHz WAV of drum-like hits (3 kHz burst, 8 ms decay) every 60/bpm seconds from `first`.
+bool writeClickWav(const QString& path, double bpm, double seconds, double first = 0.13) {
+  const int sr = 48000;
+  const size_t n = static_cast<size_t>(seconds * sr);
+  std::vector<qint16> pcm(n * 2, 0);
+  for (double t0 = first; t0 < seconds - 0.1; t0 += 60.0 / bpm)
+    for (int i = 0; i < 2400; ++i) {
+      const size_t k = static_cast<size_t>(t0 * sr) + static_cast<size_t>(i);
+      if (k >= n) break;
+      const double t = i / static_cast<double>(sr);
+      const qint16 x = static_cast<qint16>(16000.0 * std::exp(-t / 0.008) * std::sin(6.283185307179586 * 3000.0 * t));
+      pcm[k * 2] = pcm[k * 2 + 1] = x;
+    }
+  QFile f(path);
+  if (!f.open(QIODevice::WriteOnly)) return false;
+  const quint32 dataBytes = static_cast<quint32>(pcm.size() * 2);
+  const auto le32 = [&](quint32 v) { f.write(reinterpret_cast<const char*>(&v), 4); };
+  const auto le16 = [&](quint16 v) { f.write(reinterpret_cast<const char*>(&v), 2); };
+  f.write("RIFF");
+  le32(36 + dataBytes);
+  f.write("WAVEfmt ");
+  le32(16);
+  le16(1);
+  le16(2);
+  le32(sr);
+  le32(sr * 4);
+  le16(4);
+  le16(16);
+  f.write("data");
+  le32(dataBytes);
+  f.write(reinterpret_cast<const char*>(pcm.data()), static_cast<qint64>(dataBytes));
+  return true;
+}
 } // namespace
 
 class TstEngine : public QObject {
   Q_OBJECT
 
   QTemporaryDir dir_;
-  QString clip_, music_;
+  QString clip_, music_, story_, talk_, beats_, gray_;
   std::unique_ptr<Engine> e_;
 
   QJsonObject ok(const QString& cmd, const QJsonObject& args = {}) {
@@ -57,6 +91,17 @@ private slots:
     QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), indexSource(320, 180, 25, 2), Q("-f"), Q("lavfi"), Q("-i"), Q("sine=frequency=440:sample_rate=48000:duration=2"), Q("-c:v"), Q("libx264"),
                         Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), Q("-c:a"), Q("aac"), Q("-shortest"), clip_}, &log), qPrintable(log));
     QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), Q("sine=frequency=220:sample_rate=48000:duration=3"), music_}, &log), qPrintable(log));
+    // measured editing: a silent 10 s picture, a 10 s clip whose tone speaks in the second half of every 2 s, and a 100 BPM click track
+    story_ = dir_.filePath(QStringLiteral("story.mp4"));
+    talk_ = dir_.filePath(QStringLiteral("talk.mp4"));
+    beats_ = dir_.filePath(QStringLiteral("beats.wav"));
+    QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), indexSource(320, 180, 25, 10), Q("-c:v"), Q("libx264"), Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), story_}, &log), qPrintable(log));
+    QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), indexSource(320, 180, 25, 10), Q("-f"), Q("lavfi"), Q("-i"), Q("sine=frequency=440:sample_rate=48000:duration=10,volume=volume=0:enable='lt(mod(t,2),1)'"),
+                        Q("-c:v"), Q("libx264"), Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), Q("-c:a"), Q("aac"), Q("-shortest"), talk_}, &log), qPrintable(log));
+    QVERIFY(writeClickWav(beats_, 100.0, 20.0));
+    // style library: a flat mid-grey picture (a neutral cast to measure a look against)
+    gray_ = dir_.filePath(QStringLiteral("gray.mp4"));
+    QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), Q("color=c=0x808080:s=320x180:r=25:d=2"), Q("-c:v"), Q("libx264"), Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), gray_}, &log), qPrintable(log));
   }
 
   void init() {
@@ -649,6 +694,385 @@ private slots:
     QVERIFY(ms.value(Q("note")).toString().size() > 5);
     QCOMPARE(raw(Q("music.structure"), {}).error.code, Q("invalid_params"));
     QVERIFY(e_->describe(Q("audio")).size() >= 5);
+  }
+
+
+  // ---- measured editing ----
+  QString assetNamed(const QString& file) {
+    for (const QJsonValue& a : ok(Q("assets.list")).value(Q("assets")).toArray())
+      if (a.toObject().value(Q("path")).toString().endsWith(file)) return a.toObject().value(Q("id")).toString();
+    return {};
+  }
+  QString addClip(const QString& asset, int start, int dur, int srcIn) {
+    return ok(Q("clip.add"), {{Q("assetId"), asset}, {Q("startFrame"), start}, {Q("durationFrames"), dur}, {Q("sourceInFrame"), srcIn}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+  }
+  static QStringList rulesOf(const QJsonObject& check) {
+    QStringList r;
+    for (const QJsonValue& v : check.value(Q("violations")).toArray()) r << v.toObject().value(Q("rule")).toString();
+    return r;
+  }
+
+  void measuredEditing() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, talk_, beats_}}});
+    const QString story = assetNamed(Q("story.mp4")), beats = assetNamed(Q("beats.wav"));
+    QVERIFY(!story.isEmpty() && !beats.isEmpty());
+    const QString musicItem = ok(Q("audio.add"), {{Q("assetId"), beats}, {Q("startFrame"), 0}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+
+    // the beat grid as music.structure measures it: 100 BPM = 15 frames at 25 fps
+    const QJsonObject ms = ok(Q("music.structure"), {{Q("itemId"), musicItem}});
+    QVERIFY2(ms.value(Q("valid")).toBool(), qPrintable(ms.value(Q("note")).toString()));
+    QVERIFY2(std::fabs(ms.value(Q("bpm")).toDouble() - 100.0) < 2.0, qPrintable(QString::number(ms.value(Q("bpm")).toDouble())));
+    const QJsonArray bf = ms.value(Q("beatFrames")).toArray();
+    QVERIFY(bf.size() > 20);
+    const auto beat = [&](int k) { return bf.at(k).toInt(); };
+
+    // six shots whose five cuts sit 4, 3 late, 5 early, 1 late and 6 late of a beat: cut k = beat(2k+2) + off[k]
+    const int off[5] = {4, 3, -5, 1, 6};
+    QVector<int> bounds{0};
+    for (int k = 0; k < 5; ++k) bounds << beat(2 * k + 2) + off[k];
+    bounds << bounds.last() + 30;
+    QStringList shots;
+    for (int i = 0; i + 1 < bounds.size(); ++i) shots << addClip(story, bounds[i], bounds[i + 1] - bounds[i], 40);
+    const QString storyTrack = ok(Q("item.get"), {{Q("itemId"), shots[0]}}).value(Q("trackId")).toString();
+
+    // stats: shots, ASL, cuts, hook, and the beat alignment against the music
+    const QJsonObject st = ok(Q("timeline.stats"));
+    QCOMPARE(st.value(Q("shotCount")).toInt(), 6);
+    QCOMPARE(st.value(Q("cutCount")).toInt(), 5);
+    QCOMPARE(st.value(Q("trackId")).toString(), storyTrack);
+    const double expectedAsl = bounds.last() / 25.0 / 6.0;
+    QVERIFY2(std::fabs(st.value(Q("aslSec")).toDouble() - expectedAsl) < 0.01, qPrintable(QString::number(st.value(Q("aslSec")).toDouble())));
+    QVERIFY(std::fabs(st.value(Q("firstCutSec")).toDouble() - bounds[1] / 25.0) < 0.01);
+    QCOMPARE(st.value(Q("shortest")).toArray().size(), 5);
+    QVERIFY(st.value(Q("cutRhythm")).toObject().value(Q("cutsPerWindow")).toArray().size() >= 1);
+    const QJsonObject al0 = st.value(Q("beatAlignment")).toObject();
+    QVERIFY2(al0.value(Q("available")).toBool(), qPrintable(al0.value(Q("reason")).toString()));
+    const double pct0 = al0.value(Q("beat")).toObject().value(Q("withinPct")).toDouble();
+    QCOMPARE(pct0, 20.0); // only the cut 1 frame off the beat is within +-2 frames
+    QVERIFY(raw(Q("timeline.stats"), {{Q("trackId"), Q("trk_nope")}}).error.code == Q("not_found"));
+    QCOMPARE(ok(Q("timeline.stats"), {{Q("startFrame"), bounds[1]}, {Q("endFrame"), bounds[3]}}).value(Q("cutCount")).toInt(), 1);
+
+    // check before: five cuts off the beat; the rest of the edit is clean
+    const QJsonObject c0 = ok(Q("timeline.check"), {{Q("maxOffBeatMs"), 30.0}});
+    QVERIFY(!c0.value(Q("pass")).toBool());
+    QCOMPARE(rulesOf(c0).count(Q("off_beat")), 5);
+    QCOMPARE(rulesOf(c0).size(), 5);
+    QVERIFY(c0.value(Q("violations")).toArray().at(0).toObject().contains(Q("measured")));
+    QVERIFY(ok(Q("timeline.check")).value(Q("pass")).toBool()); // without maxOffBeatMs there is no off-beat rule
+
+    // snap: a dry run proposes and changes nothing
+    const QJsonObject hist0 = ok(Q("history.list"));
+    const QJsonObject dry = ok(Q("edit.snapToBeats"));
+    QVERIFY(!dry.value(Q("applied")).toBool());
+    QCOMPARE(dry.value(Q("moved")).toInt(), 5);
+    QCOMPARE(dry.value(Q("skipped")).toArray().size(), 0);
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt());
+    const QJsonArray planned = dry.value(Q("cuts")).toArray();
+    QCOMPARE(planned.size(), 5);
+    for (int k = 0; k < 5; ++k) {
+      const QJsonObject c = planned.at(k).toObject();
+      QCOMPARE(c.value(Q("frame")).toInt(), bounds[k + 1]);
+      QCOMPARE(c.value(Q("targetFrame")).toInt(), beat(2 * k + 2));
+      QCOMPARE(c.value(Q("shiftFrames")).toInt(), -off[k]);
+      QVERIFY(c.value(Q("method")).toString().contains(Q("item.trim")));
+    }
+    QCOMPARE(dry.value(Q("predicted")).toObject().value(Q("withinPct")).toDouble(), 100.0);
+    // a tight reach leaves the far cuts alone and says why
+    const QJsonObject nearOnly = ok(Q("edit.snapToBeats"), {{Q("maxShiftFrames"), 3}});
+    QCOMPARE(nearOnly.value(Q("moved")).toInt(), 2); // the 3-frame and 1-frame cuts
+    QCOMPARE(nearOnly.value(Q("skipped")).toArray().size(), 3);
+    QCOMPARE(nearOnly.value(Q("skipped")).toArray().at(0).toObject().value(Q("reason")).toString(), Q("too_far"));
+    // downbeats are every 4th beat: fewer targets
+    const QJsonObject down = ok(Q("edit.snapToBeats"), {{Q("to"), Q("downbeat")}, {Q("maxShiftFrames"), 6}});
+    QCOMPARE(down.value(Q("to")).toString(), Q("downbeat"));
+    QVERIFY(down.value(Q("gridFrames")).toInt() < dry.value(Q("gridFrames")).toInt());
+    QCOMPARE(raw(Q("edit.snapToBeats"), {{Q("itemIds"), QJsonArray{Q("itm_nope")}}}).error.code, Q("not_found"));
+
+    // apply: one undo step, alignment measured again and better
+    const QJsonObject ap = ok(Q("edit.snapToBeats"), {{Q("apply"), true}, {Q("origin"), Q("agent:editor")}});
+    QVERIFY(ap.value(Q("applied")).toBool());
+    QVERIFY(ap.value(Q("verified")).toBool());
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt() + 1);
+    const double pct1 = ap.value(Q("after")).toObject().value(Q("withinPct")).toDouble();
+    QCOMPARE(pct1, 100.0);
+    QVERIFY(ap.value(Q("after")).toObject().value(Q("meanAbsOffsetMs")).toDouble() < 1e-6);
+    const QJsonObject st1 = ok(Q("timeline.stats"));
+    QCOMPARE(st1.value(Q("beatAlignment")).toObject().value(Q("beat")).toObject().value(Q("withinPct")).toDouble(), 100.0);
+    QCOMPARE(st1.value(Q("shotCount")).toInt(), 6);
+    QCOMPARE(st1.value(Q("durationSec")).toDouble(), st.value(Q("durationSec")).toDouble()); // trims, not ripples: the length is unchanged
+    QVERIFY(ok(Q("timeline.check"), {{Q("maxOffBeatMs"), 30.0}}).value(Q("pass")).toBool());
+    // the trims moved the source in points with the cuts: the second shot now starts 4 frames earlier in the source
+    QCOMPARE(ok(Q("item.get"), {{Q("itemId"), shots[1]}}).value(Q("sourceInFrame")).toInt(), 40 - off[0]);
+    // already on the grid: nothing to write
+    const QJsonObject again = ok(Q("edit.snapToBeats"), {{Q("apply"), true}});
+    QVERIFY(!again.value(Q("applied")).toBool());
+    QCOMPARE(again.value(Q("alreadyOnGrid")).toInt(), 5);
+    QCOMPARE(ok(Q("history.undo")).value(Q("steps")).toInt(), 1);
+    QCOMPARE(ok(Q("timeline.stats")).value(Q("beatAlignment")).toObject().value(Q("beat")).toObject().value(Q("withinPct")).toDouble(), 20.0);
+
+    // handles: a cut that needs media before the in point of a shot read from source frame 0
+    ok(Q("item.slip"), {{Q("itemId"), shots[1]}, {Q("sourceInFrame"), 0}});
+    const QJsonObject nh = ok(Q("edit.snapToBeats"), {{Q("itemIds"), QJsonArray{shots[1]}}});
+    QCOMPARE(nh.value(Q("moved")).toInt(), 0);
+    QCOMPARE(nh.value(Q("skipped")).toArray().at(0).toObject().value(Q("reason")).toString(), Q("exceeds_handles"));
+
+    // gaps, overlaps, flash frames, duration and aspect are reported with their numbers
+    ok(Q("item.move"), {{Q("itemId"), shots[3]}, {Q("startFrame"), bounds[3] + 4}}); // 4 frames of nothing before it and 4 overlapping the next
+    ok(Q("item.trim"), {{Q("itemId"), shots[4]}, {Q("edge"), Q("out")}, {Q("frame"), bounds[4] + 2}}); // a 2 frame shot
+    const QJsonObject bad = ok(Q("timeline.check"), {{Q("targetDurationSec"), 30.0}, {Q("aspect"), Q("9:16")}});
+    const QStringList badRules = rulesOf(bad);
+    for (const char* r : {"gap", "flash_frame", "duration", "aspect_canvas"}) QVERIFY2(badRules.contains(Q(r)), qPrintable(Q(r) + Q(" in ") + badRules.join(Q(","))));
+    QVERIFY(!badRules.contains(Q("word_clip")));
+    QCOMPARE(raw(Q("timeline.check"), {{Q("aspect"), Q("wide")}}).error.code, Q("invalid_params"));
+    qInfo().noquote() << QStringLiteral("editing: %1 cuts, ASL %2 s; on-beat share %3 percent -> %4 percent after snapToBeats (%5 moved), mean offset %6 ms -> %7 ms")
+                             .arg(st.value(Q("cutCount")).toInt()).arg(st.value(Q("aslSec")).toDouble(), 0, 'f', 2).arg(pct0).arg(pct1).arg(ap.value(Q("moved")).toInt())
+                             .arg(al0.value(Q("beat")).toObject().value(Q("meanOffsetMs")).toDouble(), 0, 'f', 1).arg(ap.value(Q("after")).toObject().value(Q("meanOffsetMs")).toDouble(), 0, 'f', 1);
+  }
+
+  void speechSafeCuts() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{talk_}}});
+    const QString talk = assetNamed(Q("talk.mp4"));
+    // the tone speaks in [1,2) s of every 2 s: frames 25..50 of the source. A holds source 0..40, B holds 40..80
+    const QString a = addClip(talk, 0, 40, 0), b = addClip(talk, 40, 40, 40);
+    const QJsonObject mid = ok(Q("edit.safeCutPoint"), {{Q("itemId"), a}, {Q("frame"), 38}});
+    QCOMPARE(mid.value(Q("speechSource")).toString(), Q("energyGate"));
+    QVERIFY(mid.value(Q("insideWord")).toBool());
+    QVERIFY(mid.value(Q("safe")).toBool());
+    QVERIFY2(std::abs(mid.value(Q("safeFrame")).toInt() - 40) <= 2, qPrintable(QString::number(mid.value(Q("safeFrame")).toInt())));
+    const QJsonObject head = ok(Q("edit.safeCutPoint"), {{Q("itemId"), a}, {Q("frame"), 30}});
+    QVERIFY(std::abs(head.value(Q("safeFrame")).toInt() - 25) <= 2);
+    QVERIFY(head.value(Q("shiftFrames")).toInt() < 0);
+    const QJsonObject far = ok(Q("edit.safeCutPoint"), {{Q("itemId"), a}, {Q("frame"), 32}, {Q("maxShiftFrames"), 3}});
+    QVERIFY(far.value(Q("insideWord")).toBool());
+    QVERIFY(!far.value(Q("safe")).toBool());
+    QVERIFY(far.value(Q("safeFrame")).isNull());
+    QVERIFY(far.contains(Q("alternatives")));
+    const QJsonObject gap = ok(Q("edit.safeCutPoint"), {{Q("itemId"), b}, {Q("frame"), 60}}); // 60 is in the silence 50..75
+    QVERIFY(!gap.value(Q("insideWord")).toBool());
+    QCOMPARE(gap.value(Q("safeFrame")).toInt(), 60);
+    QCOMPARE(raw(Q("edit.safeCutPoint"), {{Q("itemId"), Q("itm_nope")}, {Q("frame"), 3}}).error.code, Q("not_found"));
+
+    // the cut between A and B (frame 40) runs through one word: timeline.check says so
+    const QJsonObject ck = ok(Q("timeline.check"));
+    QVERIFY(!ck.value(Q("pass")).toBool());
+    QStringList words;
+    for (const QJsonValue& v : ck.value(Q("violations")).toArray())
+      if (v.toObject().value(Q("rule")).toString() == Q("word_clip")) words << QString::number(v.toObject().value(Q("frame")).toInt());
+    QCOMPARE(words, QStringList{Q("40")});
+    // moving the cut out of the word fixes it: both sides of the cut at 52, in the silence after the word
+    ok(Q("item.trim"), {{Q("itemId"), b}, {Q("edge"), Q("in")}, {Q("frame"), 52}});
+    ok(Q("item.trim"), {{Q("itemId"), a}, {Q("edge"), Q("out")}, {Q("frame"), 52}});
+    QVERIFY(ok(Q("timeline.check")).value(Q("pass")).toBool());
+
+    // snapToBeats refuses a target that lands inside a word, and allowWordClip overrides
+    const QJsonObject word = ok(Q("edit.snapToBeats"), {{Q("beatFrames"), QJsonArray{44, 59}}, {Q("maxShiftFrames"), 10}});
+    QCOMPARE(word.value(Q("moved")).toInt(), 1); // the cut at 52 goes to 59 (in the silence) not 44 (in the word): 7 away vs 8
+    QCOMPARE(word.value(Q("cuts")).toArray().at(0).toObject().value(Q("targetFrame")).toInt(), 59);
+    const QJsonObject refused = ok(Q("edit.snapToBeats"), {{Q("beatFrames"), QJsonArray{47}}, {Q("maxShiftFrames"), 10}});
+    QCOMPARE(refused.value(Q("moved")).toInt(), 0);
+    const QJsonObject rs = refused.value(Q("skipped")).toArray().at(0).toObject();
+    QCOMPARE(rs.value(Q("reason")).toString(), Q("clips_word"));
+    QVERIFY(rs.contains(Q("suggestedFrame")));
+    const QJsonObject forced = ok(Q("edit.snapToBeats"), {{Q("beatFrames"), QJsonArray{47}}, {Q("maxShiftFrames"), 10}, {Q("allowWordClip"), true}});
+    QCOMPARE(forced.value(Q("moved")).toInt(), 1);
+  }
+
+
+  // ---- style library ----
+  void styleLibraryCommands() {
+    const QJsonObject all = ok(Q("style.list"));
+    QCOMPARE(all.value(Q("looks")).toObject().value(Q("items")).toArray().size(), 8);
+    QCOMPARE(all.value(Q("pacing")).toObject().value(Q("items")).toArray().size(), 5);
+    QCOMPARE(all.value(Q("mix")).toObject().value(Q("items")).toArray().size(), 4);
+    const QJsonObject one = ok(Q("style.list"), {{Q("kind"), Q("look")}, {Q("name"), Q("teal-orange")}});
+    QCOMPARE(one.value(Q("items")).toArray().size(), 1);
+    const QJsonObject look = one.value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(look.contains(Q("params")) && look.contains(Q("guards")) && look.contains(Q("description")));
+    QVERIFY(one.value(Q("schema")).toObject().contains(Q("properties")));
+    QCOMPARE(raw(Q("style.list"), {{Q("kind"), Q("look")}, {Q("name"), Q("sepia")}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("style.list"), {{Q("kind"), Q("grade")}}).error.code, Q("invalid_params"));
+    const QJsonObject sp = ok(Q("style.spec.schema"));
+    QVERIFY(sp.value(Q("schema")).toObject().value(Q("properties")).toObject().contains(Q("intensity")));
+    QVERIFY(sp.contains(Q("example")));
+    // no session needed for reading the library
+    Engine bare;
+    QVERIFY(bare.call(Q("style.list")).ok);
+    for (const char* n : {"style.list", "style.spec.schema", "look.apply", "pacing.check", "mix.applyProfile"}) QVERIFY2(e_->find(Q(n)), n);
+  }
+
+  static double castOf(const QJsonObject& metrics) { return metrics.value(Q("cast")).toObject().value(Q("temperature")).toDouble(); }
+
+  void lookApplyOnAGreyClip() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{gray_}}});
+    const QString item = addClip(assetNamed(Q("gray.mp4")), 0, 40, 0);
+    const Result probe = raw(Q("colour.analyze"), {{Q("itemId"), item}, {Q("samples"), 2}});
+    if (!probe.ok && probe.error.code == Q("unavailable") && probe.error.message.contains(Q("renderer"))) QSKIP("no D3D11 device for the offscreen renderer");
+    QVERIFY2(probe.ok, qPrintable(probe.error.message));
+    const double cast0 = castOf(probe.value.toObject());
+    QVERIFY2(std::fabs(cast0) < 0.03, qPrintable(QString::number(cast0)));
+
+    // dry run: the proposal and its prediction, nothing written
+    const QJsonObject hist0 = ok(Q("history.list"));
+    const QJsonObject dry = ok(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}});
+    QVERIFY(!dry.value(Q("applied")).toBool());
+    QVERIFY2(dry.value(Q("ok")).toBool(), qPrintable(QString::fromUtf8(QJsonDocument(dry).toJson())));
+    const QJsonObject it0 = dry.value(Q("items")).toArray().at(0).toObject();
+    QCOMPARE(it0.value(Q("proposedPrimaries")).toObject().value(Q("temperature")).toDouble(), 0.14);
+    QVERIFY(it0.value(Q("predicted")).toObject().value(Q("castTemperature")).toDouble() > it0.value(Q("before")).toObject().value(Q("castTemperature")).toDouble() + 0.08);
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), item}}).contains(Q("color")));
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt());
+
+    // intensity scales the grade and the cast with it
+    const QJsonObject halfDry = ok(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("intensity"), 0.5}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}});
+    const QJsonObject half = halfDry.value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(std::fabs(half.value(Q("proposedPrimaries")).toObject().value(Q("temperature")).toDouble() - 0.07) < 1e-9);
+    const double pHalf = half.value(Q("predicted")).toObject().value(Q("castTemperature")).toDouble(), pFull = it0.value(Q("predicted")).toObject().value(Q("castTemperature")).toDouble();
+    QVERIFY2(pHalf > cast0 + 0.03 && pHalf < pFull - 0.03, qPrintable(QStringLiteral("%1 < %2 < %3").arg(cast0).arg(pHalf).arg(pFull)));
+    // the bounded offsets nudge it
+    const QJsonObject nudged = ok(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("warmth"), 0.1}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 1}}).value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(std::fabs(nudged.value(Q("proposedPrimaries")).toObject().value(Q("temperature")).toDouble() - 0.24) < 1e-9);
+    QCOMPARE(raw(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("warmth"), 0.9}, {Q("itemIds"), QJsonArray{item}}}).error.code, Q("invalid_params"));
+
+    // apply: one undo step, and the clip measured with colour.analyze really is warmer
+    const QJsonObject ap = ok(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}, {Q("apply"), true}, {Q("origin"), Q("agent:colourist")}});
+    QVERIFY(ap.value(Q("applied")).toBool());
+    QVERIFY(ap.value(Q("verified")).toBool());
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt() + 1);
+    QCOMPARE(ok(Q("history.list")).value(Q("entries")).toArray().last().toObject().value(Q("actor")).toString(), Q("agent:colourist"));
+    QVERIFY(std::fabs(ok(Q("item.get"), {{Q("itemId"), item}}).value(Q("color")).toObject().value(Q("primaries")).toObject().value(Q("temperature")).toDouble() - 0.14) < 1e-9);
+    const double cast1 = castOf(ok(Q("colour.analyze"), {{Q("itemId"), item}, {Q("samples"), 2}}));
+    QVERIFY2(cast1 > cast0 + 0.08, qPrintable(QStringLiteral("cast %1 -> %2").arg(cast0).arg(cast1)));
+    const double measuredCast = ap.value(Q("items")).toArray().at(0).toObject().value(Q("measured")).toObject().value(Q("castTemperature")).toDouble();
+    QVERIFY(std::fabs(measuredCast - cast1) < 0.002);
+
+    // layering: a second look stacks on the first (temperature adds); replace starts over
+    const QJsonObject stacked = ok(Q("look.apply"), {{Q("look"), Q("golden-hour")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 1}}).value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(std::fabs(stacked.value(Q("proposedPrimaries")).toObject().value(Q("temperature")).toDouble() - 0.42) < 1e-9);
+    const QJsonObject replaced = ok(Q("look.apply"), {{Q("look"), Q("golden-hour")}, {Q("replace"), true}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 1}}).value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(std::fabs(replaced.value(Q("proposedPrimaries")).toObject().value(Q("temperature")).toDouble() - 0.28) < 1e-9);
+    QCOMPARE(replaced.value(Q("currentPrimaries")).toObject().value(Q("temperature")).toDouble(), 0.14);
+
+    // undo goes back to the ungraded clip; a cool look measures cooler
+    ok(Q("history.undo"));
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), item}}).contains(Q("color")));
+    const QJsonObject cool = ok(Q("look.apply"), {{Q("look"), Q("night-cool")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}}).value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(cool.value(Q("predicted")).toObject().value(Q("castTemperature")).toDouble() < cast0 - 0.1);
+    QVERIFY(cool.value(Q("predicted")).toObject().value(Q("exposureStops")).toDouble() < cool.value(Q("before")).toObject().value(Q("exposureStops")).toDouble() - 0.3);
+
+    // guards: a limit the look cannot meet blocks the write, names the rule, and proposes a gentler intensity
+    const QJsonObject tight = ok(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}, {Q("guards"), QJsonObject{{Q("maxLiftMaster"), 0.001}}}, {Q("apply"), true}});
+    QVERIFY(!tight.value(Q("ok")).toBool());
+    QVERIFY(!tight.value(Q("applied")).toBool());
+    const QJsonObject tc = tight.value(Q("items")).toArray().at(0).toObject();
+    QStringList codes;
+    for (const QJsonValue& v : tc.value(Q("check")).toObject().value(Q("violations")).toArray()) codes << v.toObject().value(Q("code")).toString();
+    QVERIFY2(codes.contains(Q("maxLiftMaster")), qPrintable(codes.join(Q(","))));
+    QVERIFY(tc.contains(Q("suggestedIntensity")));
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), item}}).contains(Q("color")));
+    const QJsonObject forced = ok(Q("look.apply"), {{Q("look"), Q("warm-documentary")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}, {Q("guards"), QJsonObject{{Q("maxLiftMaster"), 0.001}}}, {Q("apply"), true}, {Q("force"), true}});
+    QVERIFY(forced.value(Q("applied")).toBool());
+    ok(Q("history.undo"));
+    const QJsonObject chroma = ok(Q("look.apply"), {{Q("look"), Q("golden-hour")}, {Q("itemIds"), QJsonArray{item}}, {Q("samples"), 2}, {Q("guards"), QJsonObject{{Q("maxChromaP95"), 0.0005}}}});
+    QStringList codes2;
+    for (const QJsonValue& v : chroma.value(Q("items")).toArray().at(0).toObject().value(Q("check")).toObject().value(Q("violations")).toArray()) codes2 << v.toObject().value(Q("code")).toString();
+    QVERIFY2(codes2.contains(Q("maxChromaP95")), qPrintable(codes2.join(Q(","))));
+
+    // errors
+    QCOMPARE(raw(Q("look.apply"), {{Q("look"), Q("sepia")}, {Q("itemIds"), QJsonArray{item}}}).error.code, Q("invalid_params")); // not in the enum
+    QCOMPARE(raw(Q("look.apply"), {{Q("look"), Q("pastel")}, {Q("itemIds"), QJsonArray{Q("itm_nope")}}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("look.apply"), {{Q("look"), Q("pastel")}, {Q("itemIds"), QJsonArray{}}}).error.code, Q("invalid_params"));
+    const QString text = ok(Q("text.add"), {{Q("text"), Q("hi")}, {Q("startFrame"), 0}, {Q("durationFrames"), 10}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+    QCOMPARE(raw(Q("look.apply"), {{Q("look"), Q("pastel")}, {Q("itemIds"), QJsonArray{text}}}).error.code, Q("invalid_params"));
+    qInfo().noquote() << QStringLiteral("style: warm-documentary cast %1 -> %2 (predicted %3, half intensity %4)").arg(cast0, 0, 'f', 3).arg(cast1, 0, 'f', 3).arg(pFull, 0, 'f', 3).arg(pHalf, 0, 'f', 3);
+  }
+
+  void pacingProfilesOnASyntheticTimeline() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_}}});
+    const QString story = assetNamed(Q("story.mp4"));
+    for (int i = 0; i < 12; ++i) addClip(story, i * 25, 25, 0); // twelve 1 s shots, cuts every 25 frames
+    const QJsonObject doc = ok(Q("pacing.check"), {{Q("profile"), Q("documentary")}});
+    QVERIFY(!doc.value(Q("pass")).toBool());
+    QCOMPARE(rulesOf(doc), QStringList{Q("asl_too_fast")});
+    QCOMPARE(doc.value(Q("measured")).toObject().value(Q("aslSec")).toDouble(), 1.0);
+    QCOMPARE(doc.value(Q("measured")).toObject().value(Q("shotCount")).toInt(), 12);
+    QCOMPARE(doc.value(Q("violations")).toArray().at(0).toObject().value(Q("limit")).toDouble(), 4.0);
+    QCOMPARE(doc.value(Q("profile")).toObject().value(Q("name")).toString(), Q("documentary"));
+    QCOMPARE(rulesOf(ok(Q("pacing.check"), {{Q("profile"), Q("music-video")}})), QStringList{Q("asl_too_fast")}); // 1.0 s < 1.2 s
+    // no music on the timeline: the beat share is not checked, and the note says why
+    const QJsonObject social = ok(Q("pacing.check"), {{Q("profile"), Q("social-short")}});
+    QVERIFY2(social.value(Q("pass")).toBool(), qPrintable(QString::fromUtf8(QJsonDocument(social).toJson())));
+    QVERIFY(social.value(Q("measured")).toObject().value(Q("cutsOnBeatPct")).isNull());
+    QVERIFY(social.value(Q("notes")).toArray().size() == 1);
+    // with a grid the share is measured: every cut on a beat, then every cut 10 frames off
+    QVector<int> grid, offGrid;
+    for (int f = 0; f <= 300; f += 25) {
+      grid << f;
+      offGrid << f + 10;
+    }
+    QJsonArray onBeats, offBeats;
+    for (int f : grid) onBeats.append(f);
+    for (int f : offGrid) offBeats.append(f);
+    const QJsonObject on = ok(Q("pacing.check"), {{Q("profile"), Q("social-short")}, {Q("beatFrames"), onBeats}});
+    QVERIFY(on.value(Q("pass")).toBool());
+    QCOMPARE(on.value(Q("measured")).toObject().value(Q("cutsOnBeatPct")).toDouble(), 100.0);
+    const QJsonObject off = ok(Q("pacing.check"), {{Q("profile"), Q("social-short")}, {Q("beatFrames"), offBeats}});
+    QCOMPARE(rulesOf(off), QStringList{Q("beat_share")});
+    QCOMPARE(off.value(Q("violations")).toArray().at(0).toObject().value(Q("limit")).toDouble(), 30.0);
+    QVERIFY(raw(Q("pacing.check"), {{Q("profile"), Q("interview")}}).ok);
+    QCOMPARE(raw(Q("pacing.check"), {{Q("profile"), Q("nope")}}).error.code, Q("invalid_params")); // not in the enum
+    QCOMPARE(Engine().call(Q("pacing.check"), {{Q("profile"), Q("trailer")}}).error.code, Q("no_session"));
+  }
+
+  void mixProfilesApplyTheirNumbers() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_, music_}}});
+    ok(Q("clip.add"), {{Q("assetId"), firstAsset(Q("video"))}});
+    ok(Q("audio.add"), {{Q("assetId"), firstAsset(Q("audio"))}});
+    QString videoTrack, audioTrack;
+    for (const QJsonValue& t : ok(Q("timeline.get"), {{Q("mode"), Q("summary")}}).value(Q("tracks")).toArray()) {
+      const QJsonObject to = t.toObject();
+      if (to.value(Q("items")).toArray().isEmpty()) continue;
+      if (to.value(Q("kind")).toString() == Q("video")) videoTrack = to.value(Q("id")).toString();
+      if (to.value(Q("kind")).toString() == Q("audio")) audioTrack = to.value(Q("id")).toString();
+    }
+    QVERIFY(!videoTrack.isEmpty() && !audioTrack.isEmpty());
+
+    // dry run: the numbers handed to audio.duck and audio.normalize are the profile's, and nothing is written
+    const QJsonObject hist0 = ok(Q("history.list"));
+    for (const char* name : {"podcast", "streaming", "cinematic", "social"}) {
+      const QJsonObject prof = ok(Q("style.list"), {{Q("kind"), Q("mix")}, {Q("name"), Q(name)}}).value(Q("items")).toArray().at(0).toObject();
+      const QJsonObject r = ok(Q("mix.applyProfile"), {{Q("profile"), Q(name)}, {Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}});
+      QVERIFY(!r.value(Q("applied")).toBool());
+      const QJsonObject duck = r.value(Q("ducking")).toObject(), norm = r.value(Q("normalize")).toObject();
+      QCOMPARE(duck.value(Q("targetMarginDb")).toDouble(), prof.value(Q("duckMarginDb")).toDouble());
+      QCOMPARE(duck.value(Q("attackMs")).toDouble(), prof.value(Q("attackMs")).toDouble());
+      QCOMPARE(duck.value(Q("releaseMs")).toDouble(), prof.value(Q("releaseMs")).toDouble());
+      QCOMPARE(norm.value(Q("target")).toDouble(), prof.value(Q("targetLufs")).toDouble());
+      QCOMPARE(norm.value(Q("truePeakCeiling")).toDouble(), prof.value(Q("truePeakCeilingDb")).toDouble());
+      const QJsonObject pr = norm.value(Q("proposal")).toObject();
+      QVERIFY(norm.value(Q("proposal")).isObject());
+      QVERIFY2(std::fabs(pr.value(Q("predictedLufs")).toDouble() - prof.value(Q("targetLufs")).toDouble()) < 0.1 || pr.value(Q("limitedByTruePeak")).toBool(), name);
+      QCOMPARE(r.value(Q("profile")).toObject().value(Q("targetLufs")).toDouble(), prof.value(Q("targetLufs")).toDouble());
+    }
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt());
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
+    // the roles can be guessed from the tracks too
+    QVERIFY(!ok(Q("mix.applyProfile"), {{Q("profile"), Q("podcast")}}).value(Q("ducking")).toObject().contains(Q("skipped")));
+    QCOMPARE(raw(Q("mix.applyProfile"), {{Q("profile"), Q("loudest")}}).error.code, Q("invalid_params"));
+
+    // apply: the duck, then the loudness, each one undo step; the mix lands on the target
+    const QJsonObject ap = ok(Q("mix.applyProfile"), {{Q("profile"), Q("podcast")}, {Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}, {Q("apply"), true}, {Q("origin"), Q("agent:audio")}});
+    QVERIFY(ap.value(Q("applied")).toBool());
+    QCOMPARE(ap.value(Q("undoSteps")).toInt(), 2);
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt() + 2);
+    const double lufs = ok(Q("audio.measure")).value(Q("integratedLufs")).toDouble();
+    const bool limited = ap.value(Q("normalize")).toObject().value(Q("proposal")).toObject().value(Q("limitedByTruePeak")).toBool();
+    QVERIFY2(std::fabs(lufs + 16.0) < 0.6 || limited, qPrintable(QString::number(lufs)));
+    QVERIFY(ap.contains(Q("check")));
+    const QJsonObject margin = ap.value(Q("ducking")).toObject().value(Q("after")).toObject();
+    QVERIFY2(std::fabs(margin.value(Q("marginDb")).toDouble() - 12.0) < 1.5, qPrintable(QString::number(margin.value(Q("marginDb")).toDouble())));
+    qInfo().noquote() << QStringLiteral("mix: podcast -> %1 LUFS (target -16), speech margin %2 dB (target 12)").arg(lufs, 0, 'f', 2).arg(margin.value(Q("marginDb")).toDouble(), 0, 'f', 2);
+    ok(Q("history.undo"), {{Q("steps"), 2}});
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
   }
 
   void proxies() {

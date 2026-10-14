@@ -76,6 +76,17 @@ Result imageResult(const QImage& image, const ImageOut& out, const QString& stem
 void addImageOutProps(QJsonObject& schema); // path, inline, maxWidth, maxHeight
 ImageOut imageOutFrom(const QJsonObject& args);
 
+// Audio roles and speech ranges, defined in cmd_audio.cpp: the dialogue / music tracks audio.duck guesses from track names and kinds, and the
+// merged speech ranges (timeline frames, gaps under gapMs joined) of the audio of the given items: index.speech spans when the footage
+// index knows the asset, else an energy gate on the rendered audio. `source` (optional) says which: index | energyGate | index+energyGate.
+QStringList guessSpeechTracks(const TimelineDoc& d);
+QStringList guessMusicTracks(const TimelineDoc& d);
+Result itemSpeechRanges(CallContext& c, const QStringList& itemIds, double gapMs, std::vector<std::pair<Frame, Frame>>* out, QString* source = nullptr);
+
+// Defined in cmd_colour.cpp: colour.analyze metrics (as JSON) of the item's ungraded pixels (sampled at `samples` frames) after each grade in
+// `grades`, on the CPU twin of the shader; one entry per grade. Needs the offscreen renderer.
+Result predictGrades(CallContext& c, const QString& itemId, const std::vector<PrimaryGrade>& grades, int samples, std::vector<QJsonObject>* metrics);
+
 // The asset table (original files, proxies are never used for stills / export) for the session's project.
 render::AssetTable assetTable(const Session& s);
 

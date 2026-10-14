@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "kind": "look",
+  "items": [
+    {
+      "name": "neutral-clean",
+      "description": "Honest, slightly crisp: a touch of contrast and saturation, no colour cast. The safe default for dialogue-driven work.",
+      "tags": ["neutral", "corporate", "interview"],
+      "params": { "contrast": 1.05, "saturation": 1.04 },
+      "guards": { "maxChromaP95": 0.85, "maxLiftMaster": 0.05, "skinHueShiftDeg": 5 }
+    },
+    {
+      "name": "warm-documentary",
+      "description": "Gentle warmth, softened saturation and a lifted shadow floor: sunlit, human, observational.",
+      "tags": ["warm", "documentary", "natural"],
+      "params": { "temperature": 0.14, "tint": 0.02, "contrast": 1.08, "saturation": 0.94, "lift": { "master": 0.01 }, "gamma": { "master": 0.98 } },
+      "guards": { "maxChromaP95": 0.8, "maxLiftMaster": 0.04, "skinHueShiftDeg": 8 }
+    },
+    {
+      "name": "teal-orange",
+      "description": "Blockbuster split: teal shadows, orange highlights, more contrast and saturation. Skin is pushed warm, so the skin guard is the tight one.",
+      "tags": ["cinematic", "trailer", "blockbuster"],
+      "params": { "temperature": 0.05, "contrast": 1.12, "saturation": 1.1, "lift": { "r": -0.015, "b": 0.025 }, "gain": { "r": 1.08, "b": 0.92 } },
+      "guards": { "maxChromaP95": 0.9, "maxGamutLimitPct": 6, "maxLiftMaster": 0.05, "skinHueShiftDeg": 10, "skinHueBandDeg": [100, 150] }
+    },
+    {
+      "name": "low-key-cool",
+      "description": "Darker, cooler and contrasty with deep shadows: moody, tense, night-adjacent interiors.",
+      "tags": ["cool", "moody", "drama"],
+      "params": { "exposure": -0.4, "temperature": -0.15, "contrast": 1.18, "saturation": 0.9, "lift": { "master": -0.01 }, "gamma": { "master": 0.92 } },
+      "guards": { "maxChromaP95": 0.75, "blacksCrushedIncrease": 6, "exposureShiftStops": 0.5, "skinHueShiftDeg": 9 }
+    },
+    {
+      "name": "bleach-bypass",
+      "description": "Desaturated and hard: silvery highlights, gritty texture. Reads as war, thriller, documentary grit.",
+      "tags": ["desaturated", "gritty", "thriller"],
+      "params": { "exposure": 0.1, "contrast": 1.3, "saturation": 0.55, "gamma": { "master": 1.04 } },
+      "guards": { "maxChromaP95": 0.6, "blacksCrushedIncrease": 5, "highlightsClippedIncrease": 3, "skinHueShiftDeg": 6 }
+    },
+    {
+      "name": "pastel",
+      "description": "Light, airy, low contrast with a raised black point and calm colour: lifestyle, beauty, soft social content.",
+      "tags": ["soft", "light", "lifestyle"],
+      "params": { "exposure": 0.3, "contrast": 0.85, "saturation": 0.85, "lift": { "master": 0.04 }, "gamma": { "master": 1.08 } },
+      "guards": { "maxChromaP95": 0.7, "maxLiftMaster": 0.06, "highlightsClippedIncrease": 3, "exposureShiftStops": 0.7, "skinHueShiftDeg": 6 }
+    },
+    {
+      "name": "golden-hour",
+      "description": "Strong warmth with a little magenta and richer colour, slightly brighter: low sun on everything.",
+      "tags": ["warm", "sunset", "romantic"],
+      "params": { "exposure": 0.15, "temperature": 0.28, "tint": 0.04, "contrast": 1.06, "saturation": 1.1, "gain": { "r": 1.05, "b": 0.9 } },
+      "guards": { "maxChromaP95": 0.9, "maxGamutLimitPct": 6, "highlightsClippedIncrease": 3, "skinHueShiftDeg": 12, "skinHueBandDeg": [100, 150] }
+    },
+    {
+      "name": "night-cool",
+      "description": "Moonlit: underexposed, blue-green cast, reduced saturation, a touch of blue in the shadows.",
+      "tags": ["night", "cool", "mystery"],
+      "params": { "exposure": -0.6, "temperature": -0.22, "tint": -0.02, "contrast": 1.12, "saturation": 0.85, "lift": { "b": 0.02 }, "gamma": { "master": 0.95 } },
+      "guards": { "maxChromaP95": 0.7, "blacksCrushedIncrease": 6, "exposureShiftStops": 0.5, "skinHueShiftDeg": 12 }
+    }
+  ]
+}

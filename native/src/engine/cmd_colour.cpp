@@ -187,6 +187,21 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
 
 } // namespace
 
+// Declared in cmd_util.h, used by the style library commands: the clip's UNGRADED pixels graded by each candidate on the CPU twin of the shader.
+Result predictGrades(CallContext& c, const QString& itemId, const std::vector<PrimaryGrade>& grades, int samples, std::vector<QJsonObject>* metrics) {
+  const Item* it = nullptr;
+  if (Result r = needItem(c, itemId, &it); !r.ok) return r;
+  render::Capture cap;
+  if (Result r = captureItem(c, *it, std::clamp(samples, 1, 16), false, &cap); !r.ok) return r;
+  metrics->clear();
+  for (const PrimaryGrade& g : grades) {
+    std::vector<render::PixelSet> graded;
+    for (const render::PixelSet& f : cap.frames) graded.push_back(render::gradePixels(f, g));
+    metrics->push_back(render::analyzeFrames(graded).toJson());
+  }
+  return Result::success(QJsonObject{});
+}
+
 void registerColourCommands(Engine& e) {
   const QString dflt = QStringLiteral("Frames sampled evenly across the clip (default 5, 1..16).");
   e.add(spec("colour.analyze", "", "engine", false,

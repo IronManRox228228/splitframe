@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "kind": "pacing",
+  "items": [
+    {
+      "name": "music-video",
+      "description": "Cut to the music: short shots, most cuts on the beat, a fast first cut.",
+      "aslSec": { "min": 1.2, "max": 3.0 },
+      "cutsOnBeatMinPct": 60,
+      "hookMaxSec": 2.5,
+      "minShotSec": 0.25,
+      "maxShotSec": 8
+    },
+    {
+      "name": "trailer",
+      "description": "Escalating, punchy cutting with hits on the beat and a hook inside two seconds.",
+      "aslSec": { "min": 1.0, "max": 2.5 },
+      "cutsOnBeatMinPct": 40,
+      "hookMaxSec": 2.0,
+      "minShotSec": 0.2,
+      "maxShotSec": 6
+    },
+    {
+      "name": "documentary",
+      "description": "Observational pace: shots that breathe, cuts follow the content, not a beat.",
+      "aslSec": { "min": 4.0, "max": 9.0 },
+      "cutsOnBeatMinPct": 0,
+      "hookMaxSec": 8,
+      "minShotSec": 0.8,
+      "maxShotSec": 30
+    },
+    {
+      "name": "interview",
+      "description": "Long takes on the speaker with occasional cutaways; cuts sit in speech gaps.",
+      "aslSec": { "min": 6.0, "max": 15.0 },
+      "cutsOnBeatMinPct": 0,
+      "hookMaxSec": 6,
+      "minShotSec": 1.5,
+      "maxShotSec": 60
+    },
+    {
+      "name": "social-short",
+      "description": "Vertical short-form: fast, a hook inside 1.5 seconds, some cuts on the beat of the sound.",
+      "aslSec": { "min": 0.8, "max": 2.2 },
+      "cutsOnBeatMinPct": 30,
+      "hookMaxSec": 1.5,
+      "minShotSec": 0.3,
+      "maxShotSec": 5
+    }
+  ]
+}
