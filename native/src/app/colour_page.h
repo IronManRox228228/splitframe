@@ -17,6 +17,8 @@
 #include <QPointer>
 #include <QQmlEngine>
 #include <QStringList>
+#include <QThread>
+#include <QTimer>
 #include <QVariantList>
 
 #include <functional>
@@ -53,9 +55,22 @@ class ColourPage : public QObject {
   Q_PROPERTY(bool hasPrimaries READ hasPrimaries NOTIFY clipChanged)
   // before / after: preview with all colour management off
   Q_PROPERTY(bool bypass READ bypass WRITE setBypass NOTIFY bypassChanged)
+  // Scopes: measurements of the current clip at the playhead (render/colour_analysis.h), computed off the UI thread and
+  // debounced. {valid, frame, histogram: [64 fractions of display luma], histogramMax, exposure (stops vs 18% grey),
+  // contrast (stops), crushed, clipped (percent), castTemperature, castTint (primaries units, +warm / +magenta),
+  // skinPct, skinOffset (degrees from the skin-tone line)}. Only measured while `scopesActive` (the page is showing).
+  Q_PROPERTY(QVariantMap scopes READ scopes NOTIFY scopesChanged)
+  Q_PROPERTY(bool scopesBusy READ scopesBusy NOTIFY scopesChanged)
+  Q_PROPERTY(bool scopesActive READ scopesActive WRITE setScopesActive NOTIFY scopesActiveChanged)
+  // one line about the last Auto balance / Match: what changed, or why nothing did
+  Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+  // "Match to..." armed: the next clip picked in the strip is the reference
+  Q_PROPERTY(bool pickingReference READ pickingReference WRITE setPickingReference NOTIFY pickingChanged)
+  Q_PROPERTY(bool proposing READ proposing NOTIFY statusChanged)
 
 public:
   ColourPage(editor::Project& project, editor::MediaPool* pool, Player* player, QObject* parent = nullptr);
+  ~ColourPage() override;
 
   bool available() const { return render::ColorManager::available(); }
   QStringList workingSpaces();
@@ -76,6 +91,16 @@ public:
   bool hasPrimaries() const;
   bool bypass() const { return player_ && player_->colourBypass(); }
   void setBypass(bool on);
+  QVariantMap scopes() const { return scopes_; }
+  bool scopesBusy() const { return scopeJobs_ > 0; }
+  bool scopesActive() const { return scopesActive_; }
+  void setScopesActive(bool on);
+  QString status() const { return status_; }
+  bool pickingReference() const { return picking_; }
+  void setPickingReference(bool on);
+  bool proposing() const { return proposing_; }
+  // true when nothing is measuring and nothing is queued (screenshots wait for it)
+  bool scopesIdle() const { return scopeJobs_ == 0 && !scopesTimer_.isActive() && !scopesDirty_; }
 
   // ---- project colour management (not undoable) ----
   Q_INVOKABLE void setWorkingSpace(const QString& space);
@@ -95,8 +120,16 @@ public:
   Q_INVOKABLE bool dragPrimary(const QString& key, double value);
   Q_INVOKABLE bool resetPrimary(const QString& key); // back to neutral, one undo step
   Q_INVOKABLE bool resetPrimaries();
+  // ---- measured colour: one undo step each, replaces the clip's primaries (see colour.autoBalance / colour.match) ----
+  Q_INVOKABLE void autoBalance();
+  Q_INVOKABLE void matchTo(const QString& referenceItemId);
+  Q_INVOKABLE void refreshScopes(); // measure now (the debounce calls this)
 
 signals:
+  void scopesChanged();
+  void scopesActiveChanged();
+  void statusChanged();
+  void pickingChanged();
   void optionsChanged();
   void projectChanged();
   void clipsChanged();
@@ -104,12 +137,18 @@ signals:
   void bypassChanged();
 
 private:
+  struct Worker; // renders and measures on its own thread (own offscreen renderer)
+
   void refresh();
   void adoptSelection();
   const Item* clip() const;
   bool editClip(const std::function<void(ItemColor&)>& change, const QString& label, bool live = false);
   void editProject(const std::function<void(ColorManagement&)>& change);
   void loadOptions();
+  void scheduleScopes();
+  void startScopes();
+  void startProposal(bool match, const QString& referenceId);
+  Worker* worker();
 
   editor::Project& project_;
   QPointer<editor::MediaPool> pool_;
@@ -120,6 +159,16 @@ private:
   bool optionsLoaded_ = false;
   bool dragging_ = false;
   int thumbRevision_ = 0;
+
+  QVariantMap scopes_;
+  QString status_;
+  QString scopesKey_; // clip + frame + colour block of the last measurement
+  QTimer scopesTimer_;
+  bool scopesActive_ = false, scopesDirty_ = false, picking_ = false, proposing_ = false;
+  int scopeJobs_ = 0;
+  quint64 scopeSerial_ = 0;
+  QThread* thread_ = nullptr;
+  Worker* worker_ = nullptr;
 };
 
 } // namespace sf::app

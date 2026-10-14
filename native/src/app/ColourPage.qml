@@ -90,6 +90,37 @@ Item {
         Layout.preferredHeight: 1
         color: Theme.line
     }
+    // One scope readout: small label over a mono value
+    component Readout: ColumnLayout {
+        property string label
+        property string value
+        property color tone: Theme.fg2
+        Layout.fillWidth: true
+        spacing: 0
+        Lbl { text: parent.label; font.pixelSize: 11; Layout.fillWidth: true }
+        Text {
+            text: parent.value
+            color: parent.tone
+            font.pixelSize: 12
+            font.family: Theme.mono
+            elide: Text.ElideRight
+            Layout.fillWidth: true
+        }
+    }
+
+    // measure only while this page is showing
+    onVisibleChanged: page.col.scopesActive = page.visible
+    Component.onCompleted: page.col.scopesActive = page.visible
+    Component.onDestruction: page.col.scopesActive = false
+    readonly property var sc: page.col.scopes
+    readonly property bool measured: sc !== undefined && sc.valid === true
+    function signed(v, d) { return (v > 0 ? "+" : "") + v.toFixed(d) }
+    function amountTone(pct) { return pct > 5 ? Theme.danger : (pct > 1 ? Theme.warn : Theme.fg2) }
+    function castText(t, tint) {
+        const a = Math.abs(t) < 0.02 ? "neutral" : (t > 0 ? "warm " : "cool ") + Math.abs(t).toFixed(2)
+        const b = Math.abs(tint) < 0.02 ? "" : (tint > 0 ? " / magenta " : " / green ") + Math.abs(tint).toFixed(2)
+        return a + b
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -164,7 +195,8 @@ Item {
                             radius: 12
                             color: Theme.field
                             border.width: card.modelData.selected ? 2 : 1
-                            border.color: card.modelData.selected ? Theme.accent : (cardArea.containsMouse ? Theme.lineStrong : Theme.line)
+                            border.color: page.col.pickingReference && cardArea.containsMouse && !card.modelData.selected ? Theme.warn
+                                          : (card.modelData.selected ? Theme.accent : (cardArea.containsMouse ? Theme.lineStrong : Theme.line))
                             clip: true
 
                             Image {
@@ -213,7 +245,12 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                page.col.selectClip(card.modelData.id)
+                                if (page.col.pickingReference && !card.modelData.selected) {
+                                    page.col.matchTo(card.modelData.id)
+                                } else {
+                                    page.col.pickingReference = false
+                                    page.col.selectClip(card.modelData.id)
+                                }
                                 page.focusReleased()
                             }
                         }
@@ -254,6 +291,107 @@ Item {
                         elide: Text.ElideNone
                         text: "This build has no OpenColorIO: only the built-in sRGB / Rec.709 path exists."
                     }
+
+                    // ---------- scopes ----------
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "Scopes"
+                            color: Theme.text
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                        }
+                        Item { Layout.fillWidth: true }
+                        Lbl {
+                            text: page.col.scopesBusy ? "measuring" : (page.measured ? "frame " + page.sc.frame : "")
+                            font.family: Theme.mono
+                            font.pixelSize: 11
+                        }
+                    }
+                    Rectangle {
+                        id: histBox
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 78
+                        radius: Theme.radiusField
+                        color: Theme.field
+                        border.width: 1
+                        border.color: Theme.line
+                        clip: true
+                        readonly property real bw: (width - 12) / 64
+
+                        // crushed (left) and clipped (right) zones: the bins that hold display values <= 2/255 and >= 253/255
+                        Rectangle { x: 6; y: 1; width: histBox.bw; height: parent.height - 2; color: "#26F28B82" }
+                        Rectangle { x: 6 + histBox.bw * 63; y: 1; width: histBox.bw; height: parent.height - 2; color: "#26F28B82" }
+                        Repeater {
+                            model: page.measured ? page.sc.histogram : []
+                            Rectangle {
+                                required property real modelData
+                                required property int index
+                                readonly property real norm: page.sc.histogramMax > 0 ? Math.sqrt(modelData / page.sc.histogramMax) : 0
+                                x: 6 + index * histBox.bw
+                                width: Math.max(1, histBox.bw - 1)
+                                height: Math.max(norm > 0 ? 1 : 0, norm * (histBox.height - 10))
+                                anchors.bottom: histBox.bottom
+                                anchors.bottomMargin: 5
+                                color: (index === 0 && page.sc.crushed > 0.05) || (index === 63 && page.sc.clipped > 0.05) ? Theme.danger : Theme.fg2
+                                opacity: index === 0 || index === 63 ? 1 : 0.75
+                            }
+                        }
+                        Lbl {
+                            anchors.centerIn: parent
+                            visible: !page.measured
+                            text: page.col.scopesBusy ? "Measuring..." : (page.has ? "No measurement" : "Pick a clip")
+                            color: Theme.faint
+                        }
+                    }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        visible: page.measured
+                        columns: 2
+                        columnSpacing: 10
+                        rowSpacing: 4
+                        Readout { label: "Exposure (vs 18% grey)"; value: page.measured ? page.signed(page.sc.exposure, 2) + " stops" : "" }
+                        Readout { label: "Contrast (p1 to p99)"; value: page.measured ? page.sc.contrast.toFixed(1) + " stops" : "" }
+                        Readout { label: "Crushed blacks"; value: page.measured ? page.sc.crushed.toFixed(1) + " %" : ""; tone: page.measured ? page.amountTone(page.sc.crushed) : Theme.fg2 }
+                        Readout { label: "Clipped highlights"; value: page.measured ? page.sc.clipped.toFixed(1) + " %" : ""; tone: page.measured ? page.amountTone(page.sc.clipped) : Theme.fg2 }
+                        Readout {
+                            Layout.columnSpan: 2
+                            label: "Cast (warm / cool, green / magenta)"
+                            value: page.measured ? page.castText(page.sc.castTemperature, page.sc.castTint) : ""
+                        }
+                        Readout {
+                            Layout.columnSpan: 2
+                            label: "Skin (share, hue off the skin line)"
+                            value: page.measured ? (page.sc.skinPct < 0.05 ? "none found" : page.sc.skinPct.toFixed(1) + " %, " + page.signed(page.sc.skinOffset, 0) + " deg") : ""
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Btn {
+                            text: "Auto balance"
+                            enabled: page.has && !page.col.proposing
+                            tip: "Measure the clip and set exposure and white balance. One undo step."
+                            onClicked: page.col.autoBalance()
+                        }
+                        Btn {
+                            text: page.col.pickingReference ? "Pick a clip..." : "Match to..."
+                            active: page.col.pickingReference
+                            enabled: page.has && !page.col.proposing && page.col.clips.length > 1
+                            tip: "Then click the reference clip in the strip: this clip is graded to look like it."
+                            onClicked: page.col.pickingReference = !page.col.pickingReference
+                        }
+                    }
+                    Lbl {
+                        Layout.fillWidth: true
+                        visible: text !== ""
+                        wrapMode: Text.Wrap
+                        elide: Text.ElideNone
+                        font.pixelSize: 11
+                        color: page.col.pickingReference ? Theme.warn : Theme.faint
+                        text: page.col.pickingReference ? "Click the reference clip in the strip." : page.col.status
+                    }
+                    Hairline { Layout.topMargin: 2 }
 
                     // ---------- clip ----------
                     Section { text: page.has ? "Clip: " + page.col.clipName : "Clip" }

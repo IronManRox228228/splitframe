@@ -210,10 +210,12 @@ int main(int argc, char* argv[]) {
     timer->setInterval(50);
     // the Audio page has no preview, so no frame is ever composited for it
     const bool wantFrame = cli.value(pageOpt) != QLatin1String("audio");
-    QObject::connect(timer, &QTimer::timeout, window, [wait, window, out, opened, wantFrame, &player, &editor] {
+    // the Colour page measures its scopes in the background: shoot once they are in
+    const bool wantScopes = cli.value(pageOpt) == QLatin1String("colour");
+    QObject::connect(timer, &QTimer::timeout, window, [wait, window, out, opened, wantFrame, wantScopes, &player, &editor] {
       // wait for the playhead's frame to be fully composited (decoders caught up) and the thumbnails to
       // exist, then a few frames more so the window has presented it; give up after a while and shoot what is there
-      const bool ready = *opened && editor.pool()->pending() == 0 && player.loaded() && (!wantFrame || player.settled());
+      const bool ready = *opened && editor.pool()->pending() == 0 && player.loaded() && (!wantFrame || player.settled()) && (!wantScopes || editor.colour()->scopesIdle());
       wait->steady = ready ? wait->steady + 1 : 0;
       const bool timedOut = wait->clock.elapsed() > 20000;
       if (wait->steady >= 6 || timedOut) {

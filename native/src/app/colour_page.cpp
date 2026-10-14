@@ -3,22 +3,35 @@
 #include "app/editor.h"
 #include "core/ops.h"
 #include "core/timeline_doc.h"
+#include "render/colour_analysis.h"
+#include "render/colour_capture.h"
 
+#include <QCoreApplication>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QAbstractItemModel>
 
 #include <algorithm>
+#include <cmath>
 
 namespace sf::app {
 
 using editor::Project;
 
 ColourPage::ColourPage(Project& project, editor::MediaPool* pool, Player* player, QObject* parent) : QObject(parent), project_(project), pool_(pool), player_(player) {
-  connect(&project_, &Project::docChanged, this, &ColourPage::refresh);
+  scopesTimer_.setSingleShot(true);
+  scopesTimer_.setInterval(250);
+  connect(&scopesTimer_, &QTimer::timeout, this, &ColourPage::startScopes);
+  connect(&project_, &Project::docChanged, this, [this] {
+    refresh();
+    scheduleScopes();
+  });
   connect(&project_, &Project::selectionChanged, this, [this] {
     adoptSelection();
     refresh();
+    scheduleScopes();
   });
+  if (player_) connect(player_, &Player::transportChanged, this, &ColourPage::scheduleScopes);
   if (pool_) {
     connect(pool_, &QAbstractItemModel::dataChanged, this, &ColourPage::refresh);
     connect(pool_, &QAbstractItemModel::modelReset, this, &ColourPage::refresh);
@@ -26,6 +39,269 @@ ColourPage::ColourPage(Project& project, editor::MediaPool* pool, Player* player
   if (player_) connect(player_, &Player::colourBypassChanged, this, &ColourPage::bypassChanged);
   adoptSelection();
   refresh();
+}
+
+// ---------- measuring (scopes, Auto balance, Match) ----------
+
+// Renders and measures on its own thread with its own offscreen renderer (created there, destroyed there).
+struct ColourPage::Worker : QObject {
+  std::unique_ptr<render::OffscreenRenderer> renderer;
+  render::OffscreenRenderer* get(QString* error) {
+    if (!renderer) renderer = render::OffscreenRenderer::create(error);
+    return renderer.get();
+  }
+};
+
+namespace {
+
+struct Outcome {
+  bool ok = false;
+  QString error;
+  render::ColourMetrics metrics;
+  PrimaryGrade grade;
+  double residual = 0;
+  QStringList notes;
+};
+
+render::AssetTable assetTableOf(const Project& p) {
+  render::AssetTable table;
+  for (const Asset& a : p.assets()) {
+    if (a.status == AssetStatus::Failed || a.path.isEmpty()) continue;
+    table[a.id] = {a.path, a.kind, {}};
+  }
+  return table;
+}
+
+QString describeGrade(const PrimaryGrade& g) {
+  QStringList parts;
+  const auto add = [&](const char* name, double v, double neutral, int decimals) {
+    if (std::fabs(v - neutral) >= 0.5 * std::pow(10.0, -decimals)) parts << QStringLiteral("%1 %2").arg(QLatin1String(name), QString::number(v, 'f', decimals));
+  };
+  add("exposure", g.exposure, 0, 2);
+  add("temperature", g.temperature, 0, 2);
+  add("tint", g.tint, 0, 2);
+  add("contrast", g.contrast, 1, 2);
+  add("saturation", g.saturation, 1, 2);
+  if (g.gain != Rgb3{1, 1, 1}) parts << QStringLiteral("gain %1/%2/%3").arg(g.gain.r, 0, 'f', 2).arg(g.gain.g, 0, 'f', 2).arg(g.gain.b, 0, 'f', 2);
+  return parts.isEmpty() ? QStringLiteral("no change") : parts.join(QStringLiteral(", "));
+}
+
+QVariantMap scopesMap(const render::ColourMetrics& c, qint64 frame) {
+  QVariantList hist;
+  double peak = 0;
+  for (double v : c.histogram) {
+    hist << v;
+    peak = std::max(peak, v);
+  }
+  return QVariantMap{{QStringLiteral("valid"), true},
+                     {QStringLiteral("frame"), frame},
+                     {QStringLiteral("histogram"), hist},
+                     {QStringLiteral("histogramMax"), peak},
+                     {QStringLiteral("exposure"), c.exposureStops},
+                     {QStringLiteral("contrast"), c.contrastStops},
+                     {QStringLiteral("crushed"), c.crushedPct.all},
+                     {QStringLiteral("clipped"), c.clippedPct.all},
+                     {QStringLiteral("castTemperature"), c.castTemperature},
+                     {QStringLiteral("castTint"), c.castTint},
+                     {QStringLiteral("skinPct"), c.skinPct},
+                     {QStringLiteral("skinOffset"), c.skinOffsetDeg}};
+}
+
+} // namespace
+
+ColourPage::~ColourPage() {
+  if (!thread_) return;
+  Worker* w = worker_;
+  QMetaObject::invokeMethod(w, [w] { w->renderer.reset(); }, Qt::BlockingQueuedConnection);
+  thread_->quit();
+  thread_->wait();
+  delete worker_;
+  delete thread_;
+}
+
+ColourPage::Worker* ColourPage::worker() {
+  if (!worker_) {
+    thread_ = new QThread;
+    worker_ = new Worker;
+    worker_->moveToThread(thread_);
+    thread_->start();
+  }
+  return worker_;
+}
+
+void ColourPage::setScopesActive(bool on) {
+  if (on == scopesActive_) return;
+  scopesActive_ = on;
+  emit scopesActiveChanged();
+  if (on) scheduleScopes();
+}
+
+void ColourPage::setPickingReference(bool on) {
+  if (on == picking_) return;
+  picking_ = on;
+  emit pickingChanged();
+}
+
+void ColourPage::scheduleScopes() {
+  if (scopesActive_ && player_) scopesTimer_.start();
+}
+
+void ColourPage::refreshScopes() {
+  scopesKey_.clear();
+  startScopes();
+}
+
+void ColourPage::startScopes() {
+  if (!scopesActive_ || !player_) return;
+  const Item* it = clip();
+  if (!it) {
+    if (!scopes_.isEmpty()) {
+      scopes_.clear();
+      scopesKey_.clear();
+      emit scopesChanged();
+    }
+    return;
+  }
+  if (scopeJobs_ > 0) {
+    scopesDirty_ = true;
+    return;
+  }
+  Frame frame = player_->frame();
+  if (frame < it->startFrame || frame >= it->startFrame + it->durationFrames) frame = it->startFrame + it->durationFrames / 2;
+  const QString colourJson = QString::fromUtf8(QJsonDocument(it->color ? toJson(*it->color) : QJsonObject{}).toJson(QJsonDocument::Compact));
+  const QString key = QStringLiteral("%1|%2|%3|%4").arg(it->id).arg(frame).arg(colourJson, workingSpace() + displayView() + blendSpace());
+  scopesDirty_ = false;
+  if (key == scopesKey_) return;
+
+  TimelineDoc doc = render::isolateItem(project_.doc(), it->id, true);
+  render::AssetTable assets = assetTableOf(project_);
+  ++scopeJobs_;
+  emit scopesChanged();
+  QPointer<ColourPage> self(this);
+  Worker* w = worker();
+  QMetaObject::invokeMethod(
+      w,
+      [w, self, doc = std::move(doc), assets = std::move(assets), frame, key]() mutable {
+        Outcome out;
+        QString err;
+        if (render::OffscreenRenderer* r = w->get(&err)) {
+          const render::Capture cap = render::captureFrames(*r, doc, assets, {frame}, true);
+          if (cap.ok()) {
+            out.metrics = render::analyze(cap.frames.front());
+            out.ok = out.metrics.valid;
+          } else {
+            out.error = cap.error;
+          }
+        } else {
+          out.error = err;
+        }
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [self, out, key, frame] {
+              if (!self) return;
+              --self->scopeJobs_;
+              if (out.ok) {
+                self->scopes_ = scopesMap(out.metrics, frame);
+                self->scopesKey_ = key;
+              } else {
+                self->scopes_ = QVariantMap{{QStringLiteral("valid"), false}, {QStringLiteral("error"), out.error}};
+                self->scopesKey_.clear();
+              }
+              emit self->scopesChanged();
+              if (self->scopesDirty_) self->startScopes();
+            },
+            Qt::QueuedConnection);
+      },
+      Qt::QueuedConnection);
+}
+
+void ColourPage::autoBalance() { startProposal(false, QString()); }
+
+void ColourPage::matchTo(const QString& referenceItemId) {
+  setPickingReference(false);
+  startProposal(true, referenceItemId);
+}
+
+void ColourPage::startProposal(bool match, const QString& referenceId) {
+  const Item* it = clip();
+  if (!it || proposing_) return;
+  const Item* ref = match ? getItem(project_.doc(), referenceId) : nullptr;
+  if (match && (!ref || referenceId == it->id)) {
+    status_ = QStringLiteral("Pick a different clip as the reference.");
+    emit statusChanged();
+    return;
+  }
+  proposing_ = true;
+  status_ = match ? QStringLiteral("Matching...") : QStringLiteral("Measuring...");
+  emit statusChanged();
+  const Item copy = *it;
+  const Item refCopy = ref ? *ref : Item{};
+  const QString refName = ref ? editor::itemDisplayName(*ref, ref->assetId ? project_.asset(*ref->assetId) : nullptr) : QString();
+  const TimelineDoc whole = project_.doc();
+  render::AssetTable assets = assetTableOf(project_);
+  QPointer<ColourPage> self(this);
+  Worker* w = worker();
+  QMetaObject::invokeMethod(
+      w,
+      [w, self, match, copy, refCopy, refName, whole, assets = std::move(assets)]() mutable {
+        Outcome out;
+        QString err;
+        if (render::OffscreenRenderer* r = w->get(&err)) {
+          const auto pool = [&](const Item& item, bool keepGrade) {
+            render::PixelSet all;
+            const render::Capture cap = render::captureFrames(*r, render::isolateItem(whole, item.id, keepGrade), assets, render::sampleFrames(item, 3), true);
+            if (!cap.ok()) {
+              out.error = cap.error.isEmpty() ? QStringLiteral("The clip has no pixels on the canvas.") : cap.error;
+              return all;
+            }
+            for (const render::PixelSet& f : cap.frames) all.append(f);
+            return all;
+          };
+          const render::PixelSet target = pool(copy, false);
+          if (out.error.isEmpty()) {
+            if (!match) {
+              const render::Proposal p = render::proposeAutoBalance(target);
+              out.grade = p.primaries;
+              out.notes = p.notes;
+              out.ok = true;
+            } else {
+              const render::PixelSet ref = pool(refCopy, true);
+              if (out.error.isEmpty()) {
+                const render::Proposal p = render::proposeMatch(target, render::analyze(ref));
+                out.grade = p.primaries;
+                out.notes = p.notes;
+                out.residual = p.error;
+                out.ok = true;
+              }
+            }
+          }
+        } else {
+          out.error = err;
+        }
+        QMetaObject::invokeMethod(
+            QCoreApplication::instance(),
+            [self, out, match, itemId = copy.id, refName] {
+              if (!self) return;
+              self->proposing_ = false;
+              if (!out.ok) {
+                self->status_ = QStringLiteral("Could not measure: %1").arg(out.error);
+              } else if (self->clipId_ != itemId) {
+                self->status_ = QStringLiteral("The clip changed while measuring; nothing applied.");
+              } else {
+                self->endDrag();
+                const PrimaryGrade g = out.grade;
+                self->editClip([&](ItemColor& c) { c.primaries = g; }, match ? QStringLiteral("Match colour") : QStringLiteral("Auto balance"));
+                self->status_ = match ? QStringLiteral("Matched to %1 (residual %2 stops): %3").arg(refName).arg(out.residual, 0, 'f', 2).arg(describeGrade(g))
+                                      : QStringLiteral("Auto balance: %1").arg(describeGrade(g));
+                if (!out.notes.isEmpty()) self->status_ += QStringLiteral(". ") + out.notes.join(QLatin1Char(' '));
+              }
+              emit self->statusChanged();
+              self->scopesKey_.clear();
+              self->scheduleScopes();
+            },
+            Qt::QueuedConnection);
+      },
+      Qt::QueuedConnection);
 }
 
 // ---------- options (loaded on first ask: reading the config is not free) ----------

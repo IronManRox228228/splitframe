@@ -133,6 +133,7 @@ void registerReadCommands(Engine& e);
 void registerEditCommands(Engine& e);
 void registerMediaCommands(Engine& e);
 void registerRenderCommands(Engine& e);
+void registerColourCommands(Engine& e);
 void registerExportCommands(Engine& e);
 
 } // namespace sf::engine

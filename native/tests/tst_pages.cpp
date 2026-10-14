@@ -211,6 +211,27 @@ private slots:
     col.setBypass(false);
   }
 
+  // the scopes need a player (the playhead) and the page showing; picking a reference is a mode that ends with the pick
+  void scopesAreInertWithoutAPlayerAndMatchNeedsAnotherClip() {
+    Project p;
+    fillProject(p);
+    ColourPage col(p, nullptr, nullptr);
+    QSignalSpy scopes(&col, &ColourPage::scopesChanged);
+    col.setScopesActive(true);
+    col.refreshScopes();
+    QVERIFY(col.scopes().isEmpty());
+    QVERIFY(col.scopesIdle());
+    QVERIFY(!col.scopesBusy());
+    QCOMPARE(scopes.count(), 0);
+    col.setPickingReference(true);
+    QVERIFY(col.pickingReference());
+    col.matchTo(col.clipId()); // itself is no reference
+    QVERIFY(!col.pickingReference());
+    QVERIFY(col.status().contains(QStringLiteral("different")));
+    QVERIFY(!col.proposing());
+    QVERIFY(!itemOf(p, col.clipId()).color); // nothing was applied
+  }
+
   // ---------------------------------------------------------------- mixer
   void stripsAreTheAudioCapableTracksInOrder() {
     Project p;

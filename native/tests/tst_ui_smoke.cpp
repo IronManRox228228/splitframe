@@ -104,6 +104,16 @@ private slots:
     }
   }
 
+  // the Colour page measures its scopes in the background and the screenshot waits for them: exit 0 (not 3, "timed out")
+  // means a measurement came back, and the panel with the histogram built without QML warnings
+  void colourPageMeasuresItsScopes() {
+    const QString shot = shotDir(dir_) + QStringLiteral("/ui_colour_scopes.png");
+    const Run r = runApp({QStringLiteral("--page"), QStringLiteral("colour"), QStringLiteral("--frame"), QStringLiteral("100"), QStringLiteral("--select"), QStringLiteral("1"), project_}, shot);
+    QCOMPARE(r.exitCode, 0);
+    expectNoQmlWarnings(r.err);
+    QVERIFY(QImage(shot).width() > 800);
+  }
+
   void mediaFileOpensAsOneClipProject() {
     const QString shot = shotDir(dir_) + QStringLiteral("/ui_media.png");
     const Run r = runApp({dir_.filePath(QStringLiteral("clip_a.mp4"))}, shot);

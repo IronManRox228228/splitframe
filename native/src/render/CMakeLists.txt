@@ -6,6 +6,8 @@ add_library(sf_render STATIC
   gpu_planes.h gpu_planes.cpp
   color.h color.cpp
   color_manager.h color_manager.cpp
+  colour_analysis.h colour_analysis.cpp
+  colour_capture.h colour_capture.cpp
   compositor.h compositor.cpp
   offscreen.h offscreen.cpp
 )

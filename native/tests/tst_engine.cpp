@@ -469,6 +469,71 @@ private slots:
     QCOMPARE(raw(Q("thumbnail.get"), {{Q("assetId"), audio}}).error.code, Q("invalid_params"));
   }
 
+  // ---- colour measurement ----
+  void colourMeasurementAndProposals() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+    const QString video = firstAsset(Q("video"));
+    ok(Q("clip.add"), {{Q("assetId"), video}});
+    ok(Q("clip.add"), {{Q("assetId"), video}});
+    QStringList clips;
+    for (const QJsonValue v : items())
+      if (v.toObject().value(Q("type")).toString() == Q("video")) clips << v.toObject().value(Q("id")).toString();
+    QCOMPARE(clips.size(), 2);
+
+    const Result probe = raw(Q("colour.analyze"), {{Q("itemId"), clips[0]}, {Q("samples"), 3}});
+    if (!probe.ok && probe.error.code == Q("unavailable") && probe.error.message.contains(Q("renderer"))) QSKIP("no D3D11 device for the offscreen renderer");
+    QVERIFY2(probe.ok, qPrintable(probe.error.message));
+    const QJsonObject m = probe.value.toObject();
+    QVERIFY(m.value(Q("valid")).toBool());
+    QCOMPARE(m.value(Q("frames")).toInt(), 3);
+    QVERIFY(m.value(Q("pixels")).toDouble() > 1000);
+    QCOMPARE(m.value(Q("histogram")).toObject().value(Q("fraction")).toArray().size(), 64);
+    QVERIFY(m.value(Q("luma")).toObject().contains(Q("stopsVs18Grey")));
+    QVERIFY(m.contains(Q("cast")) && m.contains(Q("skin")) && m.contains(Q("crushedPct")));
+    QCOMPARE(raw(Q("colour.analyze"), {{Q("itemId"), clips[0]}, {Q("samples"), 3}}).value.toObject().value(Q("luma")).toObject(), m.value(Q("luma")).toObject()); // deterministic
+    QVERIFY(ok(Q("colour.analyze"), {{Q("frame"), 5}}).value(Q("valid")).toBool());                                                                      // the composite
+    QCOMPARE(raw(Q("colour.analyze"), {{Q("itemId"), Q("itm_nope")}}).error.code, Q("not_found"));
+
+    // autoBalance: a proposal does nothing until apply
+    const QJsonObject dry = ok(Q("colour.autoBalance"), {{Q("itemId"), clips[0]}, {Q("samples"), 2}});
+    QVERIFY(!dry.value(Q("applied")).toBool());
+    QVERIFY(dry.contains(Q("proposedPrimaries")) && dry.contains(Q("predicted")));
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), clips[0]}}).contains(Q("color")));
+    // the dark -3 stop grade is something auto balance wants to lift: apply it, then undo
+    ok(Q("item.color.set"), {{Q("itemId"), clips[0]}, {Q("primaries"), QJsonObject{{Q("exposure"), -3.0}}}});
+    const QJsonObject applied = ok(Q("colour.autoBalance"), {{Q("itemId"), clips[0]}, {Q("samples"), 2}, {Q("apply"), true}, {Q("origin"), Q("agent:colourist")}});
+    QVERIFY(applied.value(Q("applied")).toBool());
+    const QJsonObject prim = ok(Q("item.get"), {{Q("itemId"), clips[0]}}).value(Q("color")).toObject().value(Q("primaries")).toObject();
+    const QJsonObject dark{{Q("exposure"), -3.0}};
+    QVERIFY2(prim != dark, "autoBalance replaced the -3 stop grade");
+    QCOMPARE(applied.value(Q("proposedPrimaries")).toObject(), prim);
+    ok(Q("history.undo"));
+    QCOMPARE(ok(Q("item.get"), {{Q("itemId"), clips[0]}}).value(Q("color")).toObject().value(Q("primaries")).toObject().value(Q("exposure")).toDouble(), -3.0);
+    ok(Q("history.undo"));
+    QVERIFY(!ok(Q("item.get"), {{Q("itemId"), clips[0]}}).contains(Q("color")));
+
+    // match: the same source graded dark matches back onto the plain one
+    ok(Q("item.color.set"), {{Q("itemId"), clips[1]}, {Q("primaries"), QJsonObject{{Q("exposure"), -1.0}, {Q("temperature"), 0.2}}}});
+    const QJsonObject mt = ok(Q("colour.match"), {{Q("itemId"), clips[1]}, {Q("referenceItemId"), clips[0]}, {Q("samples"), 2}});
+    QVERIFY(mt.value(Q("residual")).toObject().value(Q("rmsStops")).toDouble() < 0.1);
+    QVERIFY(mt.value(Q("plausible")).toBool()); // one stop and a little warmth is an ordinary match
+    QVERIFY(!mt.value(Q("applied")).toBool());
+    QCOMPARE(raw(Q("colour.match"), {{Q("itemId"), clips[0]}, {Q("referenceItemId"), clips[0]}}).error.code, Q("invalid_params"));
+
+    // check: unchanged is ok, a -3 stop grade moves the median far past the default limit
+    const QJsonObject same = ok(Q("colour.check"), {{Q("itemId"), clips[0]}, {Q("before"), m}, {Q("samples"), 3}});
+    QVERIFY2(same.value(Q("ok")).toBool(), qPrintable(QString::fromUtf8(QJsonDocument(same).toJson())));
+    ok(Q("item.color.set"), {{Q("itemId"), clips[0]}, {Q("primaries"), QJsonObject{{Q("exposure"), -3.0}}}});
+    const QJsonObject bad = ok(Q("colour.check"), {{Q("itemId"), clips[0]}, {Q("before"), m}, {Q("samples"), 3}});
+    QVERIFY2(!bad.value(Q("ok")).toBool(), qPrintable(QString::fromUtf8(QJsonDocument(bad).toJson())));
+    QStringList codes;
+    for (const QJsonValue v : bad.value(Q("violations")).toArray()) codes << v.toObject().value(Q("code")).toString();
+    QVERIFY2(codes.contains(Q("exposureShiftStops")), qPrintable(codes.join(Q(","))));
+    const QJsonObject lenient = ok(Q("colour.check"), {{Q("itemId"), clips[0]}, {Q("before"), m}, {Q("samples"), 3}, {Q("thresholds"), QJsonObject{{Q("exposureShiftStops"), 5.0}, {Q("blacksCrushedIncrease"), 100.0}}}});
+    QVERIFY(lenient.value(Q("ok")).toBool());
+    QCOMPARE(e_->describe(Q("colour")).size() > 3, true);
+  }
+
   void proxies() {
     ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
     const QString video = firstAsset(Q("video"));
