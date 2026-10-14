@@ -84,8 +84,8 @@ void Project::setColorManagement(std::optional<ColorManagement> cm) {
   changed(true);
 }
 
-void Project::beginGroup(const QString& label) {
-  history_.beginGroup(label.isEmpty() ? std::nullopt : std::optional<QString>(label), QStringLiteral("user"));
+void Project::beginGroup(const QString& label, const QString& actor) {
+  history_.beginGroup(label.isEmpty() ? std::nullopt : std::optional<QString>(label), actor);
   groupOpen_ = true;
 }
 

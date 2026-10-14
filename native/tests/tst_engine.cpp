@@ -59,7 +59,7 @@ class TstEngine : public QObject {
   Q_OBJECT
 
   QTemporaryDir dir_;
-  QString clip_, music_, story_, talk_, beats_, gray_;
+  QString clip_, music_, story_, talk_, beats_, gray_, vert_;
   std::unique_ptr<Engine> e_;
 
   QJsonObject ok(const QString& cmd, const QJsonObject& args = {}) {
@@ -84,6 +84,7 @@ class TstEngine : public QObject {
 private slots:
   void initTestCase() {
     QVERIFY(dir_.isValid());
+    qputenv("SF_SYSTEM_DIR", dir_.filePath(QStringLiteral("sys")).toUtf8()); // the smoke-test cache and the overrides stay in the temp dir
     if (ffmpegExe().isEmpty()) QSKIP("SF_FFMPEG_EXE is not set");
     clip_ = dir_.filePath(QStringLiteral("clip.mp4"));
     music_ = dir_.filePath(QStringLiteral("music.wav"));
@@ -99,6 +100,8 @@ private slots:
     QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), indexSource(320, 180, 25, 10), Q("-f"), Q("lavfi"), Q("-i"), Q("sine=frequency=440:sample_rate=48000:duration=10,volume=volume=0:enable='lt(mod(t,2),1)'"),
                         Q("-c:v"), Q("libx264"), Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), Q("-c:a"), Q("aac"), Q("-shortest"), talk_}, &log), qPrintable(log));
     QVERIFY(writeClickWav(beats_, 100.0, 20.0));
+    vert_ = dir_.filePath(QStringLiteral("vert.mp4"));
+    QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), indexSource(180, 320, 25, 2), Q("-c:v"), Q("libx264"), Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), vert_}, &log), qPrintable(log));
     // style library: a flat mid-grey picture (a neutral cast to measure a look against)
     gray_ = dir_.filePath(QStringLiteral("gray.mp4"));
     QVERIFY2(runFfmpeg({Q("-f"), Q("lavfi"), Q("-i"), Q("color=c=0x808080:s=320x180:r=25:d=2"), Q("-c:v"), Q("libx264"), Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), gray_}, &log), qPrintable(log));
@@ -877,6 +880,75 @@ private slots:
     QCOMPARE(forced.value(Q("moved")).toInt(), 1);
   }
 
+  void snapMovesLinkedAudio() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, beats_}}});
+    const QString story = assetNamed(Q("story.mp4")), beats = assetNamed(Q("beats.wav"));
+    const QString a = addClip(story, 0, 40, 40), b = addClip(story, 40, 40, 80);
+    const auto addAudio = [&](int start, int dur, int srcIn) {
+      return ok(Q("audio.add"), {{Q("assetId"), beats}, {Q("startFrame"), start}, {Q("durationFrames"), dur}, {Q("sourceInFrame"), srcIn}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+    };
+    const QString aa = addAudio(0, 40, 40), ab = addAudio(40, 40, 80);
+    const int total0 = ok(Q("history.list")).value(Q("total")).toInt();
+    const QJsonObject ap = ok(Q("edit.snapToBeats"), {{Q("beatFrames"), QJsonArray{44}}, {Q("allowWordClip"), true}, {Q("apply"), true}, {Q("trackId"), ok(Q("item.get"), {{Q("itemId"), a}}).value(Q("trackId")).toString()}});
+    QVERIFY(ap.value(Q("applied")).toBool());
+    QCOMPARE(ap.value(Q("linkedAudioMoved")).toArray().size(), 2);
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), total0 + 1); // picture and sound in one undo step
+    const auto get = [&](const QString& id) { return ok(Q("item.get"), {{Q("itemId"), id}}); };
+    QCOMPARE(get(a).value(Q("durationFrames")).toInt(), 44);
+    QCOMPARE(get(aa).value(Q("durationFrames")).toInt(), 44);
+    QCOMPARE(get(b).value(Q("startFrame")).toInt(), 44);
+    QCOMPARE(get(ab).value(Q("startFrame")).toInt(), 44);
+    QCOMPARE(get(ab).value(Q("durationFrames")).toInt(), 36);
+    QCOMPARE(get(ab).value(Q("sourceInFrame")).toInt(), 84);
+    QCOMPARE(ok(Q("history.undo")).value(Q("steps")).toInt(), 1);
+    QCOMPARE(get(aa).value(Q("durationFrames")).toInt(), 40);
+    QCOMPARE(get(ab).value(Q("startFrame")).toInt(), 40);
+  }
+
+  void aspectMismatchUsesTransform() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{vert_}}});
+    const QString vert = assetNamed(Q("vert.mp4"));
+    const QString v = addClip(vert, 0, 25, 0);
+    // default placement: a vertical clip pillarboxed on the 16:9 canvas is a note, not a violation
+    QJsonObject ck = ok(Q("timeline.check"));
+    QVERIFY(!rulesOf(ck).contains(Q("aspect_mismatch")));
+    QCOMPARE(ck.value(Q("info")).toArray().size(), 1);
+    QCOMPARE(ck.value(Q("info")).toArray().at(0).toObject().value(Q("kind")).toString(), Q("pillarbox"));
+    // scaled to fill the canvas: nothing to report
+    ok(Q("item.update"), {{Q("itemId"), v}, {Q("patch"), QJsonObject{{Q("transform"), QJsonObject{{Q("scale"), 3.3}}}}}});
+    ck = ok(Q("timeline.check"));
+    QVERIFY(!rulesOf(ck).contains(Q("aspect_mismatch")));
+    QCOMPARE(ck.value(Q("info")).toArray().size(), 0);
+    // shrunk so it neither fills nor is letter / pillarboxed: flagged
+    ok(Q("item.update"), {{Q("itemId"), v}, {Q("patch"), QJsonObject{{Q("transform"), QJsonObject{{Q("scale"), 0.5}}}}}});
+    QVERIFY(rulesOf(ok(Q("timeline.check"))).contains(Q("aspect_mismatch")));
+  }
+
+
+  // ---- system profile ----
+  void systemProfileCommands() {
+    const QJsonObject p = ok(Q("system.profile"));
+    QVERIFY(p.value(Q("profile")).toObject().value(Q("cpu")).toObject().value(Q("logicalCores")).toInt() >= 1);
+    const QJsonObject smoke = p.value(Q("smoke")).toObject();
+    QVERIFY(smoke.value(Q("ran")).toBool());
+    QCOMPARE(smoke.value(Q("encoders")).toArray().size(), 4);
+    QVERIFY(!smoke.value(Q("fromCache")).toBool());
+    const QJsonObject d = p.value(Q("decisions")).toObject();
+    for (const char* k : {"previewScale", "hwDecode", "exportEncoder", "mlDevice", "mlThreads", "backgroundPriority", "cacheMb", "reasons"}) QVERIFY2(d.contains(Q(k)), k);
+    qInfo().noquote() << QStringLiteral("system.profile smoke: %1 ms, compositor %2; decisions %3").arg(smoke.value(Q("totalMs")).toDouble(), 0, 'f', 0)
+                             .arg(QString::fromUtf8(QJsonDocument(smoke.value(Q("compositor")).toObject()).toJson(QJsonDocument::Compact)), QString::fromUtf8(QJsonDocument(d).toJson(QJsonDocument::Compact)));
+    QVERIFY(ok(Q("system.profile")).value(Q("smoke")).toObject().value(Q("fromCache")).toBool()); // cached the second time
+    const QJsonObject set = ok(Q("system.overrides.set"), {{Q("key"), Q("cacheMb")}, {Q("value"), 321}});
+    QCOMPARE(set.value(Q("decisions")).toObject().value(Q("cacheMb")).toInt(), 321);
+    QCOMPARE(ok(Q("system.profile"), {{Q("smoke"), false}}).value(Q("decisions")).toObject().value(Q("cacheMb")).toInt(), 321);
+    ok(Q("system.overrides.set"), {{Q("key"), Q("cacheMb")}, {Q("value"), QJsonValue(QJsonValue::Null)}});
+    QVERIFY(ok(Q("system.profile"), {{Q("smoke"), false}}).value(Q("decisions")).toObject().value(Q("cacheMb")).toInt() != 321);
+    QCOMPARE(raw(Q("system.overrides.set"), {{Q("key"), Q("mlDevice")}, {Q("value"), Q("tpu")}}).error.code, Q("invalid_params"));
+    const QJsonObject fit = ok(Q("llm.fitAdvice"), {{Q("sizeBytes"), 4.0 * 1024 * 1024 * 1024}, {Q("layers"), 32}, {Q("vramBudgetBytes"), 12.0 * 1024 * 1024 * 1024}});
+    QVERIFY(fit.value(Q("fitsFully")).toBool());
+    QCOMPARE(fit.value(Q("ngl")).toInt(), 32);
+    QCOMPARE(raw(Q("llm.fitAdvice"), {}).error.code, Q("invalid_params"));
+  }
 
   // ---- style library ----
   void styleLibraryCommands() {
@@ -1059,11 +1131,12 @@ private slots:
     QVERIFY(!ok(Q("mix.applyProfile"), {{Q("profile"), Q("podcast")}}).value(Q("ducking")).toObject().contains(Q("skipped")));
     QCOMPARE(raw(Q("mix.applyProfile"), {{Q("profile"), Q("loudest")}}).error.code, Q("invalid_params"));
 
-    // apply: the duck, then the loudness, each one undo step; the mix lands on the target
+    // apply: the duck, then the loudness, together ONE undo step; the mix lands on the target
     const QJsonObject ap = ok(Q("mix.applyProfile"), {{Q("profile"), Q("podcast")}, {Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}, {Q("apply"), true}, {Q("origin"), Q("agent:audio")}});
     QVERIFY(ap.value(Q("applied")).toBool());
-    QCOMPARE(ap.value(Q("undoSteps")).toInt(), 2);
-    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt() + 2);
+    QCOMPARE(ap.value(Q("undoSteps")).toInt(), 1);
+    QCOMPARE(ap.value(Q("writes")).toInt(), 2);
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), hist0.value(Q("total")).toInt() + 1);
     const double lufs = ok(Q("audio.measure")).value(Q("integratedLufs")).toDouble();
     const bool limited = ap.value(Q("normalize")).toObject().value(Q("proposal")).toObject().value(Q("limitedByTruePeak")).toBool();
     QVERIFY2(std::fabs(lufs + 16.0) < 0.6 || limited, qPrintable(QString::number(lufs)));
@@ -1071,7 +1144,7 @@ private slots:
     const QJsonObject margin = ap.value(Q("ducking")).toObject().value(Q("after")).toObject();
     QVERIFY2(std::fabs(margin.value(Q("marginDb")).toDouble() - 12.0) < 1.5, qPrintable(QString::number(margin.value(Q("marginDb")).toDouble())));
     qInfo().noquote() << QStringLiteral("mix: podcast -> %1 LUFS (target -16), speech margin %2 dB (target 12)").arg(lufs, 0, 'f', 2).arg(margin.value(Q("marginDb")).toDouble(), 0, 'f', 2);
-    ok(Q("history.undo"), {{Q("steps"), 2}});
+    QCOMPARE(ok(Q("history.undo")).value(Q("steps")).toInt(), 1); // one undo restores the untouched mix
     QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
   }
 

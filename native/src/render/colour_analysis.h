@@ -89,9 +89,14 @@ struct ColourMetrics {
   static ColourMetrics fromJson(const QJsonObject& o);
 };
 
-ColourMetrics analyze(const PixelSet& pixels);
-// Pools the pixels of every frame (percentiles are over all of them) and records min / max across frames.
-ColourMetrics analyzeFrames(const std::vector<PixelSet>& frames);
+// The near-neutral pixels (the cast's selection) of a picture, 1 per selected pixel. Grading changes which pixels qualify, so a
+// before / after cast comparison must measure BOTH on the same selection: take the mask of the before (or ungraded) picture and pass
+// it as `castMask` when analysing the after picture. Only the cast / neutralPct fields use it; a mask of another size is ignored.
+std::vector<unsigned char> neutralMask(const PixelSet& pixels);
+std::vector<std::vector<unsigned char>> neutralMasks(const std::vector<PixelSet>& frames);
+ColourMetrics analyze(const PixelSet& pixels, const std::vector<unsigned char>* castMask = nullptr);
+// Pools the pixels of every frame (percentiles are over all of them) and records min / max across frames. castMasks: one per frame, or null.
+ColourMetrics analyzeFrames(const std::vector<PixelSet>& frames, const std::vector<std::vector<unsigned char>>* castMasks = nullptr);
 
 // ---- proposals ----
 

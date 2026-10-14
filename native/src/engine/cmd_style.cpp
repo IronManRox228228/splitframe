@@ -292,6 +292,12 @@ Result mixApplyCmd(CallContext& c, const QJsonObject& a) {
   if (duckable) notes.append(q("The loudness proposal is measured before the duck; with apply=true the normalize runs after it and is measured again."));
 
   if (apply) {
+    // duck + normalize are ONE undo step: the group closes when this block ends (also on an early return, keeping what was written)
+    struct Group {
+      editor::Project& project;
+      Group(editor::Project& p, const QString& label, const QString& actor) : project(p) { project.beginGroup(label, actor); }
+      ~Group() { project.endGroup(); }
+    } group(*c.session->project, QStringLiteral("mix.applyProfile %1").arg(prof->name), c.actor());
     int steps = 0;
     if (duckable) {
       QJsonObject da = duckArgs;
@@ -308,7 +314,8 @@ Result mixApplyCmd(CallContext& c, const QJsonObject& a) {
     normalize = r.value.toObject();
     if (normalize.value(q("applied")).toBool()) ++steps;
     o.insert(q("applied"), steps > 0);
-    o.insert(q("undoSteps"), steps);
+    o.insert(q("undoSteps"), steps > 0 ? 1 : 0); // composed: the duck and the normalize are one history entry
+    o.insert(q("writes"), steps);
     QJsonObject ca{{q("target"), prof->targetLufs}, {q("tolerance"), prof->toleranceLu}, {q("truePeakCeiling"), prof->truePeakCeilingDb}, {q("minSpeechMarginDb"), prof->minSpeechMarginDb()}};
     for (const char* k : {"speechTrack", "speechTracks", "musicTrack", "ranges", "gapMs"})
       if (a.contains(q(k))) ca.insert(q(k), a.value(q(k)));
@@ -357,7 +364,7 @@ void registerStyleCommands(Engine& e) {
   e.add(spec("mix.applyProfile", "", "audio", true,
              QStringLiteral("Mix to a profile from the library (`profile`): audio.duck with the profile's speech-over-music margin, attack and release, then audio.normalize to its loudness target and true-peak ceiling (the numbers are the profile's, nothing is guessed). Dry run: ducking "
                             "(ranges, keyframes, measured margin before / after) and normalize (before, proposal) exactly as those commands return them; ducking is skipped, with the reason, when no dialogue / music tracks can be found (speechTrack(s), musicTrack, ranges, gapMs, "
-                            "replaceExisting as in audio.duck; `scope` as in audio.normalize). apply=true writes the duck and the normalize (each its own undo step: undoSteps) and verifies with audio.check at the profile's tolerance."),
+                            "replaceExisting as in audio.duck; `scope` as in audio.normalize). apply=true writes the duck and the normalize as ONE undo step (undoSteps = 1; writes counts the parts) and verifies with audio.check at the profile's tolerance."),
              js::obj({{q("profile"), js::choice(mixNames())}, {q("speechTrack"), js::str()}, {q("speechTracks"), js::array(js::str())}, {q("musicTrack"), js::str()},
                       {q("ranges"), js::array(js::obj({{q("startFrame"), js::integer(QString(), 0)}, {q("endFrame"), js::integer(QString(), 0)}}, {q("startFrame"), q("endFrame")}))}, {q("gapMs"), js::number(QString(), 0, 5000)},
                       {q("replaceExisting"), js::boolean()}, {q("scope"), js::str(QStringLiteral("master (default), a track id or an item id"))}, {q("apply"), js::boolean(QStringLiteral("Write the mix (undoable)"))}},

@@ -45,6 +45,19 @@ Result captureItem(CallContext& c, const Item& item, int samples, bool keepPrima
   return Result::success(QJsonObject{});
 }
 
+// The cast's pixel selection for an item: its near-neutral pixels with NO primary correction, so a grade cannot change which pixels the cast is measured on
+// (before / after comparisons then use one pixel set). `graded` is the capture of the item with its grade (reused when the item has none).
+Result castMasksFor(CallContext& c, const Item& item, int samples, const render::Capture& graded, std::vector<std::vector<unsigned char>>* out) {
+  if (!item.color || !item.color->primaries) {
+    *out = render::neutralMasks(graded.frames);
+    return Result::success(QJsonObject{});
+  }
+  render::Capture src;
+  if (Result r = captureItem(c, item, samples, false, &src); !r.ok) return r;
+  *out = render::neutralMasks(src.frames);
+  return Result::success(QJsonObject{});
+}
+
 int samplesFrom(const QJsonObject& a) { return std::clamp(a.value(q("samples")).toInt(kDefaultSamples), 1, 16); }
 
 QJsonArray frameList(const std::vector<Frame>& f) {
@@ -98,7 +111,17 @@ Result analyzeCmd(CallContext& c, const QJsonObject& a) {
     if (!cap.ok()) return Result::failure(q("unavailable"), cap.error);
     extra.insert(q("frameList"), frameList(frames));
   }
-  QJsonObject o = render::analyzeFrames(cap.frames).toJson();
+  std::vector<std::vector<unsigned char>> masks;
+  if (a.contains(q("itemId"))) {
+    const Item* it = getItem(doc, a.value(q("itemId")).toString());
+    if (Result r = castMasksFor(c, *it, samplesFrom(a), cap, &masks); !r.ok) return r;
+  }
+  QJsonObject o = render::analyzeFrames(cap.frames, masks.empty() ? nullptr : &masks).toJson();
+  if (!masks.empty()) {
+    QJsonObject cast = o.value(q("cast")).toObject();
+    cast.insert(q("selection"), q("near-neutral pixels of the ungraded clip (the same pixels with or without a grade)"));
+    o.insert(q("cast"), cast);
+  }
   for (auto it = extra.begin(); it != extra.end(); ++it) o.insert(it.key(), it.value());
   return Result::success(o);
 }
@@ -174,7 +197,9 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
   } else {
     render::Capture cap;
     if (Result r = captureItem(c, *it, samplesFrom(a), true, &cap); !r.ok) return r;
-    after = render::analyzeFrames(cap.frames);
+    std::vector<std::vector<unsigned char>> masks;
+    if (Result r = castMasksFor(c, *it, samplesFrom(a), cap, &masks); !r.ok) return r;
+    after = render::analyzeFrames(cap.frames, &masks);
   }
   const render::CheckThresholds t = render::thresholdsFromJson(a.value(q("thresholds")).toObject());
   const std::vector<render::Violation> v = render::checkColour(before, after, t);
@@ -194,10 +219,11 @@ Result predictGrades(CallContext& c, const QString& itemId, const std::vector<Pr
   render::Capture cap;
   if (Result r = captureItem(c, *it, std::clamp(samples, 1, 16), false, &cap); !r.ok) return r;
   metrics->clear();
+  const std::vector<std::vector<unsigned char>> masks = render::neutralMasks(cap.frames); // cap is ungraded: every candidate's cast is measured on the same pixels
   for (const PrimaryGrade& g : grades) {
     std::vector<render::PixelSet> graded;
     for (const render::PixelSet& f : cap.frames) graded.push_back(render::gradePixels(f, g));
-    metrics->push_back(render::analyzeFrames(graded).toJson());
+    metrics->push_back(render::analyzeFrames(graded, &masks).toJson());
   }
   return Result::success(QJsonObject{});
 }

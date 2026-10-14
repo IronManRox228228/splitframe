@@ -4,6 +4,7 @@
 
 #include "engine/cmd_util.h"
 #include "engine/timeline_analysis.h"
+#include "render/layout.h"
 
 #include <QRegularExpression>
 
@@ -208,6 +209,31 @@ QJsonObject trimOp(const QString& itemId, const char* edge, Frame frame) {
   return QJsonObject{{q("type"), q("item.trim")}, {q("itemId"), itemId}, {q("edge"), q(edge)}, {q("frame"), static_cast<double>(frame)}, {q("ripple"), false}};
 }
 
+// Audio on other tracks that is aligned with a shot (same start and end; the document has no explicit links): it moves with the shot's cut.
+std::vector<const Item*> alignedAudio(const editor::Project& p, const Item& shot, const QString& storyTrack) {
+  std::vector<const Item*> out;
+  const TimelineDoc& d = p.doc();
+  for (const Item& it : d.items) {
+    if (it.id == shot.id || it.trackId == storyTrack || it.type() != ItemType::Audio) continue;
+    if (it.startFrame != shot.startFrame || it.durationFrames != shot.durationFrames) continue;
+    const Track* t = getTrack(d, it.trackId);
+    if (t && t->locked) continue;
+    out.push_back(&it);
+  }
+  return out;
+}
+
+// Can the audio item's edge move to `to` without running past its source or emptying the item? (`sourceFrames`: its asset length, 0 = unknown, trusted)
+bool audioEdgeFits(const Item& it, bool outEdge, Frame to, Frame sourceFrames) {
+  if (outEdge && to <= it.startFrame + 1) return false;
+  if (!outEdge && to >= it.startFrame + it.durationFrames - 1) return false;
+  const double speed = it.speed > 0 ? it.speed : 1.0;
+  const double in = static_cast<double>(it.sourceInFrame.value_or(0));
+  const double at = in + static_cast<double>(to - it.startFrame) * speed; // source frame under the new edge
+  if (outEdge) return sourceFrames <= 0 || at <= static_cast<double>(sourceFrames) + 1e-6;
+  return at >= -1e-6;
+}
+
 Result snapCmd(CallContext& c, const QJsonObject& a) {
   const editor::Project& p = *c.session->project;
   const TimelineDoc& d = p.doc();
@@ -286,18 +312,38 @@ Result snapCmd(CallContext& c, const QJsonObject& a) {
   }
   if (const Track* t = getTrack(d, track); t && t->locked) return Result::failure(q("edit_rejected"), QStringLiteral("Track \"%1\" is locked. Unlock it first.").arg(t->name));
 
-  QJsonArray ops;
+  // each cut: the shots' edges plus the aligned audio of both shots (same start / end on another track), so picture and sound stay together
+  QJsonArray ops, linkedMoved, linkedSkipped;
+  const auto sourceLen = [&](const Item& it) -> Frame {
+    const Asset* as = it.assetId ? p.asset(*it.assetId) : nullptr;
+    return as && as->durationMs > 0 ? static_cast<Frame>(std::llround(static_cast<double>(as->durationMs) / 1000.0 * f)) : 0;
+  };
   for (const tl::SnapMove& m : plan.moves) {
-    if (m.shift > 0) { // the right shot shrinks first, then the left one grows into the room
-      ops.append(trimOp(m.rightId, "in", m.to));
-      ops.append(trimOp(m.leftId, "out", m.to));
-    } else {
-      ops.append(trimOp(m.leftId, "out", m.to));
-      ops.append(trimOp(m.rightId, "in", m.to));
-    }
+    QJsonArray leftOps, rightOps;
+    leftOps.append(trimOp(m.leftId, "out", m.to));
+    rightOps.append(trimOp(m.rightId, "in", m.to));
+    const auto addLinked = [&](const Item* shot, bool outEdge, QJsonArray& into) {
+      if (!shot) return;
+      for (const Item* au : alignedAudio(p, *shot, track)) {
+        if (!audioEdgeFits(*au, outEdge, m.to, sourceLen(*au))) {
+          linkedSkipped.append(QJsonObject{{q("itemId"), au->id}, {q("frame"), static_cast<double>(m.from)}, {q("reason"), q("the audio source has no media for the trim")}});
+          continue;
+        }
+        into.append(trimOp(au->id, outEdge ? "out" : "in", m.to));
+        linkedMoved.append(au->id);
+      }
+    };
+    addLinked(getItem(d, m.leftId), true, leftOps);
+    addLinked(getItem(d, m.rightId), false, rightOps);
+    const QJsonArray& first = m.shift > 0 ? rightOps : leftOps; // the shrinking side goes first, then the other grows into the room
+    const QJsonArray& second = m.shift > 0 ? leftOps : rightOps;
+    for (const QJsonValue& v : first) ops.append(v);
+    for (const QJsonValue& v : second) ops.append(v);
   }
   const Result w = applyToSession(c, parseOps(ops), q("edit.snapToBeats"), {{q("track"), track}, {q("to"), to}});
   if (!w.ok) return w;
+  o.insert(q("linkedAudioMoved"), linkedMoved);
+  if (!linkedSkipped.isEmpty()) o.insert(q("linkedAudioSkipped"), linkedSkipped);
   o.insert(q("applied"), true);
   o.insert(q("undoLabel"), w.value.toObject().value(q("undoLabel")));
   const tl::BeatAlignment after = tl::alignment(cutsOf(p.doc(), track), in.grid, f, kAlignTolerance);
@@ -371,7 +417,7 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
   QString track;
   if (Result r = storyTrack(d, a, &track); !r.ok) return r;
   const double tol = a.value(q("toleranceSec")).toDouble(0.5), minShotSec = a.value(q("minShotSec")).toDouble(0.25);
-  QJsonArray v, notes;
+  QJsonArray v, notes, info;
   const std::vector<tl::Shot> shots = tl::shotsOnTrack(d, track);
 
   for (const tl::Hole& h : tl::findGaps(shots))
@@ -406,9 +452,27 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
     const Asset* as = p.asset(*it.assetId);
     if (!as || as->width <= 0 || as->height <= 0 || canvas <= 0) continue;
     const double ar = static_cast<double>(as->width) / static_cast<double>(as->height);
-    if (std::fabs(ar / canvas - 1.0) > 0.02)
-      v.append(violation("aspect_mismatch", static_cast<double>(it.startFrame), f, fin(ar, 1000.0), fin(canvas, 1000.0),
-                         QStringLiteral("Clip %1 is %2x%3 (%4:1) on a %5:1 canvas: it letterboxes or crops.").arg(it.id).arg(as->width).arg(as->height).arg(ar, 0, 'f', 3).arg(canvas, 0, 'f', 3), it.id));
+    if (std::fabs(ar / canvas - 1.0) <= 0.02) continue;
+    // where the clip really lands: contain-fit into the canvas, then the item's scale / offset (render/layout placeMedia)
+    const render::Placement pl = render::placeMedia(it, it.startFrame, QSizeF(as->width, as->height), QSize(d.project.width, d.project.height));
+    const bool quarter = std::fabs(std::fmod(std::fabs(pl.rotationDeg), 180.0) - 90.0) < 1.0;
+    const double cw = d.project.width, ch = d.project.height;
+    const double fw = quarter ? pl.size.height() * pl.scaleY : pl.size.width() * pl.scaleX;
+    const double fh = quarter ? pl.size.width() * pl.scaleX : pl.size.height() * pl.scaleY;
+    const double left = pl.center.x() - fw / 2.0, right = pl.center.x() + fw / 2.0, top = pl.center.y() - fh / 2.0, bottom = pl.center.y() + fh / 2.0;
+    const double tx = cw * 0.02, ty = ch * 0.02;
+    if (left <= tx && right >= cw - tx && top <= ty && bottom >= ch - ty) continue; // scaled to fill: the crop is deliberate
+    const bool fillsW = fw >= cw * 0.98, fillsH = fh >= ch * 0.98;
+    const bool inside = left >= -tx && right <= cw + tx && top >= -ty && bottom <= ch + ty;
+    if (inside && (fillsW || fillsH)) {
+      const QString kind = fillsW ? QStringLiteral("letterbox") : QStringLiteral("pillarbox");
+      info.append(QJsonObject{{q("rule"), q("aspect_mismatch")}, {q("kind"), kind}, {q("itemId"), it.id}, {q("frame"), static_cast<double>(it.startFrame)},
+                              {q("message"), QStringLiteral("Clip %1 (%2:1) is %3ed on the %4:1 canvas (bars at the %5).").arg(it.id).arg(ar, 0, 'f', 3).arg(kind).arg(canvas, 0, 'f', 3).arg(fillsW ? QStringLiteral("top and bottom") : QStringLiteral("sides"))}});
+      continue;
+    }
+    v.append(violation("aspect_mismatch", static_cast<double>(it.startFrame), f, fin(ar, 1000.0), fin(canvas, 1000.0),
+                       QStringLiteral("Clip %1 is %2x%3 (%4:1) on a %5:1 canvas and neither fills it nor is letter / pillarboxed (it covers %6 x %7 of %8 x %9 px).")
+                           .arg(it.id).arg(as->width).arg(as->height).arg(ar, 0, 'f', 3).arg(canvas, 0, 'f', 3).arg(fw, 0, 'f', 0).arg(fh, 0, 'f', 0).arg(cw, 0, 'f', 0).arg(ch, 0, 'f', 0), it.id));
   }
 
   // cuts against speech
@@ -449,7 +513,7 @@ Result checkCmd(CallContext& c, const QJsonObject& a) {
   for (const char* k : {"targetDurationSec", "aspect", "maxOffBeatMs"})
     if (a.contains(q(k))) limits.insert(q(k), a.value(q(k)));
   return Result::success(QJsonObject{{q("pass"), v.isEmpty()}, {q("violations"), v}, {q("trackId"), track}, {q("shots"), static_cast<int>(shots.size())}, {q("cuts"), static_cast<int>(cuts.size())},
-                                     {q("durationSec"), fin(static_cast<double>(docDurationFrames(d)) / f, 1000.0)}, {q("speechSource"), speechSource}, {q("beat"), beat}, {q("limits"), limits}, {q("notes"), notes}});
+                                     {q("durationSec"), fin(static_cast<double>(docDurationFrames(d)) / f, 1000.0)}, {q("speechSource"), speechSource}, {q("beat"), beat}, {q("limits"), limits}, {q("info"), info}, {q("notes"), notes}});
 }
 
 } // namespace
@@ -469,7 +533,7 @@ void registerTimelineCommands(Engine& e) {
                             "timeline length does not change. `itemIds` snaps the cut at the head of each of these items; omitted: every cut on `trackId` (default: the main video track). A cut moves to the nearest target within `maxShiftFrames` (6). "
                             "Returns cuts[{frame, targetFrame, shiftFrames, method}] and skipped[{frame, reason, detail}]: too_far (no beat that near), exceeds_handles (the source has no media left for the trim), clips_word (the target lands "
                             "inside speech: the footage index's spans or an energy gate on the audio; suggestedFrame is the nearest gap; `allowWordClip` overrides), too_short (would leave a shot under 2 frames), not_abutting (gap or overlap at the cut). "
-                            "before / predicted give the share of cuts within +-2 frames of the grid. apply=true writes every move as ONE undo step and re-measures: after, verified. ") + gridDoc,
+                            "before / predicted give the share of cuts within +-2 frames of the grid. Audio on other tracks with the same start and end as a shot moves with it (same undo step; linkedAudioMoved lists the items). apply=true writes every move as ONE undo step and re-measures: after, verified. ") + gridDoc,
              js::obj({{q("itemIds"), js::array(js::str())}, {q("trackId"), js::str()}, {q("to"), js::choice({q("beat"), q("downbeat")})}, {q("maxShiftFrames"), js::integer(QString(), 0, 60)},
                       {q("allowWordClip"), js::boolean()}, {q("musicItemId"), js::str()}, {q("beatFrames"), js::array(js::integer())}, {q("downbeatFrames"), js::array(js::integer())},
                       {q("apply"), js::boolean(QStringLiteral("Write the moves (undoable)"))}}),
@@ -483,7 +547,7 @@ void registerTimelineCommands(Engine& e) {
   e.add(spec("timeline.check", "", "editor", false,
              QStringLiteral("Verify the edit against a delivery spec. Returns {pass, violations[], limits, beat}; each violation is {rule, frame, timeSec, measured, limit, message}. Rules (on the main video track unless trackId): gap (nothing between shots, "
                             "or before the first shot), overlap (shots on one track overlap), flash_frame (the copilot lint rule: a shot under 3 frames or `minShotSec`, default 0.25), duration (the timeline is off `targetDurationSec` by more than `toleranceSec`, default 0.5), "
-                            "aspect_canvas (the canvas is not `aspect`, e.g. \"9:16\"), aspect_mismatch (a clip's aspect differs from the canvas by more than 2 %), word_clip (a cut lands inside speech, see edit.safeCutPoint), off_beat (only when `maxOffBeatMs` is given "
+                            "aspect_canvas (the canvas is not `aspect`, e.g. \"9:16\"), aspect_mismatch (a clip's aspect differs from the canvas by more than 2 % and, with its transform applied, it neither fills the canvas nor is letter / pillarboxed; letter / pillarboxing is reported in `info`, not as a violation), word_clip (a cut lands inside speech, see edit.safeCutPoint), off_beat (only when `maxOffBeatMs` is given "
                             "and a beat grid exists: a cut is further than that from the nearest beat). ") + gridDoc + QStringLiteral(" Run it before and after a change."),
              js::obj({{q("targetDurationSec"), js::number(QString(), 0)}, {q("toleranceSec"), js::number(QString(), 0, 600)}, {q("aspect"), js::str(QStringLiteral("\"16:9\", \"9:16\", \"1:1\" or a ratio like 1.78"))},
                       {q("maxOffBeatMs"), js::number(QString(), 0, 5000)}, {q("minShotSec"), js::number(QString(), 0, 30)}, {q("trackId"), js::str()}, {q("musicItemId"), js::str()},

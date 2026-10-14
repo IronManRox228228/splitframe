@@ -49,6 +49,7 @@ else()
 endif()
 
 add_subdirectory(src/core)
+add_subdirectory(src/sys)
 add_subdirectory(src/media)
 add_subdirectory(src/render)
 add_subdirectory(src/editor)

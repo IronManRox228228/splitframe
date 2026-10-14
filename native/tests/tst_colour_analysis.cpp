@@ -206,6 +206,33 @@ private slots:
     QVERIFY(!checkColour(b2, a2).empty());
   }
 
+  void castOnBeforeMaskIgnoresReselection() {
+    // a warm-tinted lattice: grading changes which pixels count as near-neutral, so the cast must be read on the BEFORE selection
+    std::vector<float> lin;
+    const PixelSet base = testImage();
+    for (size_t i = 0; i < base.size(); ++i) lin.insert(lin.end(), {base.lin[i * 3] * 1.12f, base.lin[i * 3 + 1], base.lin[i * 3 + 2] * 0.9f});
+    const PixelSet src = pixelsFromLinear(lin);
+    const std::vector<unsigned char> mask = neutralMask(src);
+    const ColourMetrics before = analyze(src, &mask);
+    QVERIFY(before.neutralPct > 0.5);
+    QVERIFY(std::fabs(before.castTemperature - analyze(src).castTemperature) < 1e-9); // default selection == its own mask
+    PrimaryGrade cs;
+    cs.contrast = 1.05;
+    cs.saturation = 1.04;
+    const PixelSet graded = gradePixels(src, cs);
+    const ColourMetrics same = analyze(graded, &mask);
+    QVERIFY2(std::fabs(same.castTemperature - before.castTemperature) < 0.03, qPrintable(QStringLiteral("%1 -> %2").arg(before.castTemperature).arg(same.castTemperature)));
+    QVERIFY(std::fabs(same.castTint - before.castTint) < 0.03);
+    PrimaryGrade warm;
+    warm.temperature = 0.14;
+    const double shift = analyze(gradePixels(src, warm), &mask).castTemperature - before.castTemperature;
+    QVERIFY2(std::fabs(shift - 0.14) < 0.03, qPrintable(QString::number(shift)));
+    // frames API: masks per frame, pooled
+    const std::vector<std::vector<unsigned char>> masks{mask, mask};
+    const ColourMetrics pooled = analyzeFrames({graded, graded}, &masks);
+    QVERIFY(std::fabs(pooled.castTemperature - same.castTemperature) < 1e-6);
+  }
+
   void multiFrameAggregationKeepsRange() {
     const ColourMetrics m = analyzeFrames({fromLinearGrey(std::vector<double>(100, 0.09)), fromLinearGrey(std::vector<double>(100, 0.36))});
     QCOMPARE(m.frames, 2);

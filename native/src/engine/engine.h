@@ -137,6 +137,7 @@ void registerColourCommands(Engine& e);
 void registerAudioCommands(Engine& e);
 void registerTimelineCommands(Engine& e);
 void registerStyleCommands(Engine& e);
+void registerSystemCommands(Engine& e);
 void registerExportCommands(Engine& e);
 
 } // namespace sf::engine

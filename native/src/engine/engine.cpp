@@ -29,6 +29,7 @@ Engine::Engine(QObject* parent) : QObject(parent) {
   registerAudioCommands(*this);
   registerTimelineCommands(*this);
   registerStyleCommands(*this);
+  registerSystemCommands(*this);
   registerExportCommands(*this);
 
   add(spec("engine.ping", "", "engine", false, QStringLiteral("Liveness and version: engine version, sessions, command count."), js::obj({}),

@@ -116,10 +116,34 @@ PixelSet gradePixels(const PixelSet& in, const PrimaryGrade& grade) {
 
 // ---------------------------------------------------------------- analysis
 
-ColourMetrics analyze(const PixelSet& px) {
+namespace {
+// near-neutral pixel: mid display luma, low linear saturation, all channels above the noise floor
+bool nearNeutral(double ld, const double lin[3]) {
+  const double lmax = std::max({lin[0], lin[1], lin[2]}), lmin = std::min({lin[0], lin[1], lin[2]});
+  return ld >= 0.15 && ld <= 0.85 && lmin > 1e-4 && (lmax - lmin) / lmax <= 0.55;
+}
+} // namespace
+
+std::vector<unsigned char> neutralMask(const PixelSet& px) {
+  std::vector<unsigned char> mask(px.size(), 0);
+  for (size_t i = 0; i < px.size(); ++i) {
+    const double lin[3] = {std::max<double>(px.lin[i * 3], 0.0), std::max<double>(px.lin[i * 3 + 1], 0.0), std::max<double>(px.lin[i * 3 + 2], 0.0)};
+    mask[i] = nearNeutral(luma(px.disp[i * 3], px.disp[i * 3 + 1], px.disp[i * 3 + 2]), lin) ? 1 : 0;
+  }
+  return mask;
+}
+
+std::vector<std::vector<unsigned char>> neutralMasks(const std::vector<PixelSet>& frames) {
+  std::vector<std::vector<unsigned char>> out;
+  for (const PixelSet& f : frames) out.push_back(neutralMask(f));
+  return out;
+}
+
+ColourMetrics analyze(const PixelSet& px, const std::vector<unsigned char>* castMask) {
   ColourMetrics m;
   const size_t n = px.size();
   if (n == 0) return m;
+  if (castMask && castMask->size() != n) castMask = nullptr; // a mask of another picture selects nothing meaningful
   m.valid = true;
   m.pixels = static_cast<qint64>(n);
 
@@ -168,12 +192,12 @@ ColourMetrics analyze(const PixelSet& px) {
     lumaLogSum += ml;
     lumaLogSq += ml * ml;
 
-    // near-neutral pixel: mid display luma, low linear saturation, all channels above the noise floor
-    const double lmax = std::max({lin[0], lin[1], lin[2]}), lmin = std::min({lin[0], lin[1], lin[2]});
-    if (ld >= 0.15 && ld <= 0.85 && lmin > 1e-4 && (lmax - lmin) / lmax <= 0.55) {
+    // cast pixels: the near-neutral ones of this picture, or the caller's selection (the BEFORE picture's, so a grade cannot change which pixels are measured)
+    if (castMask ? (*castMask)[i] != 0 : nearNeutral(ld, lin)) {
       ++neutral;
-      castT.push_back(static_cast<float>(std::log2(lin[0] / lin[2])));
-      castTint.push_back(static_cast<float>(-2.0 * std::log2(lin[1] / std::sqrt(lin[0] * lin[2]))));
+      const double cr = std::max(lin[0], 1e-4), cg = std::max(lin[1], 1e-4), cb2 = std::max(lin[2], 1e-4);
+      castT.push_back(static_cast<float>(std::log2(cr / cb2)));
+      castTint.push_back(static_cast<float>(-2.0 * std::log2(cg / std::sqrt(cr * cb2))));
     }
 
     // skin
@@ -247,16 +271,21 @@ ColourMetrics analyze(const PixelSet& px) {
   return m;
 }
 
-ColourMetrics analyzeFrames(const std::vector<PixelSet>& frames) {
+ColourMetrics analyzeFrames(const std::vector<PixelSet>& frames, const std::vector<std::vector<unsigned char>>* castMasks) {
   if (frames.empty()) return {};
-  if (frames.size() == 1) return analyze(frames.front());
+  if (castMasks && castMasks->size() != frames.size()) castMasks = nullptr;
+  if (frames.size() == 1) return analyze(frames.front(), castMasks ? &castMasks->front() : nullptr);
   PixelSet pooled;
-  for (const PixelSet& f : frames) pooled.append(f);
-  ColourMetrics m = analyze(pooled);
+  std::vector<unsigned char> pooledMask;
+  for (size_t i = 0; i < frames.size(); ++i) {
+    pooled.append(frames[i]);
+    if (castMasks) pooledMask.insert(pooledMask.end(), (*castMasks)[i].begin(), (*castMasks)[i].end());
+  }
+  ColourMetrics m = analyze(pooled, castMasks ? &pooledMask : nullptr);
   m.frames = static_cast<int>(frames.size());
   bool first = true;
   for (const PixelSet& f : frames) {
-    const ColourMetrics fm = analyze(f);
+    const ColourMetrics fm = analyze(f); // only exposure / crushed / clipped are read: the cast selection does not matter
     if (!fm.valid) continue;
     if (first) {
       m.exposureMin = m.exposureMax = fm.exposureStops;
@@ -389,6 +418,8 @@ Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& op
     return p;
   }
   const double target = std::max(opt.exposureTarget, 1e-3);
+  const std::vector<unsigned char> mask = neutralMask(src); // every "after" below measures the cast on THESE pixels
+  const auto measure = [&](const PrimaryGrade& grade) { return analyze(gradePixels(src, grade), &mask); };
   PrimaryGrade g;
   const bool haveCast = opt.whiteBalance && p.before.neutralPct >= 0.5;
   if (opt.whiteBalance && !haveCast) p.notes << QStringLiteral("Too few near-neutral pixels to estimate a colour cast: white balance left alone.");
@@ -405,7 +436,7 @@ Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& op
         changed = true;
       }
     }
-    m = analyze(gradePixels(src, g));
+    m = measure(g);
     const double off = std::log2(target / std::max(m.lumaMedian, 1e-6));
     if (std::fabs(off) > opt.toleranceStops || g.exposure != 0) {
       const double e = clampD(g.exposure + off, -opt.maxExposureStops, opt.maxExposureStops);
@@ -413,7 +444,7 @@ Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& op
       if (std::fabs(e - g.exposure) > 0.002) {
         g.exposure = e;
         changed = true;
-        m = analyze(gradePixels(src, g));
+        m = measure(g);
       }
     }
     if (!changed) break;
@@ -423,29 +454,29 @@ Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& op
   const auto bad = [&](const ColourMetrics& x) {
     return x.crushedPct.all - p.before.crushedPct.all > opt.maxIncreasePct || x.clippedPct.all - p.before.clippedPct.all > opt.maxIncreasePct;
   };
-  m = analyze(gradePixels(src, g));
+  m = measure(g);
   if (bad(m) && g.exposure != 0) {
     const double wanted = g.exposure;
     for (int k = 0; k < 8 && bad(m) && std::fabs(g.exposure) > 0.01; ++k) {
       g.exposure *= 0.5;
-      m = analyze(gradePixels(src, g));
+      m = measure(g);
     }
     if (std::fabs(g.exposure) <= 0.01) g.exposure = 0;
     p.notes << QStringLiteral("Exposure limited from %1 to %2 stops to keep crushed / clipped pixels from growing by more than %3 points.").arg(wanted, 0, 'f', 2).arg(g.exposure, 0, 'f', 2).arg(opt.maxIncreasePct);
-    m = analyze(gradePixels(src, g));
+    m = measure(g);
   }
   if (bad(m) && (g.temperature != 0 || g.tint != 0)) {
     for (int k = 0; k < 3 && bad(m); ++k) {
       g.temperature *= 0.5;
       g.tint *= 0.5;
-      m = analyze(gradePixels(src, g));
+      m = measure(g);
     }
     p.notes << QStringLiteral("White balance halved to keep crushed / clipped pixels in check.");
   }
   if (bad(m)) p.notes << QStringLiteral("The picture already has crushed or clipped regions that no primary correction here removes.");
   roundGrade(g);
   p.primaries = g;
-  p.predicted = analyze(gradePixels(src, g));
+  p.predicted = measure(g);
   return p;
 }
 
@@ -458,6 +489,8 @@ Proposal proposeMatch(const PixelSet& target, const ColourMetrics& ref) {
     p.notes << QStringLiteral("No pixels to measure.");
     return p;
   }
+  const std::vector<unsigned char> mask = neutralMask(src);
+  const auto measure = [&](const PrimaryGrade& grade) { return analyze(gradePixels(src, grade), &mask); };
   PrimaryGrade g;
   const std::array<double, 3> refOpp = opponent(ref);
   const double pivotLog = std::log2(g.pivot);
@@ -488,7 +521,7 @@ Proposal proposeMatch(const PixelSet& target, const ColourMetrics& ref) {
     g.temperature = clampD(g.temperature + (r[2] - r[4]) / g.contrast, -1, 1);
     g.tint = clampD(g.tint - 2.0 * (r[3] - (r[2] + r[4]) / 2.0) / g.contrast, -1, 1);
     if (m.chromaMean > 1e-4) g.saturation = clampD(g.saturation * std::sqrt(std::max(ref.chromaMean, 1e-4) / m.chromaMean) * 1.0, 0.0, 2.0);
-    m = analyze(gradePixels(src, g));
+    m = measure(g);
   }
   // what the clamps (or the saturation interplay) left over in colour balance goes into per-channel gain, last
   for (int it = 0; it < 4; ++it) {
@@ -500,10 +533,10 @@ Proposal proposeMatch(const PixelSet& target, const ColourMetrics& ref) {
     gain->g = clampD(gain->g * std::exp2(r[3] / g.contrast), 0.0, 4.0);
     gain->b = clampD(gain->b * std::exp2(r[4] / g.contrast), 0.0, 4.0);
     if (it == 0) p.notes << QStringLiteral("Residual colour balance moved into per-channel gain.");
-    m = analyze(gradePixels(src, g));
+    m = measure(g);
   }
   roundGrade(g);
-  m = analyze(gradePixels(src, g));
+  m = measure(g);
   const auto r = residual(m);
   QStringList extreme;
   if (std::fabs(g.exposure) > 2.0) extreme << QStringLiteral("exposure %1").arg(g.exposure);

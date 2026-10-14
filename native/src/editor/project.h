@@ -58,7 +58,7 @@ public:
 
   // Everything applied between begin and end is one undo step (a slider drag). Nesting is not
   // supported; begin while open closes the previous group.
-  void beginGroup(const QString& label = {});
+  void beginGroup(const QString& label = {}, const QString& actor = QStringLiteral("user"));
   void endGroup();
   bool groupOpen() const { return groupOpen_; }
 
