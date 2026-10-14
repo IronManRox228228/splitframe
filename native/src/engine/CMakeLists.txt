@@ -11,6 +11,7 @@ add_library(sf_engine STATIC
   cmd_media.cpp
   cmd_render.cpp
   cmd_colour.cpp
+  cmd_audio.cpp
   cmd_export.cpp
   rpc.h rpc.cpp
   api_server.h api_server.cpp

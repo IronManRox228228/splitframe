@@ -162,6 +162,7 @@ set_target_properties(sf_test_clap_gain PROPERTIES PREFIX "" SUFFIX ".clap"
 sf_add_audio_test(tst_audio_render)
 sf_add_audio_test(tst_audio_dsp)
 sf_add_audio_test(tst_loudness)
+sf_add_audio_test(tst_audio_analysis)
 sf_add_audio_test(tst_mixer_schema)
 sf_add_audio_test(tst_clap_host DEFS "SF_TEST_CLAP=\"$<TARGET_FILE:sf_test_clap_gain>\"")
 add_dependencies(tst_clap_host sf_test_clap_gain)

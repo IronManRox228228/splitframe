@@ -534,6 +534,123 @@ private slots:
     QCOMPARE(e_->describe(Q("colour")).size() > 3, true);
   }
 
+  // ---- measured audio ----
+  void measuredAudio() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_, music_}}});
+    ok(Q("clip.add"), {{Q("assetId"), firstAsset(Q("video"))}});
+    ok(Q("audio.add"), {{Q("assetId"), firstAsset(Q("audio"))}});
+    QString videoTrack, audioTrack, musicItem;
+    for (const QJsonValue& t : ok(Q("timeline.get"), {{Q("mode"), Q("summary")}}).value(Q("tracks")).toArray()) {
+      const QJsonObject to = t.toObject();
+      if (to.value(Q("items")).toArray().isEmpty()) continue;
+      const QString kind = to.value(Q("kind")).toString();
+      if (kind == Q("video")) videoTrack = to.value(Q("id")).toString();
+      if (kind == Q("audio")) {
+        audioTrack = to.value(Q("id")).toString();
+        musicItem = to.value(Q("items")).toArray().at(0).toObject().value(Q("id")).toString();
+      }
+    }
+    QVERIFY(!videoTrack.isEmpty() && !audioTrack.isEmpty() && !musicItem.isEmpty());
+
+    // measure: the master equals audio.analyze, tracks and the asset are measured alone
+    const QJsonObject m = ok(Q("audio.measure"));
+    const QJsonObject an = ok(Q("audio.analyze"));
+    QVERIFY2(std::isfinite(m.value(Q("integratedLufs")).toDouble(1000)) && m.value(Q("integratedLufs")).toDouble(1000) < 0, qPrintable(QString::fromUtf8(QJsonDocument(m).toJson())));
+    QCOMPARE(m.value(Q("integratedLufs")).toDouble(), an.value(Q("integratedLufs")).toDouble());
+    QCOMPARE(m.value(Q("truePeakDbtp")).toDouble(), an.value(Q("truePeakDbtp")).toDouble());
+    QCOMPARE(m.value(Q("clippedSamples")).toInt(), 0);
+    QVERIFY(m.value(Q("shortTermLufs")).toObject().value(Q("values")).toArray().size() >= 3);
+    QVERIFY(m.contains(Q("noiseFloorDb")) && m.contains(Q("clipRuns")));
+    const QJsonObject mt = ok(Q("audio.measure"), {{Q("scope"), audioTrack}});
+    QVERIFY(mt.value(Q("integratedLufs")).toDouble() < m.value(Q("integratedLufs")).toDouble() + 3.0);
+    QCOMPARE(mt.value(Q("scope")).toObject().value(Q("kind")).toString(), Q("track"));
+    QVERIFY(std::isfinite(ok(Q("audio.measure"), {{Q("scope"), firstAsset(Q("audio"))}}).value(Q("integratedLufs")).toDouble(1000)));
+    QCOMPARE(raw(Q("audio.measure"), {{Q("scope"), Q("nope")}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("audio.measure"), {{Q("startFrame"), 10}, {Q("endFrame"), 5}}).error.code, Q("invalid_params"));
+
+    // check before: the two tones sit at the same level, the music ends without a fade, the loudness is far from -14
+    const QJsonObject c0 = ok(Q("audio.check"));
+    QVERIFY(!c0.value(Q("pass")).toBool());
+    QStringList rules0;
+    for (const QJsonValue v : c0.value(Q("violations")).toArray()) rules0 << v.toObject().value(Q("rule")).toString();
+    QVERIFY2(rules0.contains(Q("loudness")) && rules0.contains(Q("speech_margin")) && rules0.contains(Q("abrupt_end")), qPrintable(rules0.join(Q(","))));
+    QVERIFY(!rules0.contains(Q("clipping")));
+    QVERIFY(c0.value(Q("speechMargin")).toObject().value(Q("checked")).toBool());
+
+    // duck: a dry run changes nothing; the speech ranges come from the energy gate (no index in this engine)
+    const QJsonObject dry = ok(Q("audio.duck"), {{Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}});
+    QVERIFY(!dry.value(Q("applied")).toBool());
+    QCOMPARE(dry.value(Q("rangeSource")).toString(), Q("energyGate"));
+    QCOMPARE(dry.value(Q("ranges")).toArray().size(), 1);
+    QVERIFY(dry.value(Q("depthComputed")).toBool());
+    const double depth = dry.value(Q("depthDb")).toDouble();
+    QVERIFY2(depth > 6 && depth < 12, qPrintable(QString::number(depth)));
+    const double before = dry.value(Q("before")).toObject().value(Q("marginDb")).toDouble(), after = dry.value(Q("after")).toObject().value(Q("marginDb")).toDouble();
+    QVERIFY2(std::fabs(after - 9.0) < 1.0 && after > before + 5, qPrintable(QStringLiteral("margin %1 -> %2 dB").arg(before).arg(after)));
+    QVERIFY(dry.value(Q("keyframes")).toArray().size() >= 2);
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
+    // explicit ranges work too
+    const QJsonObject ex = ok(Q("audio.duck"), {{Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}, {Q("ranges"), QJsonArray{QJsonObject{{Q("startFrame"), 5}, {Q("endFrame"), 20}}}}, {Q("depthDb"), 12.0}});
+    QCOMPARE(ex.value(Q("rangeSource")).toString(), Q("explicit"));
+    QVERIFY(!ex.value(Q("depthComputed")).toBool());
+    QCOMPARE(raw(Q("audio.duck"), {{Q("speechTrack"), videoTrack}, {Q("musicTrack"), videoTrack}}).error.code, Q("invalid_params"));
+
+    // apply: one undo step, the margin measured on the real mix is the one that was predicted
+    const QJsonObject dk = ok(Q("audio.duck"), {{Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}, {Q("apply"), true}, {Q("origin"), Q("agent:audio")}});
+    QVERIFY(dk.value(Q("applied")).toBool());
+    const QJsonObject strip = ok(Q("mixer.get")).value(Q("mixer")).toObject().value(Q("strips")).toArray().at(0).toObject();
+    QCOMPARE(strip.value(Q("id")).toString(), audioTrack);
+    QVERIFY(!strip.value(Q("automation")).toObject().value(Q("volume")).toArray().isEmpty());
+    QCOMPARE(raw(Q("audio.duck"), {{Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}, {Q("apply"), true}}).error.code, Q("invalid_params")); // would overwrite automation
+    const QJsonObject again = ok(Q("audio.duck"), {{Q("speechTrack"), videoTrack}, {Q("musicTrack"), audioTrack}, {Q("replaceExisting"), true}});
+    QVERIFY2(std::fabs(again.value(Q("before")).toObject().value(Q("marginDb")).toDouble() - after) < 0.3, qPrintable(QString::number(again.value(Q("before")).toObject().value(Q("marginDb")).toDouble())));
+    ok(Q("history.undo"));
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
+    ok(Q("history.redo"));
+
+    // normalize: dry run proposes, apply writes the master fader once and the re-measure confirms it
+    const QJsonObject np = ok(Q("audio.normalize"));
+    QVERIFY(!np.value(Q("applied")).toBool());
+    const double gain = np.value(Q("proposal")).toObject().value(Q("gainDb")).toDouble();
+    QVERIFY2(gain > 1 && gain < 15, qPrintable(QString::number(gain)));
+    const double lufs0 = np.value(Q("before")).toObject().value(Q("integratedLufs")).toDouble();
+    const QJsonObject na = ok(Q("audio.normalize"), {{Q("apply"), true}});
+    QVERIFY(na.value(Q("applied")).toBool());
+    QVERIFY(na.value(Q("verified")).toBool());
+    const double lufs1 = na.value(Q("after")).toObject().value(Q("integratedLufs")).toDouble();
+    QVERIFY2(std::fabs(lufs1 - (lufs0 + gain)) < 0.3, qPrintable(QStringLiteral("%1 + %2 -> %3").arg(lufs0).arg(gain).arg(lufs1)));
+    QVERIFY2(std::fabs(lufs1 + 14.0) < 0.5 || na.value(Q("proposal")).toObject().value(Q("limitedByTruePeak")).toBool(), qPrintable(QString::number(lufs1)));
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).toObject().value(Q("master")).toObject().value(Q("volume")).toDouble() > 1.0);
+    // a second pass has nothing left to do
+    QVERIFY(std::fabs(ok(Q("audio.normalize")).value(Q("proposal")).toObject().value(Q("gainDb")).toDouble()) < 0.3);
+    // an item is normalized on its volume
+    const QJsonObject ni = ok(Q("audio.normalize"), {{Q("scope"), musicItem}, {Q("target"), -40.0}, {Q("apply"), true}});
+    QVERIFY(ni.value(Q("applied")).toBool());
+    QVERIFY(ok(Q("item.get"), {{Q("itemId"), musicItem}}).value(Q("volume")).toDouble() < 1.0);
+    ok(Q("history.undo"));
+    QCOMPARE(raw(Q("audio.normalize"), {{Q("scope"), firstAsset(Q("audio"))}}).error.code, Q("invalid_params"));
+
+    // fix the fade, then check again: loudness and margin are fine, nothing else is wrong
+    ok(Q("item.audio.set"), {{Q("itemId"), musicItem}, {Q("fadeOutFrames"), 6}});
+    const QJsonObject c1 = ok(Q("audio.check"), {{Q("tolerance"), 1.5}});
+    QVERIFY2(c1.value(Q("pass")).toBool(), qPrintable(QString::fromUtf8(QJsonDocument(c1).toJson())));
+    // a spec the mix cannot meet is reported with its numbers
+    const QJsonObject c2 = ok(Q("audio.check"), {{Q("target"), -30.0}, {Q("tolerance"), 0.5}, {Q("truePeakCeiling"), -20.0}});
+    QStringList rules2;
+    for (const QJsonValue v : c2.value(Q("violations")).toArray()) rules2 << v.toObject().value(Q("rule")).toString();
+    QVERIFY(rules2.contains(Q("loudness")) && rules2.contains(Q("true_peak")));
+    QVERIFY(c2.value(Q("violations")).toArray().at(0).toObject().contains(Q("measured")));
+    qInfo().noquote() << QStringLiteral("audio: master %1 LUFS -> %2 LUFS after normalize (gain %3 dB); speech margin %4 -> %5 dB after duck (depth %6 dB)")
+                             .arg(lufs0, 0, 'f', 2).arg(lufs1, 0, 'f', 2).arg(gain, 0, 'f', 2).arg(before, 0, 'f', 2).arg(after, 0, 'f', 2).arg(depth, 0, 'f', 2);
+
+    // music.structure on a 3 s sine: nothing to find, and it says so instead of inventing a tempo
+    const QJsonObject ms = ok(Q("music.structure"), {{Q("assetId"), firstAsset(Q("audio"))}});
+    QVERIFY(!ms.value(Q("valid")).toBool());
+    QVERIFY(ms.value(Q("note")).toString().size() > 5);
+    QCOMPARE(raw(Q("music.structure"), {}).error.code, Q("invalid_params"));
+    QVERIFY(e_->describe(Q("audio")).size() >= 5);
+  }
+
   void proxies() {
     ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
     const QString video = firstAsset(Q("video"));
