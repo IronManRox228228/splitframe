@@ -31,6 +31,7 @@ Engine::Engine(QObject* parent) : QObject(parent) {
   registerStyleCommands(*this);
   registerSystemCommands(*this);
   registerExportCommands(*this);
+  registerFxCommands(*this);
 
   add(spec("engine.ping", "", "engine", false, QStringLiteral("Liveness and version: engine version, sessions, command count."), js::obj({}),
            [](CallContext& c, const QJsonObject&) {

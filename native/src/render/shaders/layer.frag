@@ -16,7 +16,7 @@ layout(std140, binding = 0) uniform U {
   vec4 fxR;
   vec4 fxG;
   vec4 fxB;
-  vec4 params; // x opacity, y mode (0 RGBA straight alpha, 1 RGBA premultiplied, 2 NV12/P010), z transfer id, w canvas encoding
+  vec4 params; // x opacity, y mode (0 RGBA straight alpha, 1 RGBA premultiplied, 2 NV12/P010, 3 effect result), z transfer id, w canvas encoding
   vec4 flags;  // x bits (1 LUT, 2 HDR tone map, 4 effects, 8 primary grade), y LUT coord scale, z LUT coord offset
   vec4 primR;
   vec4 primG;
@@ -100,6 +100,11 @@ vec3 grade(vec3 x) {
 
 void main() {
   int mode = int(u.params.y + 0.5);
+  // 3: the picture of a layer that went through effects (render/effects.h): already premultiplied, in the canvas' encoding
+  if (mode == 3) {
+    fragColor = texture(tex0, uv) * u.params.x;
+    return;
+  }
   int bits = int(u.flags.x + 0.5);
   vec4 c;
   if (mode == 2) {

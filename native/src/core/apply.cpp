@@ -137,6 +137,11 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const MixerSet& o) {
   return {MixerSet{doc.mixer}};
 }
 
+Inverse run(TimelineDoc& next, const TimelineDoc& doc, const TransitionsSet& o) {
+  next.transitions = o.transitions;
+  return {TransitionsSet{doc.transitions}};
+}
+
 Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ProjectSetReference& o) {
   // references are metadata, not timeline items: the tool layer validates them against assets
   next.project.referenceAssetId = o.assetId;
@@ -334,6 +339,7 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemUpdate& o) {
     inv.labels = l;
   }
   if (patch.color) inv.color = item.color.value_or(ItemColor{});
+  if (patch.fx) inv.fx = item.fx;
   if (patch.props) inv.props = QJsonValue(toJson(item.props));
 
   Item& t = itemRef(next, o.itemId);
@@ -373,6 +379,7 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemUpdate& o) {
     if (c == ItemColor{}) t.color.reset();
     else t.color = c;
   }
+  if (patch.fx) t.fx = *patch.fx;
   if (newProps) t.props = *newProps;
   return {ItemUpdate{o.itemId, inv}};
 }

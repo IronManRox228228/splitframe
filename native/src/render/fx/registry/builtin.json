@@ -1,0 +1,52 @@
+{
+  "effects": [
+    {
+      "id": "vignette", "name": "Vignette", "category": "stylize", "kind": "filter", "body": "bodies/vignette.glsl",
+      "description": "Darkens the picture towards the corners.",
+      "tags": ["look", "cinematic", "focus"],
+      "whenToUse": ["draw the eye to the centre of the frame", "moody or cinematic look", "hide bright corners"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.6, "description": "How dark the corners get (1 = black)"},
+        {"name": "radius", "label": "Radius", "type": "float", "min": 0, "max": 1.5, "default": 0.55, "description": "Distance from the centre (0 centre, 1 corner) where darkening starts"},
+        {"name": "softness", "label": "Softness", "type": "float", "min": 0, "max": 1.5, "default": 0.5, "description": "Width of the fall-off"}
+      ]
+    },
+    {
+      "id": "gaussian_blur", "name": "Gaussian Blur", "category": "blur", "kind": "filter", "passes": 2, "body": "bodies/gaussian_blur.glsl",
+      "description": "Separable gaussian blur (two passes). Radius is in pixels of the clip.",
+      "tags": ["blur", "soften", "background"],
+      "whenToUse": ["soften a busy background behind text", "dreamy or out-of-focus look", "hide a face or detail", "animate radius for a focus pull"],
+      "params": [
+        {"name": "radius", "label": "Radius", "type": "float", "min": 0, "max": 48, "default": 8, "description": "Blur radius in pixels (sigma = radius / 2)"}
+      ]
+    },
+    {
+      "id": "chromatic_aberration", "name": "Chromatic Aberration", "category": "distort", "kind": "filter", "body": "bodies/chromatic_aberration.glsl",
+      "description": "Separates the red and blue channels like a cheap lens.",
+      "tags": ["glitch", "lens", "retro", "energy"],
+      "whenToUse": ["add a lens or glitch feel", "punch up a beat or impact", "retro VHS-style fringing"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 0.05, "default": 0.006, "description": "Channel offset as a fraction of the frame"},
+        {"name": "angle", "label": "Angle", "type": "float", "min": 0, "max": 360, "default": 0, "description": "Direction of the split in degrees (ignored when radial)"},
+        {"name": "radial", "label": "Radial", "type": "bool", "default": false, "description": "Split grows from the centre to the edges"}
+      ]
+    },
+    {
+      "id": "crossfade", "name": "Cross Fade", "category": "dissolve", "kind": "transition", "body": "bodies/crossfade.glsl",
+      "description": "The outgoing picture dissolves into the incoming one.",
+      "tags": ["dissolve", "soft", "classic"],
+      "whenToUse": ["gentle cut between related shots", "passage of time", "default transition"],
+      "params": []
+    },
+    {
+      "id": "wipe", "name": "Wipe", "category": "wipe", "kind": "transition", "body": "bodies/wipe.glsl",
+      "description": "A soft edge sweeps across the frame along a direction.",
+      "tags": ["wipe", "directional", "graphic"],
+      "whenToUse": ["energetic change of scene", "reveal along a direction of motion", "graphic or title-style cut"],
+      "params": [
+        {"name": "direction", "label": "Direction", "type": "vec2", "min": -1, "max": 1, "default": [1, 0], "description": "Where the edge travels (x right, y up); (1, 0) sweeps left to right"},
+        {"name": "softness", "label": "Softness", "type": "float", "min": 0, "max": 1, "default": 0.05, "description": "Width of the soft edge"}
+      ]
+    }
+  ]
+}

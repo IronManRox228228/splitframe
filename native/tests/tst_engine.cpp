@@ -1188,6 +1188,134 @@ private slots:
     QVERIFY2(s2 == Q("cancelled") || s2 == Q("done"), qPrintable(s2)); // a 50-frame job may beat the cancel
     QCOMPARE(ok(Q("export.status")).value(Q("jobs")).toArray().size(), 2);
   }
+  // ---- GPU effects and transitions: every mutation is one undo step ----
+  void effectsAndTransitions() {
+    // the catalogue
+    const QJsonArray all = ok(Q("effect.list")).value(Q("effects")).toArray();
+    QVERIFY(all.size() >= 5);
+    const QJsonArray filters = ok(Q("effect.list"), {{Q("kind"), Q("filter")}}).value(Q("effects")).toArray();
+    const QJsonArray transitions = ok(Q("effect.list"), {{Q("kind"), Q("transition")}}).value(Q("effects")).toArray();
+    QCOMPARE(filters.size() + transitions.size(), all.size());
+    QVERIFY(ok(Q("effect.list"), {{Q("category"), Q("wipe")}}).value(Q("effects")).toArray().size() >= 1);
+    QJsonObject vignette;
+    for (const QJsonValue& v : filters)
+      if (v.toObject().value(Q("id")).toString() == Q("vignette")) vignette = v.toObject();
+    QCOMPARE(vignette.value(Q("params")).toArray().at(0).toObject().value(Q("name")).toString(), Q("amount"));
+    QVERIFY(!vignette.value(Q("whenToUse")).toArray().isEmpty());
+
+    // two text clips butted together on the text track
+    const auto addText = [&](const char* text, int start) {
+      return ok(Q("text.add"), {{Q("text"), Q(text)}, {Q("startFrame"), start}, {Q("durationFrames"), 20}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+    };
+    const QString a = addText("A", 0), b = addText("B", 20);
+    QVERIFY(!a.isEmpty() && !b.isEmpty());
+    const auto stack = [&]() { return ok(Q("item.get"), {{Q("itemId"), a}}).value(Q("fx")).toArray(); };
+    const auto undo = [&]() { QCOMPARE(ok(Q("history.undo")).value(Q("steps")).toInt(), 1); };
+    const auto redo = [&]() { QCOMPARE(ok(Q("history.redo")).value(Q("steps")).toInt(), 1); };
+    QVERIFY(stack().isEmpty());
+
+    // effect.add (params merge over defaults), effect.set, effect.keyframe, effect.reorder, effect.remove
+    const QJsonObject added = ok(Q("effect.add"), {{Q("itemId"), a}, {Q("effectId"), Q("vignette")}, {Q("params"), QJsonObject{{Q("amount"), 0.4}}}});
+    const QString vig = added.value(Q("fxId")).toString();
+    QVERIFY(!vig.isEmpty());
+    QCOMPARE(added.value(Q("fx")).toArray().size(), 1);
+    QCOMPARE(added.value(Q("inverse")).toArray().at(0).toObject().value(Q("type")).toString(), Q("item.update"));
+    const QString blur = ok(Q("effect.add"), {{Q("itemId"), a}, {Q("effectId"), Q("gaussian_blur")}, {Q("index"), 0}}).value(Q("fxId")).toString();
+    QCOMPARE(stack().at(0).toObject().value(Q("id")).toString(), blur); // index 0: applied first
+    ok(Q("effect.reorder"), {{Q("itemId"), a}, {Q("fxId"), blur}, {Q("index"), 1}});
+    QCOMPARE(stack().at(1).toObject().value(Q("id")).toString(), blur);
+    ok(Q("effect.set"), {{Q("itemId"), a}, {Q("fxId"), vig}, {Q("params"), QJsonObject{{Q("radius"), 0.2}, {Q("amount"), 7}}}, {Q("enabled"), false}});
+    const QJsonObject v0 = stack().at(0).toObject();
+    QCOMPARE(v0.value(Q("enabled")).toBool(), false);
+    QCOMPARE(v0.value(Q("params")).toObject().value(Q("radius")).toDouble(), 0.2);
+    QCOMPARE(v0.value(Q("params")).toObject().value(Q("amount")).toDouble(), 1.0); // clamped to the param's range
+    ok(Q("effect.set"), {{Q("itemId"), a}, {Q("fxId"), vig}, {Q("params"), QJsonObject{{Q("radius"), QJsonValue::Null}}}});
+    QVERIFY(!stack().at(0).toObject().value(Q("params")).toObject().contains(Q("radius"))); // null resets to the default
+    ok(Q("effect.keyframe"), {{Q("itemId"), a}, {Q("fxId"), blur}, {Q("param"), Q("radius")}, {Q("t"), 10}, {Q("v"), 20}, {Q("ease"), Q("easeIn")}});
+    ok(Q("effect.keyframe"), {{Q("itemId"), a}, {Q("fxId"), blur}, {Q("param"), Q("radius")}, {Q("t"), 0}, {Q("v"), 0}});
+    ok(Q("effect.keyframe"), {{Q("itemId"), a}, {Q("fxId"), blur}, {Q("param"), Q("radius")}, {Q("t"), 10}, {Q("v"), 30}}); // same frame: replaced
+    const QJsonArray kf = stack().at(1).toObject().value(Q("keyframes")).toObject().value(Q("radius")).toArray();
+    QCOMPARE(kf.size(), 2);
+    QCOMPARE(kf.at(0).toObject().value(Q("frame")).toInt(), 0); // sorted by frame
+    QCOMPARE(kf.at(1).toObject().value(Q("value")).toDouble(), 30.0);
+
+    // errors are values and change nothing
+    QCOMPARE(raw(Q("effect.add"), {{Q("itemId"), a}, {Q("effectId"), Q("crossfade")}}).error.code, Q("invalid_params")); // a transition is not a filter
+    QCOMPARE(raw(Q("effect.add"), {{Q("itemId"), a}, {Q("effectId"), Q("nope")}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("effect.add"), {{Q("itemId"), a}, {Q("effectId"), Q("vignette")}, {Q("params"), QJsonObject{{Q("bogus"), 1}}}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("effect.keyframe"), {{Q("itemId"), a}, {Q("fxId"), blur}, {Q("param"), Q("bogus")}, {Q("t"), 0}, {Q("v"), 1}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("effect.set"), {{Q("itemId"), a}, {Q("fxId"), Q("fx_missing")}, {Q("enabled"), true}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("effect.set"), {{Q("itemId"), a}, {Q("fxId"), vig}}).error.code, Q("invalid_params")); // nothing to change
+    QCOMPARE(stack().size(), 2);
+
+    // each of the 8 successful edits above is one undo step, and redo brings it back
+    undo(); // keyframe (replace)
+    QCOMPARE(stack().at(1).toObject().value(Q("keyframes")).toObject().value(Q("radius")).toArray().at(1).toObject().value(Q("value")).toDouble(), 20.0);
+    redo();
+    for (int i = 0; i < 3; ++i) undo(); // the three keyframes
+    QVERIFY(!stack().at(1).toObject().contains(Q("keyframes")));
+    undo(); // reset radius
+    QCOMPARE(stack().at(0).toObject().value(Q("params")).toObject().value(Q("radius")).toDouble(), 0.2);
+    undo(); // set
+    QCOMPARE(stack().at(0).toObject().value(Q("enabled")).toBool(), true);
+    undo(); // reorder
+    QCOMPARE(stack().at(0).toObject().value(Q("id")).toString(), blur);
+    undo(); // second add
+    QCOMPARE(stack().size(), 1);
+    undo(); // first add
+    QVERIFY(stack().isEmpty());
+    for (int i = 0; i < 8; ++i) redo();
+    QCOMPARE(stack().size(), 2);
+    ok(Q("effect.remove"), {{Q("itemId"), a}, {Q("fxId"), blur}});
+    QCOMPARE(stack().size(), 1);
+    undo();
+    QCOMPARE(stack().size(), 2);
+
+    // transitions
+    QCOMPARE(raw(Q("transition.add"), {{Q("itemId"), a}, {Q("effectId"), Q("vignette")}, {Q("duration"), 8}}).error.code, Q("invalid_params")); // a filter is not a transition
+    QCOMPARE(raw(Q("transition.add"), {{Q("itemId"), a}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 41}}).error.code, Q("invalid_params")); // longer than 2 x 20 frames
+    QCOMPARE(raw(Q("transition.add"), {{Q("itemId"), b}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 8}}).error.code, Q("invalid_params")); // nothing after B
+    QCOMPARE(raw(Q("transition.add"), {{Q("effectId"), Q("crossfade")}, {Q("duration"), 8}}).error.code, Q("invalid_params")); // no cut named
+    const QJsonObject tadd = ok(Q("transition.add"), {{Q("itemId"), a}, {Q("effectId"), Q("wipe")}, {Q("duration"), 10}, {Q("align"), Q("start")}, {Q("params"), QJsonObject{{Q("softness"), 0.3}}}});
+    const QString tr = tadd.value(Q("transitionIds")).toArray().at(0).toString();
+    QVERIFY(!tr.isEmpty());
+    QJsonObject listed = ok(Q("transition.list")).value(Q("transitions")).toArray().at(0).toObject();
+    QCOMPARE(listed.value(Q("fromItemId")).toString(), a);
+    QCOMPARE(listed.value(Q("toItemId")).toString(), b);
+    QCOMPARE(listed.value(Q("valid")).toBool(), true);
+    QCOMPARE(listed.value(Q("startFrame")).toInt(), 20);
+    QCOMPARE(listed.value(Q("endFrame")).toInt(), 30);
+    QCOMPARE(tadd.value(Q("inverse")).toArray().at(0).toObject().value(Q("type")).toString(), Q("transitions.set"));
+    QCOMPARE(raw(Q("transition.add"), {{Q("itemId"), a}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 8}}).error.code, Q("invalid_params")); // the cut has one already
+
+    ok(Q("transition.set"), {{Q("transitionId"), tr}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 6}, {Q("align"), Q("center")}});
+    listed = ok(Q("transition.list")).value(Q("transitions")).toArray().at(0).toObject();
+    QCOMPARE(listed.value(Q("effectId")).toString(), Q("crossfade"));
+    QCOMPARE(listed.value(Q("startFrame")).toInt(), 17); // centre: 3 frames before the cut
+    QVERIFY(listed.value(Q("params")).toObject().isEmpty()); // a new effect starts from its own defaults
+    QCOMPARE(raw(Q("transition.set"), {{Q("transitionId"), tr}, {Q("duration"), 999}}).error.code, Q("invalid_params"));
+    undo();
+    QCOMPARE(ok(Q("transition.list")).value(Q("transitions")).toArray().at(0).toObject().value(Q("effectId")).toString(), Q("wipe"));
+    redo();
+
+    // it saves with the project and loads again
+    const QString file = dir_.filePath(Q("fx.sfproj"));
+    ok(Q("project.saveAs"), {{Q("path"), file}});
+    ok(Q("project.open"), {{Q("path"), file}});
+    QCOMPARE(ok(Q("transition.list")).value(Q("transitions")).toArray().size(), 1);
+    QCOMPARE(stack().size(), 2);
+
+    ok(Q("transition.remove"), {{Q("transitionId"), tr}});
+    QVERIFY(ok(Q("transition.list")).value(Q("transitions")).toArray().isEmpty());
+    undo();
+    QCOMPARE(ok(Q("transition.list")).value(Q("transitions")).toArray().size(), 1);
+    redo();
+    QCOMPARE(raw(Q("transition.remove"), {{Q("transitionId"), tr}}).error.code, Q("not_found"));
+    // a whole track at once
+    const QString track = ok(Q("item.get"), {{Q("itemId"), a}}).value(Q("trackId")).toString();
+    QCOMPARE(ok(Q("transition.add"), {{Q("trackId"), track}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 10}}).value(Q("transitionIds")).toArray().size(), 1);
+  }
+
 };
 
 QTEST_MAIN(TstEngine)

@@ -1,6 +1,7 @@
 #include "render/compositor.h"
 
 #include "core/timeline_doc.h"
+#include "render/effects.h"
 #include "render/gpu_planes.h"
 #include "render/layer_painter.h"
 #include "render/layout.h"
@@ -36,13 +37,48 @@ struct Params {
 };
 static_assert(sizeof(Params) == 448);
 
-enum Mode { Straight = 0, Premultiplied = 1, Yuv = 2 };
+enum Mode { Straight = 0, Premultiplied = 1, Yuv = 2, EffectResult = 3 };
 enum Bits { kLut = 1, kToneMap = 2, kEffects = 4, kGrade = 8 };
 
-QShader loadShader(const QString& name) {
-  QFile f(QStringLiteral(":/sf/render/shaders/") + name);
+QShader loadShaderFile(const QString& path) {
+  QFile f(path);
   if (!f.open(QIODevice::ReadOnly)) return {};
   return QShader::fromSerialized(f.readAll());
+}
+
+QShader loadShader(const QString& name) { return loadShaderFile(QStringLiteral(":/sf/render/shaders/") + name); }
+
+// What one render() draws at one position: an item, or the two items a transition is cutting between
+struct Pick {
+  const Item* a = nullptr;
+  const Item* b = nullptr; // transitions: the incoming item
+  const FxTransition* tr = nullptr;
+  double progress = 0;
+};
+
+// Like activeItems (bottom layer first), but a running transition replaces its two clips by one pick at the
+// outgoing clip's position, and brings in clips that are outside their own range because the window overlaps them.
+std::vector<Pick> collectPicks(const TimelineDoc& doc, Frame frame) {
+  const std::vector<ActiveTransition> active = activeTransitions(doc, frame);
+  std::vector<Pick> picks;
+  for (auto t = doc.tracks.rbegin(); t != doc.tracks.rend(); ++t) {
+    if (t->hidden) continue;
+    for (const Item* item : itemsOnTrack(doc, t->id)) {
+      const ActiveTransition* out = nullptr;
+      bool incoming = false;
+      for (const ActiveTransition& a : active) {
+        if (a.to == item) incoming = true;
+        else if (a.from == item && !out) out = &a;
+      }
+      if (incoming) continue;
+      if (out) {
+        picks.push_back({out->from, out->to, out->tr, out->progress});
+        continue;
+      }
+      if (frame >= item->startFrame && frame < itemEnd(*item)) picks.push_back({item});
+    }
+  }
+  return picks;
 }
 
 void setRows(float (&dst)[3][4], const Mat3& m) {
@@ -236,6 +272,28 @@ struct Compositor::Impl {
 
   std::vector<Slot> layerSlots;
 
+  // ---- effects (render/effects.h) ----
+  // A texture a layer's picture passes through. Handed out per frame (busy until the next render() starts).
+  struct FxTarget {
+    std::unique_ptr<QRhiTexture> tex;
+    std::unique_ptr<QRhiTextureRenderTarget> rt;
+    QSize size;
+    bool busy = false;
+  };
+  QShader fxVs;
+  bool fxTried = false, fxReady = false;
+  std::unique_ptr<QRhiBuffer> fxUbuf;
+  int fxUbufSlots = 0;
+  quint32 fxStride = 0;
+  std::unique_ptr<QRhiBuffer> fxLayoutUbuf;
+  std::unique_ptr<QRhiShaderResourceBindings> fxLayoutSrb;
+  std::map<QString, std::unique_ptr<QRhiGraphicsPipeline>> fxPipelines; // by effect id; null = its shader is unusable
+  std::vector<std::unique_ptr<FxTarget>> fxTargets;
+  std::map<std::pair<QRhiTexture*, QRhiTexture*>, std::unique_ptr<QRhiShaderResourceBindings>> fxSrbs;  // effect passes: (input, second input)
+  std::map<QRhiTexture*, std::unique_ptr<QRhiShaderResourceBindings>> fxResultSrbs;                      // layer pass drawing an effect result
+  quint64 fxResultUbufGen = 0;
+  QMatrix4x4 fxProj; // unit quad -> a whole render target
+
   // colour
   std::shared_ptr<ColorManager> manager;
   bool managerSet = false; // setColorManager was called, even with null
@@ -265,9 +323,36 @@ struct Compositor::Impl {
   std::map<quint64, LutTex> luts;
   quint64 frameNo = 0;
 
+  struct FxStep {
+    const FxDef* def = nullptr;
+    QRhiGraphicsPipeline* pipe = nullptr;
+    int firstIdx = 0; // index of the first of def->passes uniform slots
+    QJsonObject params; // resolved at this frame
+  };
   struct Layer {
     size_t slot;
     Params params;
+    // effects: set by render() for every layer, used when `steps` is not empty
+    const Item* item = nullptr;
+    QSize content;      // pixels of the item's own picture (what its unit quad covers before the transform)
+    QMatrix4x4 model;   // unit quad -> canvas
+    double opacity = 1;
+    std::vector<FxStep> steps;
+    int contentIdx = -1;           // uniform slot of the pass that draws the item's picture into its texture
+    QRhiTexture* result = nullptr; // the filtered picture, once recorded
+  };
+  // One draw on the canvas: a layer, or a transition between two
+  struct Entry {
+    int a = -1, b = -1;
+    const FxTransition* tr = nullptr;
+    double progress = 0;
+    const FxDef* def = nullptr;
+    QRhiGraphicsPipeline* pipe = nullptr;
+    int fxIdx = -1;   // effect uniform slot
+    int compIdx = -1; // main uniform slot of the quad that draws the result
+    Params comp;
+    QJsonObject params;
+    QRhiTexture* result = nullptr;
   };
 
   explicit Impl(QRhi* r) : rhi(r) {}
@@ -286,8 +371,13 @@ struct Compositor::Impl {
   }
 
   std::unique_ptr<QRhiGraphicsPipeline> makePipeline(QRhiRenderPassDescriptor* rpd, const QShader& frag, bool blendOver) {
+    return makePipelineWith(rpd, vs, frag, blendOver, layoutSrb.get());
+  }
+
+  std::unique_ptr<QRhiGraphicsPipeline> makePipelineWith(QRhiRenderPassDescriptor* rpd, const QShader& vert, const QShader& frag, bool blendOver,
+                                                         QRhiShaderResourceBindings* layout) {
     std::unique_ptr<QRhiGraphicsPipeline> ps(rhi->newGraphicsPipeline());
-    ps->setShaderStages({{QRhiShaderStage::Vertex, vs}, {QRhiShaderStage::Fragment, frag}});
+    ps->setShaderStages({{QRhiShaderStage::Vertex, vert}, {QRhiShaderStage::Fragment, frag}});
     QRhiVertexInputLayout input;
     input.setBindings({{2 * sizeof(float)}});
     input.setAttributes({{0, 0, QRhiVertexInputAttribute::Float2, 0}});
@@ -304,7 +394,7 @@ struct Compositor::Impl {
       blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
       ps->setTargetBlends({blend});
     }
-    ps->setShaderResourceBindings(layoutSrb.get());
+    ps->setShaderResourceBindings(layout);
     ps->setRenderPassDescriptor(rpd);
     if (!ps->create()) return nullptr;
     return ps;
@@ -356,6 +446,8 @@ struct Compositor::Impl {
 
   bool ensureCanvas(QSize size) {
     if (canvas && canvas->pixelSize() == size) return true;
+    resetFxTargets(); // their render targets use the canvas' pass descriptor
+    fxPipelines.clear();
     canvasPipeline.reset();
     canvasRt.reset();
     canvasRpd.reset();
@@ -387,6 +479,197 @@ struct Compositor::Impl {
     outputPipeline = makePipeline(outputRpd.get(), outFs, false);
     outputBits = bits;
     return outputPipeline != nullptr;
+  }
+
+  // ---- effects ----
+
+  void resetFxTargets() {
+    fxSrbs.clear();
+    fxResultSrbs.clear();
+    fxTargets.clear();
+  }
+
+  // Loads fx.vert and creates the effect uniform buffer; false (once and for all) when that fails
+  bool ensureFx() {
+    if (fxTried) return fxReady;
+    fxTried = true;
+    fxVs = loadShaderFile(QStringLiteral(":/sf/render/fx/fx.vert.qsb"));
+    if (!fxVs.isValid()) return false;
+    fxStride = static_cast<quint32>(rhi->ubufAligned(sizeof(FxUniforms)));
+    growFxUbuf(16);
+    fxLayoutUbuf.reset(rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, fxStride));
+    if (!fxUbuf || !fxLayoutUbuf->create()) return false;
+    fxLayoutSrb.reset(rhi->newShaderResourceBindings());
+    fxLayoutSrb->setBindings({
+        QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, fxLayoutUbuf.get(),
+                                                                  sizeof(FxUniforms)),
+        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, dummy.get(), sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, dummy.get(), sampler.get()),
+    });
+    if (!fxLayoutSrb->create()) return false;
+    fxProj = rhi->clipSpaceCorrMatrix();
+    fxProj.ortho(0, 1, 1, 0, -1, 1);
+    fxReady = true;
+    return true;
+  }
+
+  void growFxUbuf(int slotsNeeded) {
+    if (fxUbuf && fxUbufSlots >= slotsNeeded) return;
+    const int n = std::max(slotsNeeded, fxUbufSlots * 2);
+    fxUbuf.reset(rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, static_cast<quint32>(n) * fxStride));
+    if (!fxUbuf->create()) {
+      fxUbuf.reset();
+      fxUbufSlots = 0;
+      return;
+    }
+    fxUbufSlots = n;
+    fxSrbs.clear(); // they point at the old buffer
+  }
+
+  // The pipeline of an effect's shader; null (remembered) when the shader is missing or won't build
+  QRhiGraphicsPipeline* fxPipeline(const FxDef& def) {
+    const auto it = fxPipelines.find(def.id);
+    if (it != fxPipelines.end()) return it->second.get();
+    std::unique_ptr<QRhiGraphicsPipeline> ps;
+    const QShader frag = loadShaderFile(def.shader);
+    if (frag.isValid()) ps = makePipelineWith(canvasRpd.get(), fxVs, frag, false, fxLayoutSrb.get());
+    return fxPipelines.emplace(def.id, std::move(ps)).first->second.get();
+  }
+
+  FxTarget* acquireTarget(QSize size) {
+    for (auto& t : fxTargets) {
+      if (!t->busy && t->size == size) {
+        t->busy = true;
+        return t.get();
+      }
+    }
+    auto t = std::make_unique<FxTarget>();
+    t->size = size;
+    t->tex.reset(rhi->newTexture(QRhiTexture::RGBA16F, size, 1, QRhiTexture::RenderTarget));
+    if (!t->tex->create()) return nullptr;
+    t->rt.reset(rhi->newTextureRenderTarget({t->tex.get()}));
+    t->rt->setRenderPassDescriptor(canvasRpd.get()); // same format as the canvas, so its pass descriptor fits
+    if (!t->rt->create()) return nullptr;
+    t->busy = true;
+    fxTargets.push_back(std::move(t));
+    return fxTargets.back().get();
+  }
+
+  // Textures of effects that are gone from the project go with the frame that last used them
+  void beginFxFrame() {
+    if (fxTargets.size() > 24) resetFxTargets();
+    for (auto& t : fxTargets) t->busy = false;
+  }
+
+  QRhiShaderResourceBindings* fxSrb(QRhiTexture* in, QRhiTexture* in2) {
+    const auto key = std::make_pair(in, in2);
+    const auto it = fxSrbs.find(key);
+    if (it != fxSrbs.end()) return it->second.get();
+    std::unique_ptr<QRhiShaderResourceBindings> srb(rhi->newShaderResourceBindings());
+    srb->setBindings({
+        QRhiShaderResourceBinding::uniformBufferWithDynamicOffset(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, fxUbuf.get(),
+                                                                  sizeof(FxUniforms)),
+        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, in, sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, in2, sampler.get()),
+    });
+    if (!srb->create()) return nullptr;
+    return fxSrbs.emplace(key, std::move(srb)).first->second.get();
+  }
+
+  // Bindings of a layer-pass quad that draws an effect result (mode 3)
+  QRhiShaderResourceBindings* resultSrb(QRhiTexture* tex) {
+    if (fxResultUbufGen != ubufGen) {
+      fxResultSrbs.clear();
+      fxResultUbufGen = ubufGen;
+    }
+    const auto it = fxResultSrbs.find(tex);
+    if (it != fxResultSrbs.end()) return it->second.get();
+    std::unique_ptr<QRhiShaderResourceBindings> srb = makeSrb(ubuf.get(), tex, dummy.get(), dummyLut.get());
+    if (!srb) return nullptr;
+    return fxResultSrbs.emplace(tex, std::move(srb)).first->second.get();
+  }
+
+  // One full-target pass of an effect shader: `out` <- pipe(in, in2) with the uniforms at fxIdx
+  void recordFxPass(QRhiCommandBuffer* cb, QRhiGraphicsPipeline* pipe, FxTarget* out, QRhiTexture* in, QRhiTexture* in2, int fxIdx) {
+    QRhiShaderResourceBindings* srb = fxSrb(in, in2);
+    cb->beginPass(out->rt.get(), QColor(0, 0, 0, 0), {1.0f, 0}, nullptr);
+    if (srb) {
+      cb->setGraphicsPipeline(pipe);
+      cb->setViewport({0, 0, static_cast<float>(out->size.width()), static_cast<float>(out->size.height())});
+      const QRhiCommandBuffer::VertexInput vertices(vbuf.get(), 0);
+      cb->setVertexInput(0, 1, &vertices);
+      const QRhiCommandBuffer::DynamicOffset dyn{0, static_cast<quint32>(fxIdx) * fxStride};
+      cb->setShaderResources(srb, 1, &dyn);
+      cb->draw(4);
+    }
+    cb->endPass();
+  }
+
+  // Draws one layer inside an open layer-pass: from its own bindings, or from the filtered picture
+  void drawLayer(QRhiCommandBuffer* cb, const Layer& l) {
+    QRhiShaderResourceBindings* srb = l.result ? resultSrb(l.result) : layerSlots[l.slot].srb.get();
+    if (!srb) return;
+    const QRhiCommandBuffer::DynamicOffset dyn{0, static_cast<quint32>(l.slot) * stride};
+    cb->setShaderResources(srb, 1, &dyn);
+    cb->draw(4);
+  }
+
+  // Records a layer's picture into its own texture and runs its filters over it; the result stays busy
+  // until the next frame. Null when a texture couldn't be made.
+  FxTarget* runLayerFx(QRhiCommandBuffer* cb, Layer& l, RenderStats& stats) {
+    FxTarget* cur = acquireTarget(l.content);
+    if (!cur) return nullptr;
+    cb->beginPass(cur->rt.get(), QColor(0, 0, 0, 0), {1.0f, 0}, nullptr);
+    cb->setGraphicsPipeline(canvasPipeline.get());
+    cb->setViewport({0, 0, static_cast<float>(l.content.width()), static_cast<float>(l.content.height())});
+    const QRhiCommandBuffer::VertexInput vertices(vbuf.get(), 0);
+    cb->setVertexInput(0, 1, &vertices);
+    const QRhiCommandBuffer::DynamicOffset dyn{0, static_cast<quint32>(l.contentIdx) * stride};
+    cb->setShaderResources(layerSlots[l.slot].srb.get(), 1, &dyn);
+    cb->draw(4);
+    cb->endPass();
+    for (const FxStep& st : l.steps) {
+      for (int pass = 0; pass < st.def->passes; ++pass) {
+        FxTarget* out = acquireTarget(l.content);
+        if (!out) return cur;
+        recordFxPass(cb, st.pipe, out, cur->tex.get(), dummy.get(), st.firstIdx + pass);
+        cur->busy = false; // consumed: the next pass may draw into it
+        cur = out;
+        ++stats.fxPasses;
+      }
+    }
+    return cur;
+  }
+
+  // Both clips of a transition drawn into canvas-sized textures and mixed by the effect; e.result is the mix.
+  void runTransition(QRhiCommandBuffer* cb, Entry& e, std::vector<Layer>& layers, QSize canvasSize, RenderStats& stats) {
+    FxTarget* sides[2] = {nullptr, nullptr};
+    for (int k = 0; k < 2; ++k) {
+      Layer& l = layers[static_cast<size_t>(k == 0 ? e.a : e.b)];
+      FxTarget* picture = l.steps.empty() ? nullptr : runLayerFx(cb, l, stats);
+      l.result = picture ? picture->tex.get() : nullptr;
+      FxTarget* side = acquireTarget(canvasSize);
+      sides[k] = side;
+      if (side) {
+        cb->beginPass(side->rt.get(), QColor(0, 0, 0, 0), {1.0f, 0}, nullptr);
+        cb->setGraphicsPipeline(canvasPipeline.get());
+        cb->setViewport({0, 0, static_cast<float>(canvasSize.width()), static_cast<float>(canvasSize.height())});
+        const QRhiCommandBuffer::VertexInput vertices(vbuf.get(), 0);
+        cb->setVertexInput(0, 1, &vertices);
+        drawLayer(cb, l);
+        cb->endPass();
+      }
+      if (picture) picture->busy = false;
+      l.result = nullptr;
+    }
+    FxTarget* out = sides[0] && sides[1] ? acquireTarget(canvasSize) : nullptr;
+    if (out) {
+      recordFxPass(cb, e.pipe, out, sides[0]->tex.get(), sides[1]->tex.get(), e.fxIdx);
+      ++stats.fxPasses;
+      e.result = out->tex.get();
+    }
+    for (FxTarget* s : sides)
+      if (s) s->busy = false;
   }
 
   // (Re)builds a slot's bindings if what they point at changed
@@ -634,6 +917,7 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
   const QSize size(static_cast<int>(doc.project.width), static_cast<int>(doc.project.height));
   if (size.isEmpty() || !s.ensureCanvas(size)) return stats;
   ++s.frameNo;
+  s.beginFxFrame();
   s.colorError.clear();
   s.resolveColor(doc, stats);
   const ColorState& cs = s.color;
@@ -658,6 +942,11 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
   std::vector<Impl::Layer> layers;
   std::vector<std::pair<GpuPlanes*, const GpuFrame*>> copies;
 
+  // what the layer being added reports to addItem, set where it is known
+  QSize curContent;
+  QMatrix4x4 curModel;
+  double curOpacity = 1;
+
   const auto slotAt = [&](size_t i) -> Impl::Slot& {
     if (s.layerSlots.size() <= i) s.layerSlots.resize(i + 1);
     return s.layerSlots[i];
@@ -672,6 +961,8 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
   // an uploaded RGBA layer: `changed` says the pixels differ from what the slot's texture holds
   const auto rgbaLayer = [&](const QImage& img, bool changed, Impl::Slot& slot, const QMatrix4x4& model, const UvMap& uv, const ColorMatrix& fx,
                              double opacity, Mode mode, const LayerColor& lc) {
+    curModel = model;
+    curOpacity = opacity;
     changed |= s.ensureRgba(slot, img.size());
     if (!slot.rgba) return false;
     slot.kind = Impl::Slot::Kind::Rgba;
@@ -700,31 +991,42 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
     model.translate(static_cast<float>(r->origin.x()), static_cast<float>(r->origin.y()));
     model.scale(static_cast<float>(r->image.width()), static_cast<float>(r->image.height()));
     const LayerColor lc = s.layerColor(item, Transfer::Srgb, ColorPrim::Unspecified, false, stats, true);
+    curContent = r->image.size();
     if (rgbaLayer(r->image, changed, slot, model, UvMap{}, kIdentityColor, opacity, Premultiplied, lc)) slot.key = r->key;
   };
 
-  for (const Item* item : activeItems(doc, frame)) {
-    const double opacity = opacityAt(*item, frame);
-    if (opacity <= 0) continue;
+  // what draws at each position, bottom layer first: one item, or the two a transition cuts between
+  std::vector<Pick> picks;
+  if (doc.transitions.empty()) {
+    for (const Item* item : activeItems(doc, frame)) picks.push_back({item});
+  } else {
+    picks = collectPicks(doc, frame);
+  }
+
+  const auto addItemImpl = [&](const Item* item) {
+    // a clip a transition overlaps outside its own range holds its first / last frame's opacity
+    const double opacity = opacityAt(*item, std::clamp(frame, item->startFrame, std::max(item->startFrame, itemEnd(*item) - 1)));
+    if (opacity <= 0) return;
     const ItemType type = item->type();
-    if (type == ItemType::Audio) continue;
+    if (type == ItemType::Audio) return;
 
     if (type != ItemType::Video && type != ItemType::Image) {
       rasterLayer(rasterizeItem(doc, *item, frame, size), opacity, item);
-      continue;
+      return;
     }
 
     const Visual v = media.visual(*item, sourceFrameAt(*item, frame), fps);
     if (v.state == Visual::State::Missing) {
       ++stats.missing;
       rasterLayer(rasterizeMissingMedia(*item, frame, size), opacity, nullptr);
-      continue;
+      return;
     }
     if (v.state == Visual::State::Pending) ++stats.pending;
-    if (!v.video && !v.image) continue; // nothing to show yet
+    if (!v.video && !v.image) return; // nothing to show yet
 
     const Placement place = placeMedia(*item, frame, QSizeF(v.size), size);
     const QMatrix4x4 model(place.unitToCanvas());
+    curContent = QSize(std::clamp(static_cast<int>(std::ceil(place.size.width())), 1, 8192), std::clamp(static_cast<int>(std::ceil(place.size.height())), 1, 8192));
     const ColorMatrix fx = effectsToColorMatrix(item->effects);
     Impl::Slot& slot = slotAt(layers.size());
 
@@ -738,7 +1040,7 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
         slot.still = v.image;
         ++stats.cpuLayers;
       }
-      continue;
+      return;
     }
 
     const UvMap uv = uvForRotation(v.rotation);
@@ -760,12 +1062,14 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
           slot.frame = v.video;
           slot.still.reset();
           slot.converted = QImage();
+          curModel = model;
+          curOpacity = opacity;
           Impl::Layer l;
           l.slot = static_cast<size_t>(&slot - s.layerSlots.data());
           fillLayer(l.params, proj * model, uv, yuvToRgb(g.kr, g.kb, g.fullRange, g.bitDepth), fx, opacity, Yuv, lc, cs);
           layers.push_back(l);
           ++stats.gpuLayers;
-          continue;
+          return;
         }
       }
     }
@@ -776,22 +1080,147 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
       if (slot.frame != v.video || slot.converted.isNull()) slot.converted = frameImage(vf);
       img = &slot.converted;
     }
-    if (img->isNull()) continue;
+    if (img->isNull()) return;
     slot.still.reset();
     if (rgbaLayer(*img, changed, slot, model, uv, fx, opacity, Straight, lc)) {
       slot.frame = v.video;
       ++stats.cpuLayers;
     }
+  };
+  // adds the item's layer; its index, or -1 when it draws nothing
+  const auto addItem = [&](const Item* item) -> int {
+    const size_t before = layers.size();
+    addItemImpl(item);
+    if (layers.size() == before) return -1;
+    Impl::Layer& l = layers.back();
+    l.item = item;
+    l.content = curContent;
+    l.model = curModel;
+    l.opacity = curOpacity;
+    return static_cast<int>(layers.size()) - 1;
+  };
+
+  std::vector<Impl::Entry> entries;
+  for (const Pick& pk : picks) {
+    const int a = addItem(pk.a);
+    if (!pk.tr) {
+      if (a >= 0) entries.push_back({a});
+      continue;
+    }
+    const int b = addItem(pk.b);
+    Impl::Entry e;
+    e.a = a >= 0 ? a : b;
+    e.b = a >= 0 && b >= 0 ? b : -1;
+    e.tr = e.b >= 0 ? pk.tr : nullptr;
+    e.progress = pk.progress;
+    if (e.a >= 0) entries.push_back(e);
   }
   stats.layers = static_cast<int>(layers.size());
   for (size_t i = layers.size(); i < s.layerSlots.size(); ++i) s.layerSlots[i].releaseContent();
 
-  s.growUbuf(std::max<int>(8, static_cast<int>(layers.size())));
+  // effects: each layer's enabled filters and each transition get uniform slots (main block after the layers, effect block from 0)
+  int mainSlots = static_cast<int>(layers.size());
+  int fxSlots = 0;
+  bool anyFx = false;
+  for (Impl::Layer& l : layers) {
+    if (!l.item || l.item->fx.empty()) continue;
+    const Frame local = frame - l.item->startFrame;
+    for (const FxInstance& fi : l.item->fx) {
+      if (!fi.enabled) continue;
+      const FxDef* def = FxRegistry::instance().find(fi.effectId);
+      QRhiGraphicsPipeline* pipe = s.ensureFx() && def && def->kind == FxKind::Filter ? s.fxPipeline(*def) : nullptr;
+      if (!pipe) {
+        ++stats.fxErrors;
+        continue;
+      }
+      Impl::FxStep st;
+      st.def = def;
+      st.pipe = pipe;
+      st.firstIdx = fxSlots;
+      st.params = resolveFxParams(*def, fi.params, fi.keyframes, local);
+      fxSlots += def->passes;
+      l.steps.push_back(std::move(st));
+    }
+    if (!l.steps.empty()) {
+      l.contentIdx = mainSlots++;
+      anyFx = true;
+    }
+  }
+  for (Impl::Entry& e : entries) {
+    if (!e.tr) continue;
+    const FxDef* def = FxRegistry::instance().find(e.tr->effectId);
+    QRhiGraphicsPipeline* pipe = s.ensureFx() && def && def->kind == FxKind::Transition ? s.fxPipeline(*def) : nullptr;
+    if (!pipe) { // can't mix: cut halfway
+      ++stats.fxErrors;
+      e.a = e.progress < 0.5 ? e.a : e.b;
+      e.b = -1;
+      e.tr = nullptr;
+      continue;
+    }
+    e.def = def;
+    e.pipe = pipe;
+    e.fxIdx = fxSlots++;
+    e.compIdx = mainSlots++;
+    e.params = resolveFxParams(*def, e.tr->params, {}, 0);
+    anyFx = true;
+  }
+
+  s.growUbuf(std::max(8, mainSlots));
+  if (anyFx) s.growFxUbuf(std::max(16, fxSlots));
+  const bool linearColor = cs.blend == BlendSpace::Linear;
   // growing replaced the buffer the slots' bindings point at
   for (Impl::Layer& l : layers) {
     Impl::Slot& slot = s.layerSlots[l.slot];
     if (slot.boundUbufGen != s.ubufGen) s.bindSlot(slot, slot.bound0, slot.bound1, slot.bound2, slot.boundLutId, slot.boundGen);
+    if (!l.steps.empty()) {
+      // the item's picture is drawn into its own texture first (no transform, full opacity) ...
+      Params content = l.params;
+      std::memcpy(content.mvp, s.fxProj.constData(), sizeof content.mvp);
+      content.params[0] = 1.0f;
+      updates->updateDynamicBuffer(s.ubuf.get(), static_cast<quint32>(l.contentIdx) * s.stride, sizeof(Params), &content);
+      // ... then from that texture onto the canvas, placed and faded as before
+      l.params.uvx[0] = 1.0f, l.params.uvx[1] = 0.0f, l.params.uvx[2] = 0.0f;
+      l.params.uvy[0] = 0.0f, l.params.uvy[1] = 1.0f, l.params.uvy[2] = 0.0f;
+      l.params.params[1] = static_cast<float>(EffectResult);
+      l.params.flags[0] = 0.0f;
+      for (const Impl::FxStep& st : l.steps) {
+        for (int pass = 0; pass < st.def->passes; ++pass) {
+          FxUniforms u{};
+          std::memcpy(u.mvp, s.fxProj.constData(), sizeof u.mvp);
+          u.timing[1] = static_cast<float>(static_cast<double>(frame - l.item->startFrame) / fps);
+          u.timing[2] = static_cast<float>(l.content.width()) / static_cast<float>(l.content.height());
+          u.timing[3] = static_cast<float>(pass);
+          u.res[0] = static_cast<float>(l.content.width());
+          u.res[1] = static_cast<float>(l.content.height());
+          u.res[2] = static_cast<float>(st.def->passes);
+          packFxParams(*st.def, st.params, linearColor, u.p);
+          updates->updateDynamicBuffer(s.fxUbuf.get(), static_cast<quint32>(st.firstIdx + pass) * s.fxStride, sizeof u, &u);
+        }
+      }
+    }
     updates->updateDynamicBuffer(s.ubuf.get(), static_cast<quint32>(l.slot) * s.stride, sizeof(Params), &l.params);
+  }
+  for (Impl::Entry& e : entries) {
+    if (!e.tr) continue;
+    Frame winStart = 0, winEnd = 0;
+    transitionWindow(doc, *e.tr, nullptr, nullptr, &winStart, &winEnd);
+    FxUniforms u{};
+    std::memcpy(u.mvp, s.fxProj.constData(), sizeof u.mvp);
+    u.timing[0] = static_cast<float>(e.progress);
+    u.timing[1] = static_cast<float>(static_cast<double>(frame - winStart) / fps);
+    u.timing[2] = static_cast<float>(size.width()) / static_cast<float>(size.height());
+    u.res[0] = static_cast<float>(size.width());
+    u.res[1] = static_cast<float>(size.height());
+    u.res[2] = 1.0f;
+    packFxParams(*e.def, e.params, linearColor, u.p);
+    updates->updateDynamicBuffer(s.fxUbuf.get(), static_cast<quint32>(e.fxIdx) * s.fxStride, sizeof u, &u);
+    // the mix is drawn over the whole canvas
+    QMatrix4x4 whole;
+    whole.scale(static_cast<float>(size.width()), static_cast<float>(size.height()));
+    fillCommon(e.comp, proj * whole, UvMap{}, cs);
+    e.comp.params[0] = 1.0f;
+    e.comp.params[1] = static_cast<float>(EffectResult);
+    updates->updateDynamicBuffer(s.ubuf.get(), static_cast<quint32>(e.compIdx) * s.stride, sizeof(Params), &e.comp);
   }
 
   // the output pass's inputs: its LUT and its bindings
@@ -806,15 +1235,35 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
     cb->endExternal();
   }
 
+  // effect passes come before the canvas pass (passes can't nest): uploads first, then each layer's / transition's textures
+  if (anyFx) {
+    cb->resourceUpdate(updates);
+    updates = nullptr;
+    for (Impl::Entry& e : entries) {
+      if (e.tr) {
+        s.runTransition(cb, e, layers, size, stats);
+      } else if (Impl::Layer& l = layers[static_cast<size_t>(e.a)]; !l.steps.empty()) {
+        Impl::FxTarget* t = s.runLayerFx(cb, l, stats);
+        l.result = t ? t->tex.get() : nullptr;
+      }
+    }
+  }
+
   // the project's background, opaque (the reference fills it before drawing anything)
   cb->beginPass(s.canvasRt.get(), s.background(doc.project.styleConfig.backgroundColor), {1.0f, 0}, updates);
   cb->setGraphicsPipeline(s.canvasPipeline.get());
   cb->setViewport({0, 0, static_cast<float>(size.width()), static_cast<float>(size.height())});
   const QRhiCommandBuffer::VertexInput vertices(s.vbuf.get(), 0);
   cb->setVertexInput(0, 1, &vertices);
-  for (const Impl::Layer& l : layers) {
-    const QRhiCommandBuffer::DynamicOffset dyn{0, static_cast<quint32>(l.slot) * s.stride};
-    cb->setShaderResources(s.layerSlots[l.slot].srb.get(), 1, &dyn);
+  for (const Impl::Entry& e : entries) {
+    if (!e.tr) {
+      s.drawLayer(cb, layers[static_cast<size_t>(e.a)]);
+      continue;
+    }
+    QRhiShaderResourceBindings* srb = e.result ? s.resultSrb(e.result) : nullptr;
+    if (!srb) continue;
+    const QRhiCommandBuffer::DynamicOffset dyn{0, static_cast<quint32>(e.compIdx) * s.stride};
+    cb->setShaderResources(srb, 1, &dyn);
     cb->draw(4);
   }
   cb->endPass();

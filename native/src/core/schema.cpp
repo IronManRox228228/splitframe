@@ -201,6 +201,41 @@ Effect parseEffect(const Rd& r) {
   return e;
 }
 
+FxInstance parseFxInstance(const Rd& r) {
+  r.requireObject();
+  FxInstance f;
+  f.id = r.field(QStringLiteral("id")).str();
+  f.effectId = r.field(QStringLiteral("effectId")).str();
+  f.enabled = r.field(QStringLiteral("enabled")).boolOr(true);
+  const Rd params = r.field(QStringLiteral("params"));
+  if (!params.missing()) {
+    params.requireObject();
+    f.params = params.raw().toObject();
+  }
+  f.keyframes = parseKeyframeMap(r.field(QStringLiteral("keyframes")));
+  return f;
+}
+
+FxTransition parseFxTransition(const Rd& r) {
+  r.requireObject();
+  FxTransition t;
+  t.id = r.field(QStringLiteral("id")).str();
+  t.effectId = r.field(QStringLiteral("effectId")).str();
+  t.fromItemId = r.field(QStringLiteral("fromItemId")).str();
+  t.toItemId = r.field(QStringLiteral("toItemId")).str();
+  t.duration = r.field(QStringLiteral("duration")).integerOr(15, {.min = 1});
+  const Rd align = r.field(QStringLiteral("align"));
+  t.align = align.strOr(QStringLiteral("center"));
+  if (t.align != QLatin1String("center") && t.align != QLatin1String("start") && t.align != QLatin1String("end"))
+    align.fail(QStringLiteral("Invalid enum value. Expected 'center' | 'start' | 'end'"));
+  const Rd params = r.field(QStringLiteral("params"));
+  if (!params.missing()) {
+    params.requireObject();
+    t.params = params.raw().toObject();
+  }
+  return t;
+}
+
 Mask parseMask(const Rd& r) {
   r.requireObject();
   Mask m;
@@ -445,6 +480,7 @@ Item parseItem(const Rd& r, bool propsOptional, bool* omitted) {
   it.keyframes = parseKeyframeMap(r.field(QStringLiteral("keyframes")));
   it.labels = parseLabels(r.field(QStringLiteral("labels")));
   it.color = r.field(QStringLiteral("color")).opt(parseItemColor);
+  it.fx = r.field(QStringLiteral("fx")).listOr(parseFxInstance);
 
   const Rd props = r.field(QStringLiteral("props"));
   if (props.missing() && propsOptional) {
@@ -495,6 +531,7 @@ ItemPatch parseItemPatch(const Rd& r) {
     p.labels = lp;
   }
   p.color = r.field(QStringLiteral("color")).opt(parseItemColor);
+  p.fx = r.field(QStringLiteral("fx")).opt([](const Rd& x) { return x.list(parseFxInstance); });
   const Rd props = r.field(QStringLiteral("props"));
   if (!props.missing()) p.props = props.raw();
   return p;
@@ -508,6 +545,7 @@ TimelineDoc parseTimelineDoc(const Rd& r) {
   d.items = r.field(QStringLiteral("items")).list([](const Rd& x) { return parseItem(x); });
   d.markers = r.field(QStringLiteral("markers")).list(parseMarker);
   d.mixer = r.field(QStringLiteral("mixer")).opt(parseMixer);
+  d.transitions = r.field(QStringLiteral("transitions")).listOr(parseFxTransition);
   return d;
 }
 
@@ -654,6 +692,22 @@ QJsonObject toJson(const EffectParams& p) {
 
 QJsonObject toJson(const Effect& e) {
   return {{QStringLiteral("id"), e.id}, {QStringLiteral("type"), e.type}, {QStringLiteral("params"), toJson(e.params)}};
+}
+
+QJsonObject toJson(const FxInstance& f) {
+  QJsonObject o{{QStringLiteral("id"), f.id}, {QStringLiteral("effectId"), f.effectId}, {QStringLiteral("enabled"), f.enabled}, {QStringLiteral("params"), f.params}};
+  if (!f.keyframes.empty()) o.insert(QStringLiteral("keyframes"), toJson(f.keyframes));
+  return o;
+}
+
+QJsonObject toJson(const FxTransition& t) {
+  return {{QStringLiteral("id"), t.id},
+          {QStringLiteral("effectId"), t.effectId},
+          {QStringLiteral("fromItemId"), t.fromItemId},
+          {QStringLiteral("toItemId"), t.toItemId},
+          {QStringLiteral("duration"), jv(t.duration)},
+          {QStringLiteral("align"), t.align},
+          {QStringLiteral("params"), t.params}};
 }
 
 QJsonObject toJson(const Mask& m) {
@@ -830,6 +884,7 @@ QJsonObject toJson(const Item& it, bool omitProps) {
   putOpt(labels, "color", it.labels.color);
   o.insert(QStringLiteral("labels"), labels);
   if (it.color) o.insert(QStringLiteral("color"), toJson(*it.color));
+  if (!it.fx.empty()) o.insert(QStringLiteral("fx"), arr(it.fx, [](const FxInstance& f) { return toJson(f); }));
   if (!omitProps) o.insert(QStringLiteral("props"), toJson(it.props));
   return o;
 }
@@ -856,6 +911,7 @@ QJsonObject toJson(const ItemPatch& p) {
     o.insert(QStringLiteral("labels"), l);
   }
   if (p.color) o.insert(QStringLiteral("color"), toJson(*p.color));
+  if (p.fx) o.insert(QStringLiteral("fx"), arr(*p.fx, [](const FxInstance& f) { return toJson(f); }));
   if (p.props) o.insert(QStringLiteral("props"), *p.props);
   return o;
 }
@@ -866,6 +922,7 @@ QJsonObject toJson(const TimelineDoc& d) {
                 {QStringLiteral("items"), arr(d.items, [](const Item& i) { return toJson(i); })},
                 {QStringLiteral("markers"), arr(d.markers, [](const Marker& m) { return toJson(m); })}};
   if (d.mixer) o.insert(QStringLiteral("mixer"), toJson(*d.mixer));
+  if (!d.transitions.empty()) o.insert(QStringLiteral("transitions"), arr(d.transitions, [](const FxTransition& t) { return toJson(t); }));
   return o;
 }
 

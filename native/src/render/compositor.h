@@ -11,6 +11,14 @@
 // moved by its transform about the canvas centre, drawn with its opacity (keyframes and fades)
 // source-over onto the project's background colour.
 //
+// Effects (render/effects.h): an item with `fx`, or a clip pair in `doc.transitions`, is rendered in steps instead of
+// being blended straight onto the canvas: the item's picture (colour stage included, no transform or opacity) goes into
+// a texture of its own size, each enabled effect then ping-pongs between two such textures, and the result is drawn
+// onto the canvas with the item's transform and opacity. Effects therefore follow the clip as it moves and scale with
+// its pixels, not the canvas'. A transition renders both clips fully (effects, transform, opacity) into canvas-sized
+// textures and mixes those with the effect's shader; the result is blended in the position of the outgoing clip.
+// Items without effects take exactly the old single-pass path.
+//
 // Colour pipeline (docs in color.h, color_manager.h):
 //   source -> [OCIO input LUT | transfer decode + primaries] -> scene-linear working space (RGBA16F,
 //   premultiplied) -> blending -> output transform -> display (preview) / delivery (readback).
@@ -46,6 +54,8 @@ struct RenderStats {
   int pending = 0;    // video layers whose picture isn't decoded yet (stale or skipped)
   int missing = 0;    // layers drawn as "media unavailable"
   int colorErrors = 0; // colour settings that couldn't be applied (missing LUT / colour space / config); drawn with the built-in path
+  int fxPasses = 0;    // effect passes recorded (filters count once per pass, transitions once)
+  int fxErrors = 0;    // effects skipped: unknown id, wrong kind, shader missing
   bool complete() const { return pending == 0; }
 };
 

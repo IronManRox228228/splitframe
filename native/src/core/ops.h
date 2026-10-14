@@ -27,6 +27,10 @@ struct ProjectSetReference { std::optional<QString> assetId; };
 // carrying the previous block, so a mixer edit is one undo step.
 struct MixerSet { std::optional<Mixer> mixer; };
 
+// Native-only: replaces the document's transition list (GPU transitions between adjacent clips). The inverse is the
+// same op carrying the previous list, so a transition edit is one undo step.
+struct TransitionsSet { std::vector<FxTransition> transitions; };
+
 struct TrackAdd {
   QString trackId;
   TrackKind kind = TrackKind::Video;
@@ -148,7 +152,7 @@ using OpBody = std::variant<ProjectRename, ProjectSetCanvas, ProjectSetFps, Proj
                             TrackReorder, ItemAdd, ItemRemove, ItemUpdate, ItemMove, ItemTrim, ItemSplit,
                             ItemClone, ItemSlip, ItemSetSpeed, ItemSetTimeRemap, ItemSetKeyframes, EffectAdd,
                             EffectRemove, EffectUpdate, MaskAdd, MaskRemove, MarkerAdd, MarkerRemove,
-                            MarkerUpdate, BatchOp, MixerSet>;
+                            MarkerUpdate, BatchOp, MixerSet, TransitionsSet>;
 
 struct Op {
   OpBody body;

@@ -293,6 +293,32 @@ struct ItemColor {
   bool operator==(const ItemColor&) const = default;
 };
 
+// Native-only GPU effects (render/effects.h): an ordered stack per item, applied to the item's picture after
+// the colour stage and before it is transformed and blended. `params` holds only what was set (name -> JSON
+// number / bool / string / [x, y] / [r, g, b, a]; the effect's definition supplies the defaults); `keyframes`
+// animate numeric params by item-local frame (key "name", or "name.x" ... for one component of a vector).
+struct FxInstance {
+  QString id;
+  QString effectId;
+  bool enabled = true;
+  QJsonObject params;
+  KeyframeMap keyframes;
+  bool operator==(const FxInstance&) const = default;
+};
+
+// A transition between two adjacent clips on one track (`toItemId` starts where `fromItemId` ends).
+// `align`: "center" straddles the cut, "start" runs after it, "end" runs up to it. Native-only.
+struct FxTransition {
+  QString id;
+  QString effectId;
+  QString fromItemId;
+  QString toItemId;
+  Frame duration = 15;
+  QString align = QStringLiteral("center");
+  QJsonObject params;
+  bool operator==(const FxTransition&) const = default;
+};
+
 // One timeline item. The zod discriminated union becomes the type-specific `props` variant; the
 // shared fields live here.
 struct Item {
@@ -312,6 +338,7 @@ struct Item {
   KeyframeMap keyframes;
   Labels labels;
   std::optional<ItemColor> color; // native-only, see ItemColor
+  std::vector<FxInstance> fx;     // native-only GPU effects, see FxInstance (`effects` are the reference's colour filters)
   ItemProps props;
 
   ItemType type() const { return static_cast<ItemType>(props.index()); }
@@ -342,6 +369,7 @@ struct ItemPatch {
   std::optional<KeyframeMap> keyframes;
   std::optional<LabelsPatch> labels;
   std::optional<ItemColor> color; // replaces the whole block; a default ItemColor clears it
+  std::optional<std::vector<FxInstance>> fx; // replaces the whole stack
   std::optional<QJsonValue> props;
   bool operator==(const ItemPatch&) const = default;
 };
@@ -455,6 +483,7 @@ struct TimelineDoc {
   std::vector<Item> items;
   std::vector<Marker> markers;
   std::optional<Mixer> mixer; // native-only
+  std::vector<FxTransition> transitions; // native-only, never written when empty
   bool operator==(const TimelineDoc&) const = default;
 };
 
@@ -564,6 +593,8 @@ Keyframe parseKeyframe(const Rd& r);
 Effect parseEffect(const Rd& r);
 EffectParams parseEffectParams(const Rd& r);
 Mask parseMask(const Rd& r);
+FxInstance parseFxInstance(const Rd& r);
+FxTransition parseFxTransition(const Rd& r);
 TextStyle parseTextStyle(const Rd& r);
 CaptionStyle parseCaptionStyle(const Rd& r);
 TimeRemapPoint parseTimeRemapPoint(const Rd& r);
@@ -596,6 +627,8 @@ QJsonObject toJson(const Keyframe&);
 QJsonObject toJson(const Effect&);
 QJsonObject toJson(const EffectParams&);
 QJsonObject toJson(const Mask&);
+QJsonObject toJson(const FxInstance&);
+QJsonObject toJson(const FxTransition&);
 QJsonObject toJson(const TextStyle&);
 QJsonObject toJson(const CaptionStyle&);
 QJsonObject toJson(const TimeRemapPoint&);

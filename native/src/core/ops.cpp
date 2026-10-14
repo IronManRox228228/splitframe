@@ -80,6 +80,7 @@ QString Op::type() const {
           [](const MarkerUpdate&) { return q("marker.update"); },
           [](const BatchOp&) { return q("batch"); },
           [](const MixerSet&) { return q("mixer.set"); },
+          [](const TransitionsSet&) { return q("transitions.set"); },
       },
       body);
 }
@@ -149,6 +150,11 @@ Op parseOp(const Rd& r) {
     MixerSet o;
     const Rd m = f("mixer");
     if (!m.missing() && !m.raw().isNull()) o.mixer = parseMixer(m);
+    return o;
+  }
+  if (type == q("transitions.set")) {
+    TransitionsSet o;
+    o.transitions = f("transitions").list(parseFxTransition);
     return o;
   }
   if (type == q("track.remove")) {
@@ -424,6 +430,11 @@ QJsonObject toJson(const Op& op) {
           },
           [](const MixerSet& o) {
             return tagged("mixer.set", {{q("mixer"), o.mixer ? QJsonValue(toJson(*o.mixer)) : QJsonValue(QJsonValue::Null)}});
+          },
+          [](const TransitionsSet& o) {
+            QJsonArray list;
+            for (const FxTransition& t : o.transitions) list.append(toJson(t));
+            return tagged("transitions.set", {{q("transitions"), list}});
           },
           [](const BatchOp& o) {
             QJsonArray ops;

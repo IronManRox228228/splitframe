@@ -10,6 +10,7 @@ add_library(sf_render STATIC
   colour_capture.h colour_capture.cpp
   compositor.h compositor.cpp
   offscreen.h offscreen.cpp
+  effects.h effects.cpp
 )
 target_include_directories(sf_render PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_render
@@ -39,4 +40,23 @@ qt_add_shaders(sf_render "sf_render_shaders"
   HLSL "50"
   MSL "12"
   FILES shaders/layer.vert shaders/layer.frag shaders/output.frag
+)
+
+# GPU effects (render/effects.h): one fx.vert, plus one fragment shader per effect generated from fx/bodies by
+# tools/fxgen.py and committed in fx/shaders. The list is globbed, so a new effect needs no CMake edit. The registry
+# JSON (definitions and param schemas) is compiled in beside them.
+file(GLOB SF_FX_SHADERS CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/fx/shaders/*.frag")
+file(GLOB SF_FX_REGISTRY CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/fx/registry/*.json")
+qt_add_shaders(sf_render "sf_render_fx_shaders"
+  PREFIX "/sf/render"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}"
+  GLSL "330"
+  HLSL "50"
+  MSL "12"
+  FILES fx/fx.vert ${SF_FX_SHADERS}
+)
+qt_add_resources(sf_render "sf_render_fx_registry"
+  PREFIX "/sf/render"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}"
+  FILES ${SF_FX_REGISTRY}
 )

@@ -18,6 +18,7 @@ add_library(sf_engine STATIC
   cmd_system.cpp
   style_library.h style_library.cpp
   cmd_export.cpp
+  cmd_fx.cpp
   rpc.h rpc.cpp
   api_server.h api_server.cpp
   stdio.h stdio.cpp

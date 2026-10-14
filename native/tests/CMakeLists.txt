@@ -66,6 +66,7 @@ sf_add_render_test(tst_layout)
 sf_add_render_test(tst_compositor)
 sf_add_render_test(tst_color)
 sf_add_render_test(tst_colour_analysis)
+sf_add_render_test(tst_effects)
 
 # Editor (project lifecycle, media pool, timeline models/controller, inspector) and the UI on top.
 function(sf_add_editor_test name)

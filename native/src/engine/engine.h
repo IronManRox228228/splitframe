@@ -139,5 +139,6 @@ void registerTimelineCommands(Engine& e);
 void registerStyleCommands(Engine& e);
 void registerSystemCommands(Engine& e);
 void registerExportCommands(Engine& e);
+void registerFxCommands(Engine& e);
 
 } // namespace sf::engine
