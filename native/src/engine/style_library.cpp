@@ -1,6 +1,8 @@
 #include "engine/style_library.h"
 
+#include "audio/effects.h"
 #include "engine/jschema.h"
+#include "render/color.h"
 
 #include <QFile>
 #include <QJsonDocument>
@@ -22,12 +24,19 @@ struct Library {
   std::vector<Look> looks;
   std::vector<PacingProfile> pacing;
   std::vector<MixProfile> mix;
-  QJsonObject raw[3]; // looks, pacing, mix as parsed (empty on a parse error)
+  std::vector<AudioPreset> audio;
+  QJsonObject raw[4]; // looks, pacing, mix as parsed (empty on a parse error)
   QStringList errors; // resource could not be read or parsed
 };
 
-const char* const kFiles[3] = {"looks", "pacing", "mix"};
-const char* const kKinds[3] = {"look", "pacing", "mix"};
+const char* const kFiles[4] = {"looks", "pacing", "mix", "audio_presets"};
+const char* const kKinds[4] = {"look", "pacing", "mix", "audio"};
+
+QStringList strList(const QJsonObject& o, const char* key) {
+  QStringList l;
+  for (const QJsonValue& t : o.value(q(key)).toArray()) l << t.toString();
+  return l;
+}
 
 double numOr(const QJsonObject& o, const char* key, double dflt) { return o.contains(q(key)) ? o.value(q(key)).toDouble(dflt) : dflt; }
 
@@ -36,6 +45,8 @@ Look parseLook(const QJsonObject& o) {
   l.name = o.value(q("name")).toString();
   l.description = o.value(q("description")).toString();
   for (const QJsonValue& t : o.value(q("tags")).toArray()) l.tags << t.toString();
+  l.whenToUse = strList(o, "whenToUse");
+  l.avoidWhen = strList(o, "avoidWhen");
   l.params = o.value(q("params")).toObject();
   l.grade = gradeFromJson(l.params);
   l.guardsJson = o.value(q("guards")).toObject();
@@ -47,6 +58,8 @@ PacingProfile parsePacing(const QJsonObject& o) {
   PacingProfile p;
   p.name = o.value(q("name")).toString();
   p.description = o.value(q("description")).toString();
+  p.whenToUse = strList(o, "whenToUse");
+  p.avoidWhen = strList(o, "avoidWhen");
   const QJsonObject asl = o.value(q("aslSec")).toObject();
   p.aslMin = asl.value(q("min")).toDouble();
   p.aslMax = asl.value(q("max")).toDouble();
@@ -61,6 +74,8 @@ MixProfile parseMix(const QJsonObject& o) {
   MixProfile m;
   m.name = o.value(q("name")).toString();
   m.description = o.value(q("description")).toString();
+  m.whenToUse = strList(o, "whenToUse");
+  m.avoidWhen = strList(o, "avoidWhen");
   m.targetLufs = o.value(q("targetLufs")).toDouble(m.targetLufs);
   m.toleranceLu = o.value(q("toleranceLu")).toDouble(m.toleranceLu);
   m.truePeakCeilingDb = o.value(q("truePeakCeilingDb")).toDouble(m.truePeakCeilingDb);
@@ -71,9 +86,21 @@ MixProfile parseMix(const QJsonObject& o) {
   return m;
 }
 
+AudioPreset parseAudioPreset(const QJsonObject& o) {
+  AudioPreset a;
+  a.id = o.value(q("id")).toString();
+  a.name = o.value(q("name")).toString();
+  a.category = o.value(q("category")).toString();
+  a.description = o.value(q("description")).toString();
+  a.whenToUse = strList(o, "whenToUse");
+  a.avoidWhen = strList(o, "avoidWhen");
+  for (const QJsonValue& v : o.value(q("chain")).toArray()) a.chain.push_back({v.toObject().value(q("type")).toString(), v.toObject().value(q("params")).toObject()});
+  return a;
+}
+
 Library load() {
   Library l;
-  for (int k = 0; k < 3; ++k) {
+  for (int k = 0; k < 4; ++k) {
     QFile f(QStringLiteral(":/sf/style/%1.json").arg(q(kFiles[k])));
     if (!f.open(QIODevice::ReadOnly)) {
       l.errors << QStringLiteral("%1.json: not compiled into the resources").arg(q(kFiles[k]));
@@ -90,7 +117,8 @@ Library load() {
       const QJsonObject o = v.toObject();
       if (k == 0) l.looks.push_back(parseLook(o));
       else if (k == 1) l.pacing.push_back(parsePacing(o));
-      else l.mix.push_back(parseMix(o));
+      else if (k == 2) l.mix.push_back(parseMix(o));
+      else l.audio.push_back(parseAudioPreset(o));
     }
   }
   return l;
@@ -181,6 +209,18 @@ const PacingProfile* findPacing(const QString& name) {
     if (p.name == name) return &p;
   return nullptr;
 }
+const std::vector<AudioPreset>& audioPresets() { return lib().audio; }
+const AudioPreset* findAudioPreset(const QString& id) {
+  for (const AudioPreset& a : audioPresets())
+    if (a.id == id) return &a;
+  return nullptr;
+}
+QStringList audioPresetIds() {
+  QStringList n;
+  for (const AudioPreset& a : audioPresets()) n << a.id;
+  return n;
+}
+
 const MixProfile* findMix(const QString& name) {
   for (const MixProfile& m : mixes())
     if (m.name == name) return &m;
@@ -207,7 +247,7 @@ QJsonObject toJson(const Look& l) {
   const LookGuards& g = l.guards;
   QJsonArray tags;
   for (const QString& t : l.tags) tags.append(t);
-  return QJsonObject{{q("name"), l.name}, {q("description"), l.description}, {q("tags"), tags}, {q("params"), l.params},
+  return QJsonObject{{q("name"), l.name}, {q("description"), l.description}, {q("tags"), tags}, {q("whenToUse"), QJsonArray::fromStringList(l.whenToUse)}, {q("avoidWhen"), QJsonArray::fromStringList(l.avoidWhen)}, {q("params"), l.params},
                      {q("grade"), sf::toJson(l.grade)},
                      {q("guards"), QJsonObject{{q("maxChromaP95"), g.maxChromaP95}, {q("maxGamutLimitPct"), g.maxGamutLimitPct}, {q("maxLiftMaster"), g.maxLiftMaster},
                                                {q("blacksCrushedIncrease"), g.blacksCrushedIncrease}, {q("highlightsClippedIncrease"), g.highlightsClippedIncrease},
@@ -216,15 +256,22 @@ QJsonObject toJson(const Look& l) {
 }
 
 QJsonObject toJson(const PacingProfile& p) {
-  return QJsonObject{{q("name"), p.name}, {q("description"), p.description}, {q("aslSec"), QJsonObject{{q("min"), p.aslMin}, {q("max"), p.aslMax}}}, {q("cutsOnBeatMinPct"), p.cutsOnBeatMinPct},
+  return QJsonObject{{q("name"), p.name}, {q("description"), p.description}, {q("whenToUse"), QJsonArray::fromStringList(p.whenToUse)}, {q("avoidWhen"), QJsonArray::fromStringList(p.avoidWhen)}, {q("aslSec"), QJsonObject{{q("min"), p.aslMin}, {q("max"), p.aslMax}}}, {q("cutsOnBeatMinPct"), p.cutsOnBeatMinPct},
                      {q("hookMaxSec"), p.hookMaxSec}, {q("minShotSec"), p.minShotSec}, {q("maxShotSec"), p.maxShotSec}};
 }
 
 QJsonObject toJson(const MixProfile& m) {
-  QJsonObject o{{q("name"), m.name}, {q("description"), m.description}, {q("targetLufs"), m.targetLufs}, {q("toleranceLu"), m.toleranceLu}, {q("truePeakCeilingDb"), m.truePeakCeilingDb},
+  QJsonObject o{{q("name"), m.name}, {q("description"), m.description}, {q("whenToUse"), QJsonArray::fromStringList(m.whenToUse)}, {q("avoidWhen"), QJsonArray::fromStringList(m.avoidWhen)}, {q("targetLufs"), m.targetLufs}, {q("toleranceLu"), m.toleranceLu}, {q("truePeakCeilingDb"), m.truePeakCeilingDb},
                 {q("duckMarginDb"), m.duckMarginDb}, {q("attackMs"), m.attackMs}, {q("releaseMs"), m.releaseMs}, {q("minSpeechMarginDb"), m.minSpeechMarginDb()}};
   if (m.altTargetLufs) o.insert(q("altTargetLufs"), *m.altTargetLufs);
   return o;
+}
+
+QJsonObject toJson(const AudioPreset& p) {
+  QJsonArray chain;
+  for (const AudioEffectSpec& e : p.chain) chain.append(QJsonObject{{q("type"), e.type}, {q("params"), e.params}});
+  return QJsonObject{{q("id"), p.id}, {q("name"), p.name}, {q("category"), p.category}, {q("description"), p.description}, {q("whenToUse"), QJsonArray::fromStringList(p.whenToUse)},
+                     {q("avoidWhen"), QJsonArray::fromStringList(p.avoidWhen)}, {q("chain"), chain}};
 }
 
 QJsonObject listJson(const QString& kind) {
@@ -243,12 +290,14 @@ QJsonObject listJson(const QString& kind) {
 // ---------------------------------------------------------------- schemas
 
 QJsonObject lookSchema() {
-  return js::obj({{q("name"), nonEmptyStr()}, {q("description"), nonEmptyStr()}, {q("tags"), js::array(js::str())}, {q("params"), primariesSchema()}, {q("guards"), guardsSchema()}}, {q("name"), q("description"), q("params")});
+  return js::obj({{q("name"), nonEmptyStr()}, {q("description"), nonEmptyStr()}, {q("tags"), js::array(js::str())}, {q("whenToUse"), js::array(js::str())}, {q("avoidWhen"), js::array(js::str())}, {q("params"), primariesSchema()}, {q("guards"), guardsSchema()}}, {q("name"), q("description"), q("params")});
 }
 
 QJsonObject pacingSchema() {
   return js::obj({{q("name"), nonEmptyStr()},
                   {q("description"), nonEmptyStr()},
+                  {q("whenToUse"), js::array(js::str())},
+                  {q("avoidWhen"), js::array(js::str())},
                   {q("aslSec"), js::obj({{q("min"), js::number(QString(), 0.05, 600)}, {q("max"), js::number(QString(), 0.05, 600)}}, {q("min"), q("max")})},
                   {q("cutsOnBeatMinPct"), js::number(QStringLiteral("percent of cuts within +-2 frames of a beat; 0 = not checked"), 0, 100)},
                   {q("hookMaxSec"), js::number(QStringLiteral("the first cut comes within this"), 0.1, 600)},
@@ -260,6 +309,8 @@ QJsonObject pacingSchema() {
 QJsonObject mixSchema() {
   return js::obj({{q("name"), nonEmptyStr()},
                   {q("description"), nonEmptyStr()},
+                  {q("whenToUse"), js::array(js::str())},
+                  {q("avoidWhen"), js::array(js::str())},
                   {q("targetLufs"), js::number(QStringLiteral("integrated loudness target"), -40, -5)},
                   {q("toleranceLu"), js::number(QString(), 0, 5)},
                   {q("truePeakCeilingDb"), js::number(QStringLiteral("dBTP"), -9, 0)},
@@ -270,8 +321,17 @@ QJsonObject mixSchema() {
                  {q("name"), q("description"), q("targetLufs"), q("toleranceLu"), q("truePeakCeilingDb"), q("duckMarginDb"), q("attackMs"), q("releaseMs")});
 }
 
+QJsonObject audioPresetSchema() {
+  QJsonObject effect = js::obj({{q("type"), js::choice({q("eq"), q("compressor"), q("limiter"), q("gate"), q("deesser"), q("reverb")})}, {q("params"), js::any(QStringLiteral("effect parameters by name"))}}, {q("type"), q("params")});
+  QJsonObject chain = js::array(effect);
+  chain.insert(q("minItems"), 1);
+  return js::obj({{q("id"), nonEmptyStr()}, {q("name"), nonEmptyStr()}, {q("category"), js::choice({q("voice"), q("music"), q("fx"), q("master"), q("utility")})}, {q("description"), nonEmptyStr()},
+                  {q("whenToUse"), nonEmptyItems(js::array(js::str()))}, {q("avoidWhen"), js::array(js::str())}, {q("chain"), chain}},
+                 {q("id"), q("name"), q("category"), q("description"), q("whenToUse"), q("avoidWhen"), q("chain")});
+}
+
 QJsonObject resourceSchema(const QString& kind) {
-  const QJsonObject item = kind == QLatin1String("look") ? lookSchema() : kind == QLatin1String("pacing") ? pacingSchema() : mixSchema();
+  const QJsonObject item = kind == QLatin1String("look") ? lookSchema() : kind == QLatin1String("pacing") ? pacingSchema() : kind == QLatin1String("audio") ? audioPresetSchema() : mixSchema();
   return js::obj({{q("version"), js::integer(QString(), 1, 1)}, {q("kind"), js::choice({kind})}, {q("items"), nonEmptyItems(js::array(item))}}, {q("version"), q("kind"), q("items")});
 }
 
@@ -292,16 +352,57 @@ QJsonObject specSchema() {
 
 // ---------------------------------------------------------------- validation
 
+QStringList validateAudioPreset(const AudioPreset& p) {
+  QStringList errors;
+  const QString at = QStringLiteral("audio preset %1").arg(p.id);
+  if (p.chain.empty()) errors << at + QStringLiteral(": empty chain");
+  int n = 0;
+  for (const AudioEffectSpec& e : p.chain) {
+    const QString where = QStringLiteral("%1 effect %2 (%3)").arg(at).arg(n++).arg(e.type);
+    const auto fx = audio::makeEffect(e.type, 48000.0);
+    if (!fx) {
+      errors << where + QStringLiteral(": unknown effect type");
+      continue;
+    }
+    for (auto it = e.params.begin(); it != e.params.end(); ++it) {
+      const audio::ParamDef* def = nullptr;
+      for (const audio::ParamDef& d : fx->paramDefs())
+        if (it.key() == QString::fromLatin1(d.name)) def = &d;
+      if (!def) {
+        errors << where + QStringLiteral(": unknown param \"%1\"").arg(it.key());
+        continue;
+      }
+      if (it.value().isString()) {
+        const QStringList choices = def->choices ? QString::fromLatin1(def->choices).split(QLatin1Char(',')) : QStringList{};
+        if (!choices.contains(it.value().toString())) errors << where + QStringLiteral(": param %1 = \"%2\" is not one of [%3]").arg(it.key(), it.value().toString(), choices.join(QLatin1Char(',')));
+      } else if (it.value().isDouble()) {
+        const double v = it.value().toDouble();
+        if (!std::isfinite(v) || v < def->min || v > def->max) errors << where + QStringLiteral(": param %1 = %2 outside %3 .. %4").arg(it.key()).arg(v).arg(def->min).arg(def->max);
+      } else {
+        errors << where + QStringLiteral(": param %1 must be a number or a choice name").arg(it.key());
+      }
+    }
+  }
+  return errors;
+}
+
 QStringList validateLibrary() {
   QStringList errors = lib().errors;
   static const QRegularExpression nameRx(QStringLiteral("^[a-z0-9]+(-[a-z0-9]+)*$"));
-  for (int k = 0; k < 3; ++k) {
+  for (int k = 0; k < 4; ++k) {
     const QString file = q(kFiles[k]) + QStringLiteral(".json");
     const QJsonObject& raw = lib().raw[k];
     if (raw.isEmpty()) continue;
     if (const auto e = js::validate(raw, resourceSchema(q(kKinds[k])), file)) errors << *e;
     std::set<QString> seen;
     for (const QJsonValue& v : raw.value(q("items")).toArray()) {
+      if (k == 3) {
+        static const QRegularExpression idRx(QStringLiteral("^[a-z0-9]+(_[a-z0-9-]+)*$"));
+        const QString id = v.toObject().value(q("id")).toString();
+        if (!idRx.match(id).hasMatch()) errors << QStringLiteral("%1: \"%2\" is not a lowercase snake_case id").arg(file, id);
+        if (!seen.insert(id).second) errors << QStringLiteral("%1: duplicate id \"%2\"").arg(file, id);
+        continue;
+      }
       const QString name = v.toObject().value(q("name")).toString();
       if (!nameRx.match(name).hasMatch()) errors << QStringLiteral("%1: \"%2\" is not a lowercase-hyphen name").arg(file, name);
       if (!seen.insert(name).second) errors << QStringLiteral("%1: duplicate name \"%2\"").arg(file, name);
@@ -313,6 +414,7 @@ QStringList validateLibrary() {
     if (!(l.guards.skinBandMin <= 123.0 && 123.0 <= l.guards.skinBandMax)) errors << QStringLiteral("look %1: skinHueBandDeg does not contain the skin line (123)").arg(l.name);
     if (shadowLift(l.grade) > l.guards.maxLiftMaster + 1e-9) errors << QStringLiteral("look %1: its own shadow lift %2 breaks its maxLiftMaster %3").arg(l.name).arg(shadowLift(l.grade)).arg(l.guards.maxLiftMaster);
   }
+  for (const AudioPreset& a : audioPresets()) errors << validateAudioPreset(a);
   for (const PacingProfile& p : pacings()) {
     if (p.aslMin > p.aslMax) errors << QStringLiteral("pacing %1: aslSec.min > aslSec.max").arg(p.name);
     if (p.minShotSec > p.aslMin) errors << QStringLiteral("pacing %1: minShotSec is above the shortest allowed average shot").arg(p.name);
@@ -428,6 +530,91 @@ PrimaryGrade proposeLook(const Look& look, double intensity, const SpecOffsets& 
 }
 
 double shadowLift(const PrimaryGrade& g) { return g.liftMaster + std::max({0.0, g.lift.r, g.lift.g, g.lift.b}); }
+
+// ---------------------------------------------------------------- suggestions
+
+namespace {
+bool tagFound(const QString& tag, const QStringList& entries) {
+  if (tag.isEmpty()) return false;
+  static const QRegularExpression splitRx(QStringLiteral("[\\s,;:.]+"));
+  for (const QString& e : entries) {
+    const QString l = e.toLower();
+    if (l == tag) return true;
+    if (l.contains(QLatin1Char(' ')) && l.split(splitRx, Qt::SkipEmptyParts).contains(tag)) return true;
+  }
+  return false;
+}
+} // namespace
+
+std::vector<Suggestion> rankByTags(const std::vector<Candidate>& candidates, const QStringList& queryTags) {
+  std::vector<Suggestion> out;
+  QStringList query;
+  for (const QString& t : queryTags)
+    if (!t.trimmed().isEmpty() && !query.contains(t.trimmed().toLower())) query << t.trimmed().toLower();
+  for (const Candidate& c : candidates) {
+    Suggestion s;
+    s.id = c.id;
+    for (const QString& t : query) {
+      if (tagFound(t, c.positive)) s.matched << t;
+      if (tagFound(t, c.avoid)) s.avoided << t;
+    }
+    s.score = static_cast<int>(s.matched.size()) - static_cast<int>(s.avoided.size());
+    out.push_back(std::move(s));
+  }
+  std::stable_sort(out.begin(), out.end(), [](const Suggestion& a, const Suggestion& b) { return a.score != b.score ? a.score > b.score : a.id < b.id; });
+  return out;
+}
+
+// ---------------------------------------------------------------- LUT export
+
+std::array<double, 3> gradeEncoded(const PrimaryGrade& g, render::Transfer transfer, const std::array<double, 3>& rgb) {
+  if (render::gradeIsNeutral(g)) return {std::clamp(rgb[0], 0.0, 1.0), std::clamp(rgb[1], 0.0, 1.0), std::clamp(rgb[2], 0.0, 1.0)}; // the shader skips a neutral grade
+  const render::GradeCoeffs c = render::gradeCoeffs(g);
+  const render::Rgbd lin = render::decodeRgb(transfer, {rgb[0], rgb[1], rgb[2]});
+  const render::Rgbd graded = render::applyGrade(c, lin);
+  const render::Rgbd enc = render::encodeRgb(transfer, {std::max(graded[0], 0.0), std::max(graded[1], 0.0), std::max(graded[2], 0.0)});
+  return {std::clamp(enc[0], 0.0, 1.0), std::clamp(enc[1], 0.0, 1.0), std::clamp(enc[2], 0.0, 1.0)};
+}
+
+QString lutCubeText(const PrimaryGrade& g, int size, const QString& inputSpace, const QString& title, QString* error) {
+  const QString sp = inputSpace.trimmed().isEmpty() ? QStringLiteral("srgb") : inputSpace.trimmed().toLower();
+  struct Named {
+    const char* name;
+    render::Transfer t;
+    const char* label;
+  };
+  static const Named spaces[] = {{"srgb", render::Transfer::Srgb, "display-referred sRGB (also untagged / BT.709 SDR video as the editor shows it), Rec.709 primaries"},
+                                 {"rec709", render::Transfer::Bt709, "Rec.709 BT.709-OETF encoded, Rec.709 primaries"},
+                                 {"bt1886", render::Transfer::Bt1886, "display-referred Rec.709 / BT.1886 (gamma 2.4), Rec.709 primaries"},
+                                 {"gamma22", render::Transfer::Gamma22, "display-referred gamma 2.2, Rec.709 primaries"},
+                                 {"gamma28", render::Transfer::Gamma28, "display-referred gamma 2.8, Rec.709 primaries"},
+                                 {"linear", render::Transfer::Linear, "scene-linear Rec.709 (1.0 = SDR white)"}};
+  const Named* sel = nullptr;
+  for (const Named& n : spaces)
+    if (sp == QLatin1String(n.name)) sel = &n;
+  if (!sel) {
+    if (error) *error = QStringLiteral("Unknown inputSpace \"%1\": use srgb, rec709, bt1886, gamma22, gamma28 or linear.").arg(inputSpace);
+    return {};
+  }
+  if (size < 2 || size > 129) {
+    if (error) *error = QStringLiteral("size must be 2..129.");
+    return {};
+  }
+  QString t = title;
+  t.replace(QLatin1Char('"'), QLatin1Char('\'')).replace(QLatin1Char('\n'), QLatin1Char(' '));
+  QString out;
+  out.reserve(size * size * size * 28 + 256);
+  out += QStringLiteral("TITLE \"%1 - expects %2 input, outputs the same encoding\"\n").arg(t, QString::fromLatin1(sel->label));
+  out += QStringLiteral("LUT_3D_SIZE %1\nDOMAIN_MIN 0.0 0.0 0.0\nDOMAIN_MAX 1.0 1.0 1.0\n").arg(size);
+  const double d = static_cast<double>(size - 1);
+  for (int b = 0; b < size; ++b)
+    for (int gi = 0; gi < size; ++gi)
+      for (int r = 0; r < size; ++r) {
+        const std::array<double, 3> o = gradeEncoded(g, sel->t, {r / d, gi / d, b / d});
+        out += QStringLiteral("%1 %2 %3\n").arg(o[0], 0, 'f', 6).arg(o[1], 0, 'f', 6).arg(o[2], 0, 'f', 6);
+      }
+  return out;
+}
 
 // ---------------------------------------------------------------- pacing
 

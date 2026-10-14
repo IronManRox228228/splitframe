@@ -1,4 +1,4 @@
-// The headless engine: every command family on a fixture project, batch atomicity, undo/redo with origin,
+﻿// The headless engine: every command family on a fixture project, batch atomicity, undo/redo with origin,
 // registry introspection and errors as values.
 
 #include "core/schema.h"
@@ -6,6 +6,7 @@
 #include "media_testutil.h"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QImage>
 #include <QJsonDocument>
@@ -985,6 +986,118 @@ private slots:
     Engine bare;
     QVERIFY(bare.call(Q("style.list")).ok);
     for (const char* n : {"style.list", "style.spec.schema", "look.apply", "pacing.check", "mix.applyProfile"}) QVERIFY2(e_->find(Q(n)), n);
+  }
+
+  // ---- C12: audio presets, style.suggest, LUT export ----
+  void presetsSuggestAndLuts() {
+    for (const char* n : {"audio.preset.list", "audio.preset.apply", "style.suggest", "look.exportLut", "look.exportLuts"}) QVERIFY2(e_->find(Q(n)), n);
+    // list: filters; every item carries tags and a chain
+    const QJsonObject all = ok(Q("audio.preset.list"));
+    QCOMPARE(all.value(Q("items")).toArray().size(), 16);
+    const QJsonObject voice = ok(Q("audio.preset.list"), {{Q("category"), Q("voice")}});
+    QCOMPARE(voice.value(Q("items")).toArray().size(), 6);
+    QVERIFY(ok(Q("audio.preset.list"), {{Q("tag"), Q("noisy")}}).value(Q("ids")).toArray().contains(Q("gate_noisy_room")));
+    const QJsonObject first = all.value(Q("items")).toArray().at(0).toObject();
+    QVERIFY(first.contains(Q("whenToUse")) && first.contains(Q("avoidWhen")) && !first.value(Q("chain")).toArray().isEmpty());
+    // style.list now carries the tags
+    QVERIFY(!ok(Q("style.list"), {{Q("kind"), Q("mix")}, {Q("name"), Q("podcast")}}).value(Q("items")).toArray().at(0).toObject().value(Q("whenToUse")).toArray().isEmpty());
+
+    // suggest: deterministic, scored, ties by id; every kind answers
+    const QJsonObject sug = ok(Q("style.suggest"), {{Q("kind"), Q("audio")}, {Q("tags"), QJsonArray{Q("music-bed"), Q("voice-over")}}});
+    QCOMPARE(sug.value(Q("ranked")).toArray().at(0).toObject().value(Q("id")).toString(), Q("music_bed_under_voice"));
+    QCOMPARE(sug.value(Q("ranked")).toArray().at(0).toObject().value(Q("score")).toInt(), 2);
+    QCOMPARE(ok(Q("style.suggest"), {{Q("kind"), Q("audio")}, {Q("tags"), QJsonArray{Q("music-bed"), Q("voice-over")}}}), sug);
+    QCOMPARE(ok(Q("style.suggest"), {{Q("kind"), Q("look")}, {Q("tags"), QJsonArray{Q("interview")}}}).value(Q("ranked")).toArray().at(0).toObject().value(Q("id")).toString(), Q("neutral-clean"));
+    QCOMPARE(ok(Q("style.suggest"), {{Q("kind"), Q("pacing")}, {Q("tags"), QJsonArray{Q("social"), Q("hook")}}}).value(Q("ranked")).toArray().at(0).toObject().value(Q("id")).toString(), Q("social-short"));
+    QCOMPARE(ok(Q("style.suggest"), {{Q("kind"), Q("mix")}, {Q("tags"), QJsonArray{Q("podcast")}}}).value(Q("ranked")).toArray().at(0).toObject().value(Q("id")).toString(), Q("podcast"));
+    QCOMPARE(ok(Q("style.suggest"), {{Q("kind"), Q("effect")}, {Q("tags"), QJsonArray{Q("blur")}}, {Q("limit"), 3}}).value(Q("ranked")).toArray().size(), 3);
+    QCOMPARE(ok(Q("style.suggest"), {{Q("kind"), Q("look")}, {Q("tags"), QJsonArray{Q("interview")}}, {Q("limit"), 0}}).value(Q("ranked")).toArray().size(), 8);
+    QCOMPARE(raw(Q("style.suggest"), {{Q("kind"), Q("look")}, {Q("tags"), QJsonArray{}}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("style.suggest"), {{Q("kind"), Q("filter")}, {Q("tags"), QJsonArray{Q("x")}}}).error.code, Q("invalid_params"));
+
+    // apply: one undo step, measured before / after
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_, music_}}});
+    ok(Q("clip.add"), {{Q("assetId"), firstAsset(Q("video"))}});
+    ok(Q("audio.add"), {{Q("assetId"), firstAsset(Q("audio"))}});
+    QString audioTrack, musicItem;
+    for (const QJsonValue& t : ok(Q("timeline.get"), {{Q("mode"), Q("summary")}}).value(Q("tracks")).toArray()) {
+      const QJsonObject to = t.toObject();
+      if (to.value(Q("items")).toArray().isEmpty() || to.value(Q("kind")).toString() != Q("audio")) continue;
+      audioTrack = to.value(Q("id")).toString();
+      musicItem = to.value(Q("items")).toArray().at(0).toObject().value(Q("id")).toString();
+    }
+    QVERIFY(!audioTrack.isEmpty() && !musicItem.isEmpty());
+    const QJsonObject hist0 = ok(Q("history.list"));
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
+    const QJsonObject ap = ok(Q("audio.preset.apply"), {{Q("trackId"), audioTrack}, {Q("presetId"), Q("dialogue_clean")}, {Q("origin"), Q("agent:audio")}});
+    QVERIFY(ap.value(Q("applied")).toBool());
+    QCOMPARE(ap.value(Q("effectIds")).toArray().size(), 3);
+    QVERIFY(std::isfinite(ap.value(Q("before")).toObject().value(Q("integratedLufs")).toDouble(1000)) && ap.value(Q("before")).toObject().value(Q("integratedLufs")).toDouble(1000) < 0);
+    QVERIFY(ap.value(Q("after")).toObject().contains(Q("truePeakDbtp")));
+    const auto insertsOf = [&] {
+      QJsonArray strips = ok(Q("mixer.get")).value(Q("mixer")).toObject().value(Q("strips")).toArray();
+      return strips.isEmpty() ? QJsonArray{} : strips.at(0).toObject().value(Q("inserts")).toArray();
+    };
+    QJsonArray ins = insertsOf();
+    QCOMPARE(ins.size(), 3);
+    QCOMPARE(ins.at(0).toObject().value(Q("type")).toString(), Q("eq"));
+    QCOMPARE(ins.at(1).toObject().value(Q("type")).toString(), Q("compressor"));
+    QCOMPARE(ins.at(2).toObject().value(Q("type")).toString(), Q("deesser"));
+    QCOMPARE(ins.at(0).toObject().value(Q("id")).toString(), ap.value(Q("effectIds")).toArray().at(0).toString());
+    QCOMPARE(ins.at(0).toObject().value(Q("params")).toObject().value(Q("b0.type")).toString(), Q("highpass"));
+    // stacks by default; replace drops what was there; an itemId resolves to its track
+    ok(Q("audio.preset.apply"), {{Q("itemId"), musicItem}, {Q("presetId"), Q("rumble_cut")}, {Q("measure"), false}});
+    QCOMPARE(insertsOf().size(), 4);
+    const QJsonObject rp = ok(Q("audio.preset.apply"), {{Q("trackId"), audioTrack}, {Q("presetId"), Q("master_streaming_-14")}, {Q("replace"), true}, {Q("measure"), false}});
+    QVERIFY(!rp.contains(Q("before")));
+    QCOMPARE(insertsOf().size(), 1);
+    QCOMPARE(insertsOf().at(0).toObject().value(Q("type")).toString(), Q("limiter"));
+    // each apply is one undo step
+    ok(Q("history.undo"));
+    QCOMPARE(insertsOf().size(), 4);
+    ok(Q("history.undo"));
+    QCOMPARE(insertsOf().size(), 3);
+    ok(Q("history.undo"));
+    QVERIFY(ok(Q("mixer.get")).value(Q("mixer")).isNull());
+    QCOMPARE(ok(Q("history.list")).value(Q("position")).toInt(), hist0.value(Q("position")).toInt()); // back to before the first apply
+    ok(Q("history.redo"));
+    QCOMPARE(insertsOf().size(), 3);
+    // master works too; errors
+    QVERIFY(ok(Q("audio.preset.apply"), {{Q("trackId"), Q("master")}, {Q("presetId"), Q("master_broadcast_-23")}, {Q("measure"), false}}).value(Q("applied")).toBool());
+    QCOMPARE(ok(Q("mixer.get")).value(Q("mixer")).toObject().value(Q("master")).toObject().value(Q("inserts")).toArray().size(), 2);
+    QCOMPARE(raw(Q("audio.preset.apply"), {{Q("presetId"), Q("nope")}, {Q("trackId"), audioTrack}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("audio.preset.apply"), {{Q("presetId"), Q("lofi")}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("audio.preset.apply"), {{Q("presetId"), Q("lofi")}, {Q("trackId"), Q("trk_nope")}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("audio.preset.apply"), {{Q("presetId"), Q("lofi")}, {Q("itemId"), Q("itm_nope")}}).error.code, Q("not_found"));
+
+    // LUT export: a file with the right header, an identity at intensity 0, all eight looks
+    const QString lut = dir_.filePath(QStringLiteral("luts/warm.cube"));
+    const QJsonObject ex = ok(Q("look.exportLut"), {{Q("lookId"), Q("warm-documentary")}, {Q("size"), 9}, {Q("path"), lut}});
+    QCOMPARE(ex.value(Q("entries")).toInt(), 729);
+    QCOMPARE(ex.value(Q("inputSpace")).toString(), Q("srgb"));
+    QFile f(lut);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    f.close();
+    QVERIFY(lines[0].startsWith(Q("TITLE \"")) && lines[0].contains(Q("warm-documentary")));
+    QCOMPARE(lines[1], Q("LUT_3D_SIZE 9"));
+    QCOMPARE(lines[2], Q("DOMAIN_MIN 0.0 0.0 0.0"));
+    QCOMPARE(lines[3], Q("DOMAIN_MAX 1.0 1.0 1.0"));
+    QCOMPARE(lines.size(), 4 + 729 + 1);
+    QVERIFY(lines[4 + 364].split(QLatin1Char(' ')).at(0).toDouble() > 0.5); // mid grey is warmed: red above blue
+    QVERIFY(lines[4 + 364].split(QLatin1Char(' ')).at(0).toDouble() > lines[4 + 364].split(QLatin1Char(' ')).at(2).toDouble());
+    const QJsonObject idLut = ok(Q("look.exportLut"), {{Q("lookId"), Q("teal-orange")}, {Q("intensity"), 0.0}, {Q("size"), 5}, {Q("path"), dir_.filePath(QStringLiteral("luts/id.cube"))}});
+    QVERIFY(idLut.value(Q("identity")).toBool());
+    QCOMPARE(raw(Q("look.exportLut"), {{Q("lookId"), Q("sepia")}, {Q("path"), lut}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("look.exportLut"), {{Q("lookId"), Q("pastel")}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("look.exportLut"), {{Q("lookId"), Q("pastel")}, {Q("path"), lut}, {Q("size"), 1}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("look.exportLut"), {{Q("lookId"), Q("pastel")}, {Q("path"), lut}, {Q("inputSpace"), Q("acescg")}}).error.code, Q("invalid_params"));
+    const QJsonObject lots = ok(Q("look.exportLuts"), {{Q("dir"), dir_.filePath(QStringLiteral("all"))}, {Q("size"), 5}});
+    QCOMPARE(lots.value(Q("count")).toInt(), 8);
+    for (const QJsonValue& v : lots.value(Q("files")).toArray()) QVERIFY(QFileInfo::exists(v.toObject().value(Q("path")).toString()));
+    // no session needed
+    QVERIFY(Engine().call(Q("audio.preset.list")).ok);
+    QVERIFY(Engine().call(Q("style.suggest"), {{Q("kind"), Q("mix")}, {Q("tags"), QJsonArray{Q("social")}}}).ok);
   }
 
   static double castOf(const QJsonObject& metrics) { return metrics.value(Q("cast")).toObject().value(Q("temperature")).toDouble(); }

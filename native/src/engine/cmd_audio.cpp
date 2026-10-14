@@ -8,6 +8,7 @@
 #include "audio/source.h"
 #include "audio/timebase.h"
 #include "engine/cmd_util.h"
+#include "engine/style_library.h"
 #include "media/audio_decoder.h"
 
 #include <QRegularExpression>
@@ -682,7 +683,95 @@ Result itemSpeechRanges(CallContext& c, const QStringList& itemIds, double gapMs
   return Result::success();
 }
 
+// ---------------------------------------------------------------- audio presets
+
+Result presetListCmd(CallContext&, const QJsonObject& a) {
+  const QString category = a.value(q("category")).toString(), tag = a.value(q("tag")).toString();
+  QJsonArray items;
+  QStringList ids;
+  for (const style::AudioPreset& p : style::audioPresets()) {
+    if (!category.isEmpty() && p.category != category) continue;
+    if (!tag.isEmpty() && style::rankByTags({{p.id, p.whenToUse, p.avoidWhen}}, {tag}).front().matched.isEmpty()) continue;
+    items.append(style::toJson(p));
+    ids << p.id;
+  }
+  return Result::success(QJsonObject{{q("items"), items}, {q("ids"), QJsonArray::fromStringList(ids)}, {q("categories"), QJsonArray{q("voice"), q("music"), q("fx"), q("master"), q("utility")}}});
+}
+
+Result presetApplyCmd(CallContext& c, const QJsonObject& a) {
+  const QString presetId = a.value(q("presetId")).toString();
+  const style::AudioPreset* preset = style::findAudioPreset(presetId);
+  if (!preset) return notFound(QStringLiteral("No audio preset \"%1\".").arg(presetId), QStringLiteral("Ids: %1. See audio.preset.list.").arg(style::audioPresetIds().join(QStringLiteral(", "))));
+  const TimelineDoc& d = c.session->project->doc();
+  QString target = a.value(q("trackId")).toString();
+  const QString itemId = a.value(q("itemId")).toString();
+  if (target.isEmpty() && itemId.isEmpty()) return invalid(QStringLiteral("Pass trackId (a track id, or \"master\") or itemId (its track's strip gets the chain)."));
+  if (target.isEmpty()) {
+    const Item* it = getItem(d, itemId);
+    if (!it) return notFound(QStringLiteral("Item %1 not found.").arg(itemId), QStringLiteral("Call timeline.get."));
+    if (!audible(*it)) return invalid(QStringLiteral("Item %1 is %2: it has no audio.").arg(itemId, enumName(it->type())));
+    target = it->trackId;
+  }
+  const bool isMaster = target == QLatin1String("master");
+  if (!isMaster && !getTrack(d, target)) return notFound(QStringLiteral("No track \"%1\".").arg(target), QStringLiteral("Use a track id from timeline.get, or \"master\"."));
+  const bool replace = a.value(q("replace")).toBool(false), doMeasure = a.value(q("measure")).toBool(true);
+
+  QJsonObject o{{q("presetId"), preset->id}, {q("target"), QJsonObject{{q("kind"), isMaster ? q("master") : q("track")}, {q("id"), target}}}, {q("replace"), replace}};
+  QJsonArray notes;
+  if (!itemId.isEmpty()) notes.append(q("Inserts live on the mixer strip: the whole track gets the chain, not only the item."));
+  std::optional<audio::MixMeasurement> before;
+  if (doMeasure) {
+    Scope s;
+    audio::MixMeasurement m;
+    if (Result r = resolveScope(c, target, &s); r.ok && measureScope(c, s, &m).ok) before = m;
+    else notes.append(QStringLiteral("Not measured: %1").arg(r.ok ? q("the scope could not be rendered") : r.error.message));
+  }
+
+  Mixer m = d.mixer.value_or(Mixer{});
+  MixNode& node = isMaster ? m.master : stripFor(m, target);
+  if (replace) node.inserts.clear();
+  QJsonArray added, chain;
+  for (const style::AudioEffectSpec& e : preset->chain) {
+    MixInsert ins;
+    ins.id = newId(q("ins"));
+    ins.type = e.type;
+    for (auto it = e.params.begin(); it != e.params.end(); ++it) ins.params[it.key()] = it.value().isString() ? ParamValue(it.value().toString()) : ParamValue(it.value().toDouble());
+    node.inserts.push_back(ins);
+    added.append(ins.id);
+    chain.append(QJsonObject{{q("id"), ins.id}, {q("type"), e.type}, {q("params"), e.params}});
+  }
+  const Result w = applyToSession(c, {Op(MixerSet{m})}, QStringLiteral("audio.preset.apply %1").arg(preset->id), {{q("preset"), preset->id}, {q("node"), target}});
+  if (!w.ok) return w;
+  o.insert(q("applied"), true);
+  o.insert(q("undoLabel"), w.value.toObject().value(q("undoLabel")));
+  o.insert(q("effectIds"), added);
+  o.insert(q("chain"), chain);
+  if (before) {
+    Scope s2;
+    audio::MixMeasurement after;
+    if (Result r = resolveScope(c, target, &s2); r.ok && measureScope(c, s2, &after).ok) {
+      const QJsonObject b = summary(*before), af = summary(after);
+      o.insert(q("before"), QJsonObject{{q("integratedLufs"), b.value(q("integratedLufs"))}, {q("truePeakDbtp"), b.value(q("truePeakDbtp"))}});
+      o.insert(q("after"), QJsonObject{{q("integratedLufs"), af.value(q("integratedLufs"))}, {q("truePeakDbtp"), af.value(q("truePeakDbtp"))}});
+    }
+  }
+  o.insert(q("notes"), notes);
+  return Result::success(o);
+}
+
 void registerAudioCommands(Engine& e) {
+  e.add(spec("audio.preset.list", "", "audio", false,
+             QStringLiteral("The audio preset library: EQ / dynamics chains (eq, compressor, limiter, gate, deesser, reverb) with id, name, category (voice | music | fx | master | utility), description, whenToUse / avoidWhen tags and the chain with its exact params. "
+                            "Optional `category` and `tag` (a whenToUse match) filter. Rank by situation with style.suggest kind=audio."),
+             js::obj({{q("category"), js::choice({q("voice"), q("music"), q("fx"), q("master"), q("utility")})}, {q("tag"), js::str()}}), presetListCmd, false));
+  e.add(spec("audio.preset.apply", "", "audio", true,
+             QStringLiteral("Add a preset's effect chain as inserts on a track's mixer strip (`trackId`, or \"master\"; `itemId` uses the item's track). `replace`=true drops the strip's existing inserts first. ONE undo step. "
+                            "Returns effectIds, the chain, and (measure=true, default, when the track has audio) before / after integratedLufs and truePeakDbtp measured through the mixer. Loudness is not set: follow with audio.normalize or mix.applyProfile."),
+             js::obj({{q("presetId"), js::choice(style::audioPresetIds())}, {q("trackId"), js::str(QStringLiteral("a track id or \"master\""))}, {q("itemId"), js::str()}, {q("replace"), js::boolean(QStringLiteral("Drop the strip's existing inserts first"))},
+                      {q("measure"), js::boolean(QStringLiteral("Measure before / after (default true)"))}},
+                     {q("presetId")}),
+             presetApplyCmd));
+
   const QString scopeDoc = QStringLiteral("\"master\" (the whole mix, default), a track id, an item id or (audio.measure only) an asset id.");
   e.add(spec("audio.measure", "", "audio", false,
              QStringLiteral("Measure audio per ITU-R BS.1770 / EBU R128 on the rendered timeline mix (the same offline mixer path export uses: mixer, effects, fades, automation). `scope`: ") + scopeDoc +

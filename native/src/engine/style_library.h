@@ -8,6 +8,7 @@
 
 #include "core/schema.h"
 #include "engine/timeline_analysis.h"
+#include "render/color.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -15,6 +16,7 @@
 #include <QStringList>
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -38,6 +40,7 @@ struct LookGuards {
 struct Look {
   QString name, description;
   QStringList tags;
+  QStringList whenToUse, avoidWhen; // tags for style.suggest
   QJsonObject params; // as written in the resource
   PrimaryGrade grade; // params as a grade
   LookGuards guards;
@@ -46,6 +49,7 @@ struct Look {
 
 struct PacingProfile {
   QString name, description;
+  QStringList whenToUse, avoidWhen;
   double aslMin = 0, aslMax = 0;   // average shot length, seconds
   double cutsOnBeatMinPct = 0;     // share of cuts within +-2 frames of a beat; 0 = not music-driven, not checked
   double hookMaxSec = 0;           // the first cut comes within this
@@ -54,11 +58,24 @@ struct PacingProfile {
 
 struct MixProfile {
   QString name, description;
+  QStringList whenToUse, avoidWhen;
   double targetLufs = -14, toleranceLu = 1, truePeakCeilingDb = -1;
   double duckMarginDb = 9;         // speech over music while speech plays
   double attackMs = 150, releaseMs = 500;
   std::optional<double> altTargetLufs;
   double minSpeechMarginDb() const { return std::max(1.0, duckMarginDb - 3.0); } // what audio.check accepts after ducking to duckMarginDb
+};
+
+// One effect of an audio preset: a mixer insert type with the params it takes (numbers; strings pick from a choice list).
+struct AudioEffectSpec {
+  QString type; // eq compressor limiter gate deesser reverb
+  QJsonObject params;
+};
+// An EQ / dynamics chain for a track strip (engine/styles/audio_presets.json).
+struct AudioPreset {
+  QString id, name, category, description;
+  QStringList whenToUse, avoidWhen;
+  std::vector<AudioEffectSpec> chain;
 };
 
 // `base` with every key present in `g` (a look's guards object, or a caller's overrides) replaced.
@@ -70,6 +87,12 @@ const std::vector<MixProfile>& mixes();
 const Look* findLook(const QString& name);
 const PacingProfile* findPacing(const QString& name);
 const MixProfile* findMix(const QString& name);
+const std::vector<AudioPreset>& audioPresets();
+const AudioPreset* findAudioPreset(const QString& id);
+QStringList audioPresetIds();
+QJsonObject toJson(const AudioPreset& p);
+// Problems with one preset's chain against the real effect parameter ranges (unknown type / param, out of range, bad choice).
+QStringList validateAudioPreset(const AudioPreset& p);
 QStringList lookNames();
 QStringList pacingNames();
 QStringList mixNames();
@@ -80,6 +103,21 @@ QJsonObject toJson(const MixProfile& m);
 // {kind, items[...], names[...]}
 QJsonObject listJson(const QString& kind);
 
+// ---------------------------------------------------------------- suggestions
+
+struct Suggestion {
+  QString id;
+  int score = 0; // overlap with the item's tags minus hits on its avoidWhen
+  QStringList matched, avoided;
+};
+// Deterministic ranking: score = |query tags found in `positive`| - |query tags found in `avoid`|; a tag is found when it equals an entry or
+// is a whole word of a multi-word entry (case-insensitive). Highest score first, ties by id. Every candidate is returned.
+struct Candidate {
+  QString id;
+  QStringList positive, avoid;
+};
+std::vector<Suggestion> rankByTags(const std::vector<Candidate>& candidates, const QStringList& queryTags);
+
 // ---------------------------------------------------------------- schemas and validation
 
 // JSON schemas (the jschema subset) of one library item of each kind, of a whole resource file, and of the style spec a model fills.
@@ -87,6 +125,7 @@ QJsonObject lookSchema();
 QJsonObject pacingSchema();
 QJsonObject mixSchema();
 QJsonObject resourceSchema(const QString& kind);
+QJsonObject audioPresetSchema();
 QJsonObject specSchema();
 // Every problem in the compiled-in resources: parse errors, schema violations, duplicate names, ranges that do not hold together
 // (min > max), grades outside the bounds item.color.set accepts. Empty = the library is sound.
@@ -112,6 +151,15 @@ PrimaryGrade applyOffsets(PrimaryGrade g, const SpecOffsets& o);
 PrimaryGrade proposeLook(const Look& look, double intensity, const SpecOffsets& offsets, const std::optional<PrimaryGrade>& existing);
 // Shadow lift of a grade as the guard reads it.
 double shadowLift(const PrimaryGrade& g);
+
+// ---------------------------------------------------------------- LUT export
+
+// Output of the grade for one colour in the encoding of `inputSpace`: decode with that transfer, applyGrade (render/color.h, the CPU reference
+// of the shader) in linear light, encode again, clamp to 0..1.
+std::array<double, 3> gradeEncoded(const PrimaryGrade& g, render::Transfer transfer, const std::array<double, 3>& rgb);
+// Adobe / Resolve .cube text: TITLE, LUT_3D_SIZE, DOMAIN_MIN / MAX, then size^3 lines, red fastest, 6 decimals. `inputSpace`: srgb (default) | rec709 |
+// bt1886 | gamma22 | gamma28 | linear; empty / unknown -> *error. `title` is quoted into the TITLE line.
+QString lutCubeText(const PrimaryGrade& g, int size, const QString& inputSpace, const QString& title, QString* error);
 
 // ---------------------------------------------------------------- pacing
 

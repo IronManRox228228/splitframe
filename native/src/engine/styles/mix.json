@@ -5,6 +5,8 @@
     {
       "name": "podcast",
       "description": "Spoken word: -16 LUFS integrated, music well under the voice (12 dB), slow recovery after speech.",
+      "whenToUse": ["podcast", "spoken-word", "voice", "interview", "audiobook"],
+      "avoidWhen": ["music-led", "cinematic", "dynamic"],
       "targetLufs": -16,
       "toleranceLu": 1,
       "truePeakCeilingDb": -1,
@@ -15,6 +17,8 @@
     {
       "name": "streaming",
       "description": "Online video platforms: -14 LUFS integrated, -1 dBTP, music 9 dB under speech.",
+      "whenToUse": ["streaming", "youtube", "web", "general", "music-bed"],
+      "avoidWhen": ["broadcast", "cinema"],
       "targetLufs": -14,
       "toleranceLu": 1,
       "truePeakCeilingDb": -1,
@@ -25,6 +29,8 @@
     {
       "name": "cinematic",
       "description": "Broadcast and cinema deliverables: -23 LUFS (EBU R128; -24 LKFS for ATSC A/85 via altTargetLufs), wide dynamics, music 8 dB under speech, long soft ducks.",
+      "whenToUse": ["cinematic", "film", "dynamic", "trailer", "drama"],
+      "avoidWhen": ["social", "podcast", "loud"],
       "targetLufs": -23,
       "toleranceLu": 0.5,
       "truePeakCeilingDb": -1,
@@ -36,6 +42,8 @@
     {
       "name": "social",
       "description": "Loud feeds: -14 LUFS with -1 dBTP, music kept present (7 dB under speech), quick snappy ducks.",
+      "whenToUse": ["social", "short-form", "mobile", "loud", "vertical"],
+      "avoidWhen": ["cinematic", "broadcast", "dynamic"],
       "targetLufs": -14,
       "toleranceLu": 1.5,
       "truePeakCeilingDb": -1,

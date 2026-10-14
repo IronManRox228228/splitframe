@@ -6,6 +6,12 @@
 #include "engine/cmd_util.h"
 #include "engine/style_library.h"
 #include "engine/timeline_analysis.h"
+#include "render/color.h"
+#include "render/effects.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 
 #include <algorithm>
 #include <cmath>
@@ -48,6 +54,105 @@ Result specSchemaCmd(CallContext&, const QJsonObject&) {
                                      {q("example"), QJsonObject{{q("look"), q("warm-documentary")}, {q("intensity"), 0.7}, {q("warmth"), 0.05}, {q("contrast"), 0.0}, {q("saturation"), -0.05},
                                                                  {q("pacing"), q("documentary")}, {q("mix"), q("streaming")}}},
                                      {q("use"), q("look + intensity + warmth / contrast / saturation -> look.apply {look, intensity, warmth, contrast, saturation, itemIds}; pacing -> pacing.check {profile}; mix -> mix.applyProfile {profile}.")}});
+}
+
+// ---------------------------------------------------------------- style.suggest
+
+Result suggestCmd(CallContext&, const QJsonObject& a) {
+  const QString kind = a.value(q("kind")).toString();
+  QStringList tags;
+  for (const QJsonValue& v : a.value(q("tags")).toArray()) tags << v.toString();
+  if (tags.isEmpty()) return invalid(QStringLiteral("Pass tags: situation words such as interview, outdoor, noisy, music-bed."));
+  const int limit = std::clamp(a.value(q("limit")).toInt(5), 0, 500);
+  std::vector<Candidate> cands;
+  std::map<QString, QJsonObject> info;
+  const auto strs = [](const QStringList& l) { return l; };
+  if (kind == QLatin1String("look")) {
+    for (const Look& l : looks()) {
+      cands.push_back({l.name, l.whenToUse + l.tags, l.avoidWhen});
+      info[l.name] = QJsonObject{{q("description"), l.description}};
+    }
+  } else if (kind == QLatin1String("pacing")) {
+    for (const PacingProfile& p : pacings()) {
+      cands.push_back({p.name, p.whenToUse, p.avoidWhen});
+      info[p.name] = QJsonObject{{q("description"), p.description}};
+    }
+  } else if (kind == QLatin1String("mix")) {
+    for (const MixProfile& m : mixes()) {
+      cands.push_back({m.name, m.whenToUse, m.avoidWhen});
+      info[m.name] = QJsonObject{{q("description"), m.description}};
+    }
+  } else if (kind == QLatin1String("audio")) {
+    for (const AudioPreset& p : audioPresets()) {
+      cands.push_back({p.id, p.whenToUse, p.avoidWhen});
+      info[p.id] = QJsonObject{{q("name"), p.name}, {q("category"), p.category}, {q("description"), p.description}};
+    }
+  } else if (kind == QLatin1String("effect")) {
+    for (const sf::render::FxDef& f : sf::render::FxRegistry::instance().all()) {
+      cands.push_back({f.id, strs(f.tags) + f.whenToUse, {}});
+      info[f.id] = QJsonObject{{q("name"), f.name}, {q("category"), f.category}, {q("kind"), f.kind == sf::render::FxKind::Filter ? q("filter") : q("transition")}, {q("description"), f.description}};
+    }
+  } else {
+    return invalid(QStringLiteral("kind must be look, pacing, mix, audio or effect."));
+  }
+  const std::vector<Suggestion> ranked = rankByTags(cands, tags);
+  QJsonArray out;
+  int n = 0;
+  for (const Suggestion& s : ranked) {
+    if (limit > 0 && n++ >= limit) break;
+    QJsonObject o = info[s.id];
+    o.insert(q("id"), s.id);
+    o.insert(q("score"), s.score);
+    o.insert(q("matched"), QJsonArray::fromStringList(s.matched));
+    o.insert(q("avoided"), QJsonArray::fromStringList(s.avoided));
+    out.append(o);
+  }
+  return Result::success(QJsonObject{{q("kind"), kind}, {q("tags"), QJsonArray::fromStringList(tags)}, {q("ranked"), out},
+                                     {q("rule"), q("score = query tags matched in whenToUse (and tags) minus query tags hit in avoidWhen; ties by id.")}});
+}
+
+// ---------------------------------------------------------------- look.exportLut / look.exportLuts
+
+Result writeLut(const Look& look, double intensity, int size, const QString& inputSpace, const QString& path, QJsonObject* out) {
+  const PrimaryGrade grade = proposeLook(look, intensity, {}, std::nullopt);
+  QString err;
+  const QString text = lutCubeText(grade, size, inputSpace, QStringLiteral("SplitFrame look %1 at %2").arg(look.name).arg(intensity, 0, 'f', 2), &err);
+  if (text.isEmpty()) return invalid(err);
+  const QFileInfo fi(path);
+  if (!QDir().mkpath(fi.absolutePath())) return Result::failure(q("io_error"), QStringLiteral("Can't create %1.").arg(fi.absolutePath()));
+  QFile f(fi.absoluteFilePath());
+  if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return Result::failure(q("io_error"), QStringLiteral("Can't write %1: %2").arg(fi.absoluteFilePath(), f.errorString()));
+  const QByteArray bytes = text.toUtf8();
+  if (f.write(bytes) != bytes.size()) return Result::failure(q("io_error"), QStringLiteral("Short write to %1.").arg(fi.absoluteFilePath()));
+  f.close();
+  const QString sp = inputSpace.trimmed().isEmpty() ? q("srgb") : inputSpace.trimmed().toLower();
+  *out = QJsonObject{{q("look"), look.name}, {q("path"), fi.absoluteFilePath()}, {q("size"), size}, {q("entries"), size * size * size}, {q("intensity"), intensity}, {q("inputSpace"), sp},
+                     {q("bytes"), static_cast<double>(bytes.size())}, {q("identity"), sf::render::gradeIsNeutral(grade)}};
+  return Result::success();
+}
+
+Result exportLutCmd(CallContext&, const QJsonObject& a) {
+  const QString name = a.value(q("lookId")).toString();
+  const Look* look = findLook(name);
+  if (!look) return notFound(QStringLiteral("No look named \"%1\".").arg(name), QStringLiteral("Names: %1. See style.list.").arg(lookNames().join(QStringLiteral(", "))));
+  const QString path = a.value(q("path")).toString();
+  if (path.isEmpty()) return invalid(QStringLiteral("Pass path: the .cube file to write."));
+  QJsonObject o;
+  if (Result r = writeLut(*look, std::clamp(a.value(q("intensity")).toDouble(1.0), 0.0, 1.0), a.value(q("size")).toInt(33), a.value(q("inputSpace")).toString(), path, &o); !r.ok) return r;
+  o.insert(q("note"), QStringLiteral("The LUT expects %1 input and returns the same encoding (primary correction only, evaluated by the CPU twin of the shader).").arg(o.value(q("inputSpace")).toString() == QLatin1String("srgb") ? q("display-referred sRGB / Rec.709-primaries") : o.value(q("inputSpace")).toString()));
+  return Result::success(o);
+}
+
+Result exportLutsCmd(CallContext&, const QJsonObject& a) {
+  const QString dir = a.value(q("dir")).toString();
+  if (dir.isEmpty()) return invalid(QStringLiteral("Pass dir: the folder to write one .cube per look into."));
+  QJsonArray files;
+  for (const Look& l : looks()) {
+    QJsonObject o;
+    if (Result r = writeLut(l, std::clamp(a.value(q("intensity")).toDouble(1.0), 0.0, 1.0), a.value(q("size")).toInt(33), a.value(q("inputSpace")).toString(), QDir(dir).filePath(l.name + QStringLiteral(".cube")), &o); !r.ok) return r;
+    files.append(o);
+  }
+  return Result::success(QJsonObject{{q("dir"), QDir(dir).absolutePath()}, {q("count"), static_cast<int>(files.size())}, {q("files"), files}});
 }
 
 // ---------------------------------------------------------------- look.apply
@@ -332,6 +437,27 @@ Result mixApplyCmd(CallContext& c, const QJsonObject& a) {
 } // namespace
 
 void registerStyleCommands(Engine& e) {
+  e.add(spec("style.suggest", "", "engine", false,
+             QStringLiteral("Rank library items for a situation, deterministically. `kind` look | pacing | mix | audio (presets) | effect (the GPU registry); `tags` are situation words (interview, outdoor, noisy, music-bed, trailer ...). "
+                            "score = tags matched in the item's whenToUse (looks also match their tags; effects their tags and whenToUse phrases, by whole word) minus tags hit in avoidWhen; ties break by id. Returns ranked[{id, score, matched, avoided, description}], best first (`limit` default 5, 0 = all)."),
+             js::obj({{q("kind"), js::choice({q("look"), q("pacing"), q("mix"), q("audio"), q("effect")})}, {q("tags"), [] { QJsonObject o = js::array(js::str()); o.insert(q("minItems"), 1); return o; }()}, {q("limit"), js::integer(QString(), 0, 500)}},
+                     {q("kind"), q("tags")}),
+             suggestCmd, false));
+  e.add(spec("look.exportLut", "", "colour", false,
+             QStringLiteral("Write a look's primary grade as a 3D .cube LUT (Adobe / Resolve: TITLE, LUT_3D_SIZE, DOMAIN_MIN / MAX, red fastest, 6 decimals): the grade is evaluated by the same CPU reference function as the shader over a size^3 grid. "
+                            "`intensity` 0..1 (default 1), `size` 2..129 (default 33), `inputSpace` srgb (default: display-referred sRGB / Rec.709 primaries, how the editor shows untagged and BT.709 SDR video) | rec709 | bt1886 | gamma22 | gamma28 | linear. "
+                            "The LUT is for display-referred footage and returns the same encoding; the TITLE line says which. Output is clamped to 0..1."),
+             js::obj({{q("lookId"), js::choice(lookNames())}, {q("intensity"), js::number(QStringLiteral("0..1, default 1"), 0, 1)}, {q("size"), js::integer(QStringLiteral("grid points per axis, default 33"), 2, 129)}, {q("path"), js::str(QStringLiteral("the .cube file to write"))},
+                      {q("inputSpace"), js::choice({q("srgb"), q("rec709"), q("bt1886"), q("gamma22"), q("gamma28"), q("linear")})}},
+                     {q("lookId"), q("path")}),
+             exportLutCmd, false));
+  e.add(spec("look.exportLuts", "", "colour", false,
+             QStringLiteral("Export every look in the library as <dir>/<look>.cube (look.exportLut at full intensity; `size` default 33, optional `intensity` and `inputSpace`)."),
+             js::obj({{q("dir"), js::str(QStringLiteral("the folder to write into"))}, {q("size"), js::integer(QStringLiteral("grid points per axis, default 33"), 2, 129)}, {q("intensity"), js::number(QString(), 0, 1)},
+                      {q("inputSpace"), js::choice({q("srgb"), q("rec709"), q("bt1886"), q("gamma22"), q("gamma28"), q("linear")})}},
+                     {q("dir")}),
+             exportLutsCmd, false));
+
   e.add(spec("style.list", "", "engine", false,
              QStringLiteral("The style library (taste as data, compiled in): `kind` look | pacing | mix (omit for all three), `name` for one item. Looks are primary colour corrections (exposure, temperature, tint, contrast, saturation, lift / gamma / gain) with guard rules "
                             "(maxChromaP95, maxGamutLimitPct, maxLiftMaster, skin hue shift and band, crushed / clipped growth); pacing profiles give an ASL range, the share of cuts on the beat, a hook time and shot limits; mix profiles give a loudness target, true-peak "

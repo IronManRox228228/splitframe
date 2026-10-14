@@ -1,0 +1,789 @@
+{
+  "version": 1,
+  "kind": "audio",
+  "items": [
+    {
+      "id": "dialogue_clean",
+      "name": "Dialogue clean",
+      "category": "voice",
+      "description": "Rumble cut, mud dip, a little presence, even level and a soft de-ess: the default for spoken dialogue.",
+      "whenToUse": [
+        "voice",
+        "dialogue",
+        "interview",
+        "talking-head",
+        "narration"
+      ],
+      "avoidWhen": [
+        "music",
+        "sfx",
+        "phone"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 80,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b2.on": 1,
+            "b2.type": "peak",
+            "b2.freq": 300,
+            "b2.gain": -2.5,
+            "b2.q": 1.0,
+            "b4.on": 1,
+            "b4.type": "peak",
+            "b4.freq": 3500,
+            "b4.gain": 2.0,
+            "b4.q": 1.0
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -20,
+            "ratio": 3,
+            "attack": 12,
+            "release": 120,
+            "knee": 6,
+            "makeup": 3,
+            "mode": "peak",
+            "mix": 1
+          }
+        },
+        {
+          "type": "deesser",
+          "params": {
+            "freq": 6500,
+            "threshold": -30,
+            "ratio": 3,
+            "attack": 1,
+            "release": 60
+          }
+        }
+      ]
+    },
+    {
+      "id": "podcast_warm",
+      "name": "Podcast warm",
+      "category": "voice",
+      "description": "Chest and body from a low shelf, tamed sibilant top, firm compression and a safety limiter.",
+      "whenToUse": [
+        "voice",
+        "podcast",
+        "warm",
+        "narration",
+        "studio"
+      ],
+      "avoidWhen": [
+        "music",
+        "sfx",
+        "noisy"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 70,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b1.on": 1,
+            "b1.type": "lowshelf",
+            "b1.freq": 150,
+            "b1.gain": 2.5,
+            "b1.q": 0.7071,
+            "b4.on": 1,
+            "b4.type": "peak",
+            "b4.freq": 5500,
+            "b4.gain": -1.0,
+            "b4.q": 1.0
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -22,
+            "ratio": 3.5,
+            "attack": 8,
+            "release": 150,
+            "knee": 6,
+            "makeup": 4,
+            "mode": "peak",
+            "mix": 1
+          }
+        },
+        {
+          "type": "limiter",
+          "params": {
+            "ceiling": -1,
+            "release": 80,
+            "lookahead": 5,
+            "input": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "phone_call",
+      "name": "Phone call",
+      "category": "voice",
+      "description": "Band-limited, nasal midrange and hard compression: a voice heard through a telephone.",
+      "whenToUse": [
+        "voice",
+        "phone",
+        "effect",
+        "call",
+        "intercom"
+      ],
+      "avoidWhen": [
+        "music",
+        "hifi",
+        "narration",
+        "podcast"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 400,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 1200,
+            "b3.gain": 4.0,
+            "b3.q": 1.2,
+            "b5.on": 1,
+            "b5.type": "lowpass",
+            "b5.freq": 3400,
+            "b5.gain": 0,
+            "b5.q": 0.7071
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -24,
+            "ratio": 6,
+            "attack": 5,
+            "release": 100,
+            "knee": 3,
+            "makeup": 3,
+            "mode": "peak",
+            "mix": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "radio_voice",
+      "name": "Radio voice",
+      "category": "voice",
+      "description": "Broadcast announcer sound: weight below, bite above, rolled-off air and a tight limiter.",
+      "whenToUse": [
+        "voice",
+        "radio",
+        "announcer",
+        "promo",
+        "trailer"
+      ],
+      "avoidWhen": [
+        "whisper",
+        "music",
+        "ambience"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 100,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b1.on": 1,
+            "b1.type": "lowshelf",
+            "b1.freq": 200,
+            "b1.gain": 3.0,
+            "b1.q": 0.7071,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 3000,
+            "b3.gain": 3.0,
+            "b3.q": 1.0,
+            "b5.on": 1,
+            "b5.type": "highshelf",
+            "b5.freq": 9000,
+            "b5.gain": -3.0,
+            "b5.q": 0.7071
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -24,
+            "ratio": 5,
+            "attack": 6,
+            "release": 120,
+            "knee": 4,
+            "makeup": 5,
+            "mode": "peak",
+            "mix": 1
+          }
+        },
+        {
+          "type": "limiter",
+          "params": {
+            "ceiling": -1.5,
+            "release": 80,
+            "lookahead": 5,
+            "input": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "deess_soft",
+      "name": "De-ess soft",
+      "category": "voice",
+      "description": "Gentle sibilance control for a bright microphone: de-esser plus a narrow dip.",
+      "whenToUse": [
+        "voice",
+        "sibilance",
+        "bright",
+        "harsh",
+        "dialogue"
+      ],
+      "avoidWhen": [
+        "music",
+        "already-dull"
+      ],
+      "chain": [
+        {
+          "type": "deesser",
+          "params": {
+            "freq": 7000,
+            "threshold": -28,
+            "ratio": 3,
+            "attack": 1,
+            "release": 60
+          }
+        },
+        {
+          "type": "eq",
+          "params": {
+            "b4.on": 1,
+            "b4.type": "peak",
+            "b4.freq": 7000,
+            "b4.gain": -1.5,
+            "b4.q": 2.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "voice_presence",
+      "name": "Voice presence",
+      "category": "voice",
+      "description": "Clears the low mids and lifts the speech band and air so a voice sits forward in a mix.",
+      "whenToUse": [
+        "voice",
+        "presence",
+        "dull",
+        "mix",
+        "narration",
+        "interview"
+      ],
+      "avoidWhen": [
+        "harsh",
+        "bright",
+        "music"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b2.on": 1,
+            "b2.type": "peak",
+            "b2.freq": 250,
+            "b2.gain": -2.0,
+            "b2.q": 1.0,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 3000,
+            "b3.gain": 3.0,
+            "b3.q": 0.9,
+            "b5.on": 1,
+            "b5.type": "highshelf",
+            "b5.freq": 10000,
+            "b5.gain": 2.0,
+            "b5.q": 0.7071
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -18,
+            "ratio": 2.5,
+            "attack": 10,
+            "release": 120,
+            "knee": 6,
+            "makeup": 2,
+            "mode": "peak",
+            "mix": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "music_bed_under_voice",
+      "name": "Music bed under voice",
+      "category": "music",
+      "description": "Scoops the low mids and the speech band out of music and tames its dynamics so dialogue stays clear on top.",
+      "whenToUse": [
+        "music",
+        "music-bed",
+        "under-dialogue",
+        "voice-over",
+        "background"
+      ],
+      "avoidWhen": [
+        "music-only",
+        "featured",
+        "trailer"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 60,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b2.on": 1,
+            "b2.type": "peak",
+            "b2.freq": 400,
+            "b2.gain": -3.0,
+            "b2.q": 0.8,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 1800,
+            "b3.gain": -4.0,
+            "b3.q": 0.9
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -20,
+            "ratio": 2,
+            "attack": 30,
+            "release": 250,
+            "knee": 12,
+            "makeup": 0,
+            "mode": "peak",
+            "mix": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "music_punch",
+      "name": "Music punch",
+      "category": "music",
+      "description": "Low-end weight, forward top and parallel-style compression for a driving, up-front track.",
+      "whenToUse": [
+        "music",
+        "punch",
+        "energy",
+        "promo",
+        "trailer",
+        "featured"
+      ],
+      "avoidWhen": [
+        "music-bed",
+        "under-dialogue",
+        "quiet"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b1.on": 1,
+            "b1.type": "lowshelf",
+            "b1.freq": 90,
+            "b1.gain": 2.0,
+            "b1.q": 0.7071,
+            "b4.on": 1,
+            "b4.type": "peak",
+            "b4.freq": 4000,
+            "b4.gain": 1.5,
+            "b4.q": 1.0,
+            "b5.on": 1,
+            "b5.type": "highshelf",
+            "b5.freq": 12000,
+            "b5.gain": 1.5,
+            "b5.q": 0.7071
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -16,
+            "ratio": 3,
+            "attack": 25,
+            "release": 100,
+            "knee": 6,
+            "makeup": 2,
+            "mode": "peak",
+            "mix": 1
+          }
+        },
+        {
+          "type": "limiter",
+          "params": {
+            "ceiling": -1,
+            "release": 80,
+            "lookahead": 5,
+            "input": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "lofi",
+      "name": "Lo-fi",
+      "category": "music",
+      "description": "Narrow, dusty band: thin lows, rolled-off highs, a nasal bump and squashed dynamics.",
+      "whenToUse": [
+        "music",
+        "lofi",
+        "retro",
+        "nostalgic",
+        "vintage"
+      ],
+      "avoidWhen": [
+        "hifi",
+        "orchestral",
+        "dialogue"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 120,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 1500,
+            "b3.gain": 2.0,
+            "b3.q": 1.0,
+            "b5.on": 1,
+            "b5.type": "lowpass",
+            "b5.freq": 6000,
+            "b5.gain": 0,
+            "b5.q": 0.7071
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -22,
+            "ratio": 4,
+            "attack": 15,
+            "release": 150,
+            "knee": 6,
+            "makeup": 3,
+            "mode": "peak",
+            "mix": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx_impact",
+      "name": "SFX impact",
+      "category": "fx",
+      "description": "Adds weight and snap to hits, whooshes and booms, with a catch-all limiter.",
+      "whenToUse": [
+        "sfx",
+        "impact",
+        "hit",
+        "boom",
+        "transition"
+      ],
+      "avoidWhen": [
+        "dialogue",
+        "ambience",
+        "music-bed"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b1.on": 1,
+            "b1.type": "lowshelf",
+            "b1.freq": 80,
+            "b1.gain": 4.0,
+            "b1.q": 0.7071,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 3500,
+            "b3.gain": 2.0,
+            "b3.q": 1.0
+          }
+        },
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -14,
+            "ratio": 4,
+            "attack": 3,
+            "release": 80,
+            "knee": 4,
+            "makeup": 2,
+            "mode": "peak",
+            "mix": 1
+          }
+        },
+        {
+          "type": "limiter",
+          "params": {
+            "ceiling": -1,
+            "release": 80,
+            "lookahead": 5,
+            "input": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "ambience_wide",
+      "name": "Ambience wide",
+      "category": "fx",
+      "description": "Thins the lows, brightens a little and adds a roomy tail for wide background atmosphere.",
+      "whenToUse": [
+        "ambience",
+        "atmosphere",
+        "background",
+        "room-tone",
+        "wide"
+      ],
+      "avoidWhen": [
+        "dialogue",
+        "close-mic",
+        "music"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 120,
+            "b0.gain": 0,
+            "b0.q": 0.7071,
+            "b4.on": 1,
+            "b4.type": "peak",
+            "b4.freq": 8000,
+            "b4.gain": 1.5,
+            "b4.q": 1.0
+          }
+        },
+        {
+          "type": "reverb",
+          "params": {
+            "room": 0.7,
+            "damp": 0.5,
+            "wet": 0.25,
+            "dry": 1.0,
+            "width": 1.0,
+            "predelay": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "master_streaming_-14",
+      "name": "Master streaming -14",
+      "category": "master",
+      "description": "True-peak limiter at -1 dBTP, the ceiling streaming platforms ask for. Set the loudness with mix.applyProfile streaming.",
+      "whenToUse": [
+        "master",
+        "streaming",
+        "youtube",
+        "web",
+        "delivery"
+      ],
+      "avoidWhen": [
+        "broadcast",
+        "cinema"
+      ],
+      "chain": [
+        {
+          "type": "limiter",
+          "params": {
+            "ceiling": -1,
+            "release": 80,
+            "lookahead": 5,
+            "input": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "master_broadcast_-23",
+      "name": "Master broadcast -23",
+      "category": "master",
+      "description": "Light bus compression and a -1 dBTP limiter for EBU R128 delivery. Set the loudness with audio.normalize target -23.",
+      "whenToUse": [
+        "master",
+        "broadcast",
+        "tv",
+        "ebu-r128",
+        "delivery"
+      ],
+      "avoidWhen": [
+        "social",
+        "streaming-loud"
+      ],
+      "chain": [
+        {
+          "type": "compressor",
+          "params": {
+            "threshold": -24,
+            "ratio": 2,
+            "attack": 30,
+            "release": 300,
+            "knee": 10,
+            "makeup": 0,
+            "mode": "peak",
+            "mix": 1
+          }
+        },
+        {
+          "type": "limiter",
+          "params": {
+            "ceiling": -1,
+            "release": 100,
+            "lookahead": 5,
+            "input": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "gate_noisy_room",
+      "name": "Gate noisy room",
+      "category": "utility",
+      "description": "Closes between phrases to hide room hiss and fan noise. Gate range -30 dB keeps it natural.",
+      "whenToUse": [
+        "noisy",
+        "room-noise",
+        "hiss",
+        "interview",
+        "voice",
+        "outdoor"
+      ],
+      "avoidWhen": [
+        "music",
+        "ambience",
+        "whisper"
+      ],
+      "chain": [
+        {
+          "type": "gate",
+          "params": {
+            "threshold": -45,
+            "ratio": 10,
+            "attack": 2,
+            "hold": 80,
+            "release": 200,
+            "range": -30
+          }
+        }
+      ]
+    },
+    {
+      "id": "rumble_cut",
+      "name": "Rumble cut",
+      "category": "utility",
+      "description": "High-pass at 90 Hz for wind, handling and traffic rumble.",
+      "whenToUse": [
+        "rumble",
+        "wind",
+        "outdoor",
+        "handling",
+        "traffic",
+        "voice"
+      ],
+      "avoidWhen": [
+        "bass-heavy",
+        "music",
+        "sfx-boom"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b0.on": 1,
+            "b0.type": "highpass",
+            "b0.freq": 90,
+            "b0.gain": 0,
+            "b0.q": 0.7071
+          }
+        }
+      ]
+    },
+    {
+      "id": "warmth",
+      "name": "Warmth",
+      "category": "utility",
+      "description": "Adds low-mid body and softens the top: a gentle analogue-style warmth for thin or digital-sounding audio.",
+      "whenToUse": [
+        "warm",
+        "thin",
+        "harsh",
+        "digital",
+        "music",
+        "voice"
+      ],
+      "avoidWhen": [
+        "muddy",
+        "dark"
+      ],
+      "chain": [
+        {
+          "type": "eq",
+          "params": {
+            "b1.on": 1,
+            "b1.type": "lowshelf",
+            "b1.freq": 120,
+            "b1.gain": 2.0,
+            "b1.q": 0.7071,
+            "b3.on": 1,
+            "b3.type": "peak",
+            "b3.freq": 3000,
+            "b3.gain": -1.0,
+            "b3.q": 1.0,
+            "b5.on": 1,
+            "b5.type": "highshelf",
+            "b5.freq": 9000,
+            "b5.gain": -1.5,
+            "b5.q": 0.7071
+          }
+        }
+      ]
+    }
+  ]
+}

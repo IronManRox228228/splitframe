@@ -5,6 +5,9 @@
 #include "engine/style_library.h"
 #include "test_helpers.h"
 
+#include <QRandomGenerator>
+#include <QRegularExpression>
+#include <QTemporaryDir>
 #include <QTest>
 
 using namespace sf;
@@ -207,6 +210,166 @@ private slots:
       QVERIFY(m.minSpeechMarginDb() <= m.duckMarginDb);
     }
     QVERIFY(findMix(Q("social"))->releaseMs < findMix(Q("podcast"))->releaseMs); // snappier ducks for social
+  }
+
+  // ---- audio presets ----
+  void audioPresetsAreSoundAndValidated() {
+    QCOMPARE(audioPresets().size(), size_t{16});
+    for (const char* id : {"dialogue_clean", "podcast_warm", "phone_call", "radio_voice", "deess_soft", "voice_presence", "music_bed_under_voice", "music_punch", "lofi", "sfx_impact", "ambience_wide",
+                           "master_streaming_-14", "master_broadcast_-23", "gate_noisy_room", "rumble_cut", "warmth"})
+      QVERIFY2(findAudioPreset(Q(id)), id);
+    for (const AudioPreset& p : audioPresets()) {
+      QVERIFY2(validateAudioPreset(p).isEmpty(), qPrintable(p.id + Q(": ") + validateAudioPreset(p).join(Q("; "))));
+      QVERIFY2(!p.whenToUse.isEmpty() && !p.avoidWhen.isEmpty() && !p.chain.empty() && !p.description.isEmpty(), qPrintable(p.id));
+      QVERIFY2(!js::validate(toJson(p), audioPresetSchema()), qPrintable(p.id));
+    }
+    // the validator really checks ranges, names and choices against the effect definitions
+    AudioPreset bad;
+    bad.id = Q("bad");
+    bad.chain = {{Q("compressor"), QJsonObject{{Q("ratio"), 500}}},       // max 100
+                 {Q("eq"), QJsonObject{{Q("b0.type"), Q("flanger")}}},    // not a filter type
+                 {Q("gate"), QJsonObject{{Q("nope"), 1}}},                // unknown param
+                 {Q("wah"), QJsonObject{}},                               // unknown effect
+                 {Q("limiter"), QJsonObject{{Q("ceiling"), Q("loud")}}}}; // a string where a number is needed
+    QCOMPARE(validateAudioPreset(bad).size(), 5);
+    QCOMPARE(validateAudioPreset(AudioPreset{}).size(), 1); // empty chain
+  }
+
+  // ---- when-to-use tags and style.suggest ----
+  void whenToUseTagsAndRanking() {
+    for (const Look& l : looks()) QVERIFY2(!l.whenToUse.isEmpty() && !l.avoidWhen.isEmpty(), qPrintable(l.name));
+    for (const PacingProfile& p : pacings()) QVERIFY2(!p.whenToUse.isEmpty() && !p.avoidWhen.isEmpty(), qPrintable(p.name));
+    for (const MixProfile& m : mixes()) QVERIFY2(!m.whenToUse.isEmpty() && !m.avoidWhen.isEmpty(), qPrintable(m.name));
+    QVERIFY(toJson(*findLook(Q("pastel"))).contains(Q("whenToUse")) && toJson(*findMix(Q("social"))).contains(Q("avoidWhen")) && toJson(*findPacing(Q("trailer"))).contains(Q("whenToUse")));
+
+    const std::vector<Candidate> c = {{Q("b"), {Q("voice"), Q("interview")}, {}}, {Q("a"), {Q("voice"), Q("pick up the interview")}, {}}, {Q("c"), {Q("voice")}, {Q("noisy")}}, {Q("d"), {Q("music")}, {}}};
+    const auto r = rankByTags(c, {Q("Voice"), Q("interview"), Q("noisy"), Q("voice")}); // case-insensitive, duplicates ignored
+    QCOMPARE(r.size(), size_t{4});
+    QCOMPARE(r[0].id, Q("a")); // 2 matched, ties by id
+    QCOMPARE(r[1].id, Q("b"));
+    QCOMPARE(r[0].score, 2);
+    QCOMPARE(r[2].id, Q("c")); // voice matched, noisy avoided: 0
+    QCOMPARE(r[2].score, 0);
+    QCOMPARE(r[2].avoided, QStringList{Q("noisy")});
+    QCOMPARE(r[3].id, Q("d")); // 0
+    QCOMPARE(rankByTags(c, {Q("voice"), Q("interview"), Q("noisy"), Q("voice")})[0].id, r[0].id); // deterministic
+    QCOMPARE(rankByTags(c, {Q("noisy")}).back().score, -1);
+
+    std::vector<Candidate> looksC;
+    for (const Look& l : looks()) looksC.push_back({l.name, l.whenToUse + l.tags, l.avoidWhen});
+    QCOMPARE(rankByTags(looksC, {Q("interview"), Q("corporate")}).front().id, Q("neutral-clean"));
+    QCOMPARE(rankByTags(looksC, {Q("thriller"), Q("gritty")}).front().id, Q("bleach-bypass"));
+    std::vector<Candidate> ac;
+    for (const AudioPreset& p : audioPresets()) ac.push_back({p.id, p.whenToUse, p.avoidWhen});
+    QCOMPARE(rankByTags(ac, {Q("noisy"), Q("interview")}).front().id, Q("gate_noisy_room"));
+    QCOMPARE(rankByTags(ac, {Q("music-bed")}).front().id, Q("music_bed_under_voice"));
+  }
+
+  // ---- LUT export ----
+private:
+  struct Cube {
+    int size = 0;
+    std::vector<double> v;
+  };
+  static Cube parseCube(const QString& text) {
+    Cube c;
+    for (const QString& line : text.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+      if (line.startsWith(QLatin1String("LUT_3D_SIZE"))) c.size = line.section(QLatin1Char(' '), 1).toInt();
+      if (line.at(0).isLetter()) continue;
+      for (const QString& t : line.split(QLatin1Char(' '))) c.v.push_back(t.toDouble());
+    }
+    return c;
+  }
+  static std::array<double, 3> trilinear(const Cube& c, double r, double g, double b) {
+    const int n = c.size;
+    const double f[3] = {r * (n - 1), g * (n - 1), b * (n - 1)};
+    int i0[3];
+    double t[3];
+    for (int k = 0; k < 3; ++k) {
+      i0[k] = std::min(static_cast<int>(std::floor(f[k])), n - 2);
+      t[k] = f[k] - i0[k];
+    }
+    std::array<double, 3> o{0, 0, 0};
+    for (int corner = 0; corner < 8; ++corner) {
+      const int dr = corner & 1, dg = (corner >> 1) & 1, db = (corner >> 2) & 1;
+      const double w = (dr ? t[0] : 1 - t[0]) * (dg ? t[1] : 1 - t[1]) * (db ? t[2] : 1 - t[2]);
+      const size_t idx = static_cast<size_t>(((i0[2] + db) * n + (i0[1] + dg)) * n + (i0[0] + dr)) * 3; // red fastest
+      for (size_t k = 0; k < 3; ++k) o[k] += w * c.v[idx + k];
+    }
+    return o;
+  }
+
+private slots:
+  void lutFormat() {
+    QString err;
+    const QString text = lutCubeText(PrimaryGrade{}, 5, QString(), Q("test"), &err);
+    QVERIFY2(!text.isEmpty(), qPrintable(err));
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    QVERIFY(lines[0].startsWith(Q("TITLE \"")) && lines[0].contains(Q("sRGB")) && lines[0].contains(Q("Rec.709")));
+    QCOMPARE(lines[1], Q("LUT_3D_SIZE 5"));
+    QCOMPARE(lines[2], Q("DOMAIN_MIN 0.0 0.0 0.0"));
+    QCOMPARE(lines[3], Q("DOMAIN_MAX 1.0 1.0 1.0"));
+    QCOMPARE(lines.size(), 4 + 125 + 1); // trailing newline
+    QVERIFY(lines.back().isEmpty());
+    QCOMPARE(lines[4], Q("0.000000 0.000000 0.000000"));
+    QCOMPARE(lines[5], Q("0.250000 0.000000 0.000000"));  // red varies fastest
+    QCOMPARE(lines[9], Q("0.000000 0.250000 0.000000"));  // then green
+    QCOMPARE(lines[29], Q("0.000000 0.000000 0.250000")); // then blue
+    QCOMPARE(lines[128], Q("1.000000 1.000000 1.000000"));
+    static const QRegularExpression rx(Q("^[0-9]\\.[0-9]{6} [0-9]\\.[0-9]{6} [0-9]\\.[0-9]{6}$"));
+    for (int i = 4; i < 129; ++i) QVERIFY2(rx.match(lines[i]).hasMatch(), qPrintable(lines[i]));
+    QVERIFY(lutCubeText(PrimaryGrade{}, 5, Q("bt1886"), Q("t"), &err).contains(Q("BT.1886")));
+    QVERIFY(lutCubeText(PrimaryGrade{}, 5, Q("acescg"), Q("t"), &err).isEmpty() && err.contains(Q("inputSpace")));
+    QVERIFY(lutCubeText(PrimaryGrade{}, 1, Q("srgb"), Q("t"), &err).isEmpty());
+  }
+
+  void identityLookGivesIdentityLut() {
+    for (const Look& l : looks()) {
+      const Cube c = parseCube(lutCubeText(proposeLook(l, 0.0, {}, std::nullopt), 17, Q("srgb"), l.name, nullptr));
+      QCOMPARE(c.size, 17);
+      QCOMPARE(c.v.size(), size_t{17 * 17 * 17 * 3});
+      size_t i = 0;
+      for (int b = 0; b < 17; ++b)
+        for (int g = 0; g < 17; ++g)
+          for (int r = 0; r < 17; ++r) {
+            const double e[3] = {r / 16.0, g / 16.0, b / 16.0};
+            for (int k = 0; k < 3; ++k) QVERIFY2(std::fabs(c.v[i++] - e[k]) < 1e-5, qPrintable(l.name));
+          }
+    }
+  }
+
+  void lutMatchesTheDirectGrade() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QRandomGenerator rng(1234);
+    for (const Look& l : looks()) {
+      const PrimaryGrade g = proposeLook(l, 1.0, {}, std::nullopt);
+      QFile f(dir.filePath(l.name + Q(".cube")));
+      QVERIFY(f.open(QIODevice::WriteOnly));
+      f.write(lutCubeText(g, 33, Q("srgb"), l.name, nullptr).toUtf8());
+      f.close();
+      QVERIFY(f.open(QIODevice::ReadOnly)); // parse what was written to disk
+      const Cube c = parseCube(QString::fromUtf8(f.readAll()));
+      QCOMPARE(c.size, 33);
+      QCOMPARE(c.v.size(), size_t{33 * 33 * 33 * 3});
+      // Away from the gamut edge the LUT is a smooth function and trilinear interpolation at 33 points is within 1e-3. Saturated colours
+      // hit the grade's clip at 0 (a kink between two grid points, steepest in the dark half of the sRGB curve): bounded more loosely.
+      double worst = 0, worstEdge = 0;
+      for (int n = 0; n < 4000; ++n) {
+        const bool interior = n % 2 == 0;
+        const double base = 0.35 + 0.4 * rng.generateDouble();
+        const auto pick = [&] { return interior ? std::clamp(base + 0.1 * (rng.generateDouble() - 0.5), 0.0, 1.0) : rng.generateDouble(); };
+        const double r = pick(), gg = pick(), b = pick();
+        const auto lut = trilinear(c, r, gg, b);
+        const auto direct = gradeEncoded(g, sf::render::Transfer::Srgb, {r, gg, b});
+        for (size_t k = 0; k < 3; ++k) (interior ? worst : worstEdge) = std::max(interior ? worst : worstEdge, std::fabs(lut[k] - direct[k]));
+      }
+      qInfo().noquote() << QStringLiteral("lut %1: worst trilinear error %2 (interior), %3 (any colour)").arg(l.name).arg(worst, 0, 'e', 2).arg(worstEdge, 0, 'e', 2);
+      QVERIFY2(worst < 1e-3, qPrintable(QStringLiteral("%1: worst %2").arg(l.name).arg(worst)));
+      QVERIFY2(worstEdge < 0.05, qPrintable(QStringLiteral("%1: worst at the gamut edge %2").arg(l.name).arg(worstEdge)));
+      const auto mid = gradeEncoded(g, sf::render::Transfer::Srgb, {0.5, 0.5, 0.5});
+      QVERIFY2(std::fabs(mid[0] - 0.5) + std::fabs(mid[1] - 0.5) + std::fabs(mid[2] - 0.5) > 1e-4, qPrintable(l.name));
+    }
   }
 
   void styleSpecSchema() {
