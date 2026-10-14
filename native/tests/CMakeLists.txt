@@ -21,6 +21,9 @@ sf_add_test(tst_media_probe)
 sf_add_test(tst_audio_decoder)
 sf_add_test(tst_thumbnails)
 sf_add_test(tst_frame_cache)
+# Background analysis jobs: scheduler, disk cache, ONNX Runtime, hands (ML parts skip without ORT or the models).
+sf_add_test(tst_jobs)
+target_link_libraries(tst_jobs PRIVATE sf_jobs)
 
 # Core (project model) suites: QtCore/QtTest only, no FFmpeg. Fixtures are generated from the TS
 # packages by fixtures/gen (see its README comment) and committed.

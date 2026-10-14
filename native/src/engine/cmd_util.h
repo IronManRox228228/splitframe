@@ -12,6 +12,10 @@
 
 #include <memory>
 
+namespace sf::sys {
+class SystemService;
+}
+
 namespace sf::engine {
 
 inline QString q(const char* s) { return QString::fromLatin1(s); }
@@ -86,6 +90,9 @@ Result itemSpeechRanges(CallContext& c, const QStringList& itemIds, double gapMs
 // Defined in cmd_colour.cpp: colour.analyze metrics (as JSON) of the item's ungraded pixels (sampled at `samples` frames) after each grade in
 // `grades`, on the CPU twin of the shader; one entry per grade. Needs the offscreen renderer.
 Result predictGrades(CallContext& c, const QString& itemId, const std::vector<PrimaryGrade>& grades, int samples, std::vector<QJsonObject>* metrics);
+
+// Defined in cmd_system.cpp: the process-wide system service (profile, overrides, live budget) every Engine shares.
+sys::SystemService& sharedSystemService();
 
 // The asset table (original files, proxies are never used for stills / export) for the session's project.
 render::AssetTable assetTable(const Session& s);

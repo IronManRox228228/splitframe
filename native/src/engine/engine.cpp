@@ -2,6 +2,7 @@
 
 #include "core/error.h"
 #include "engine/cmd_util.h"
+#include "jobs/builtin_analyzers.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -32,6 +33,7 @@ Engine::Engine(QObject* parent) : QObject(parent) {
   registerSystemCommands(*this);
   registerExportCommands(*this);
   registerFxCommands(*this);
+  registerJobsCommands(*this);
 
   add(spec("engine.ping", "", "engine", false, QStringLiteral("Liveness and version: engine version, sessions, command count."), js::obj({}),
            [](CallContext& c, const QJsonObject&) {
@@ -57,6 +59,7 @@ Engine::~Engine() {
       rec.job->cancel();
     }
   exports_.clear();
+  jobs_.reset();
   renderer_.reset();
   sessions_.clear();
 }
@@ -236,6 +239,25 @@ Result Engine::call(const QString& name, const QJsonObject& args) {
 }
 
 // ---------- services ----------
+
+jobs::JobScheduler& Engine::jobs() {
+  if (!jobs_) {
+    jobs_ = std::make_unique<jobs::JobScheduler>();
+    jobs::registerBuiltinAnalyzers(*jobs_);
+    jobs_->setBusyProbe([this] {
+      for (const auto& [id, rec] : exports_)
+        if (rec.state == QLatin1String("running")) return true;
+      return false;
+    });
+    connect(jobs_.get(), &jobs::JobScheduler::jobChanged, this, [this](const QString& id) {
+      if (const auto i = jobs_->info(id)) emitEvent(q("jobs.updated"), {{q("jobId"), id}, {q("analyzer"), i->analyzer}, {q("state"), jobs::jobStateName(i->state)}, {q("progress"), i->progress}});
+    });
+    connect(jobs_.get(), &jobs::JobScheduler::pauseChanged, this, [this](bool paused, const QStringList& reasons) {
+      emitEvent(q("jobs.paused"), {{q("paused"), paused}, {q("reasons"), QJsonArray::fromStringList(reasons)}});
+    });
+  }
+  return *jobs_;
+}
 
 render::OffscreenRenderer* Engine::renderer(QString* error) {
   if (!renderer_) renderer_ = render::OffscreenRenderer::create(error);

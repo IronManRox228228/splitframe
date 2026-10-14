@@ -16,6 +16,7 @@ add_library(sf_engine STATIC
   timeline_analysis.h timeline_analysis.cpp
   cmd_style.cpp
   cmd_system.cpp
+  cmd_jobs.cpp
   style_library.h style_library.cpp
   cmd_export.cpp
   cmd_fx.cpp
@@ -31,7 +32,7 @@ qt_add_resources(sf_engine "sf_engine_styles"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/styles"
   FILES styles/looks.json styles/pacing.json styles/mix.json)
 target_include_directories(sf_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_sys sf_render sf_audio sf_media sf_core Qt6::Core Qt6::Gui Qt6::Network PRIVATE sf_options)
+target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_sys sf_jobs sf_render sf_audio sf_media sf_core Qt6::Core Qt6::Gui Qt6::Network PRIVATE sf_options)
 
 # Console front end: no window, no QML. FFmpeg / OpenColorIO DLLs land next to it like for the app.
 qt_add_executable(splitframe-cli cli/main.cpp)

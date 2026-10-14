@@ -13,6 +13,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <atomic>
+
 using namespace sf;
 using namespace sf::engine;
 using namespace sf::test;
@@ -53,6 +55,19 @@ bool writeClickWav(const QString& path, double bpm, double seconds, double first
   f.write(reinterpret_cast<const char*>(pcm.data()), static_cast<qint64>(dataBytes));
   return true;
 }
+
+// Counts its calls and returns the asset path: the scheduler's genericity without any decoding.
+class FakeAnalyzer final : public sf::jobs::Analyzer {
+public:
+  QString id() const override { return QStringLiteral("fake"); }
+  int version() const override { return 1; }
+  sf::jobs::AnalyzerResult run(sf::jobs::JobContext& ctx) override {
+    ++calls;
+    ctx.report(1.0);
+    return sf::jobs::AnalyzerResult::success({{QStringLiteral("path"), ctx.path}});
+  }
+  std::atomic<int> calls{0};
+};
 } // namespace
 
 class TstEngine : public QObject {
@@ -1156,6 +1171,75 @@ private slots:
     QCOMPARE(r.value(Q("proxies")).toArray().at(0).toObject().value(Q("state")).toString(), Q("unneeded")); // 320 px wide: no proxy needed
     QCOMPARE(ok(Q("proxies.status")).value(Q("proxies")).toArray().size(), 1);
     QCOMPARE(raw(Q("proxies.request"), {}).error.code, Q("invalid_params"));
+  }
+
+  // ---- background analysis jobs ----
+  void jobsCommands() {
+    e_->jobs().setCacheDir(dir_.filePath(QStringLiteral("jobs-cache")));
+    QVERIFY(ok(Q("jobs.policy"), {{Q("autoPause"), false}}).contains(Q("paused"))); // this machine's battery / VRAM must not stall the test
+    auto fake = std::make_shared<FakeAnalyzer>();
+    e_->jobs().registerAnalyzer(fake);
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_, music_}}});
+    const QString music = firstAsset(Q("audio")), video = firstAsset(Q("video"));
+    QVERIFY(!music.isEmpty() && !video.isEmpty());
+
+    const QJsonObject list = ok(Q("jobs.list"));
+    QStringList ids;
+    for (const QJsonValue& a : list.value(Q("analyzers")).toArray()) ids << a.toObject().value(Q("id")).toString();
+    QVERIFY(ids.contains(Q("hands")) && ids.contains(Q("waveform")) && ids.contains(Q("fake")));
+    QVERIFY(!list.value(Q("paused")).toBool());
+
+    // the non-ML analyzer through the commands: wait for it, then the same request is a cache hit
+    const QJsonObject first = ok(Q("jobs.enqueue"), {{Q("analyzer"), Q("waveform")}, {Q("assetId"), music}, {Q("params"), QJsonObject{{Q("buckets"), 32}}}, {Q("wait"), true}, {Q("includeResult"), true}});
+    QCOMPARE(first.value(Q("status")).toString(), Q("done"));
+    QVERIFY(!first.value(Q("cached")).toBool());
+    QVERIFY(first.value(Q("result")).toObject().value(Q("buckets")).toInt() > 0);
+    const QJsonObject second = ok(Q("jobs.enqueue"), {{Q("analyzer"), Q("waveform")}, {Q("assetId"), music}, {Q("params"), QJsonObject{{Q("buckets"), 32}}}});
+    QVERIFY(second.value(Q("cached")).toBool());
+    QCOMPARE(second.value(Q("status")).toString(), Q("done"));
+    const QJsonObject got = ok(Q("analysis.get"), {{Q("analyzer"), Q("waveform")}, {Q("assetId"), music}, {Q("params"), QJsonObject{{Q("buckets"), 32}}}});
+    QCOMPARE(got.value(Q("status")).toString(), Q("done"));
+    QCOMPARE(got.value(Q("result")).toObject(), first.value(Q("result")).toObject());
+    QCOMPARE(ok(Q("analysis.get"), {{Q("analyzer"), Q("waveform")}, {Q("assetId"), music}, {Q("params"), QJsonObject{{Q("buckets"), 64}}}}).value(Q("status")).toString(), Q("none"));
+
+    // an item resolves to its asset; pause / queue / cancel / resume
+    ok(Q("clip.add"), {{Q("assetId"), video}, {Q("startFrame"), 0}});
+    QString itemId;
+    for (const QJsonValue& i : items()) itemId = i.toObject().value(Q("id")).toString();
+    QVERIFY(!itemId.isEmpty());
+    QCOMPARE(ok(Q("jobs.pause"), {{Q("reason"), Q("llm generating")}}).value(Q("pauseReasons")).toArray().at(0).toString(), Q("manual:llm generating"));
+    const QJsonObject queued = ok(Q("jobs.enqueue"), {{Q("analyzer"), Q("fake")}, {Q("itemId"), itemId}});
+    QCOMPARE(queued.value(Q("status")).toString(), Q("queued"));
+    QVERIFY(queued.value(Q("note")).toString().contains(Q("paused")));
+    QCOMPARE(ok(Q("jobs.list"), {{Q("state"), Q("queued")}}).value(Q("jobs")).toArray().size(), 1);
+    QCOMPARE(ok(Q("analysis.get"), {{Q("analyzer"), Q("fake")}, {Q("itemId"), itemId}}).value(Q("status")).toString(), Q("queued"));
+    const QJsonObject cancelled = ok(Q("jobs.cancel"), {{Q("jobId"), queued.value(Q("jobId")).toString()}});
+    QCOMPARE(cancelled.value(Q("state")).toString(), Q("cancelled"));
+    QCOMPARE(fake->calls.load(), 0);
+    const QJsonObject again = ok(Q("jobs.enqueue"), {{Q("analyzer"), Q("fake")}, {Q("itemId"), itemId}});
+    QJsonObject resumed = ok(Q("jobs.resume"));
+    QVERIFY(!resumed.value(Q("paused")).toBool());
+    const QJsonObject done = ok(Q("analysis.get"), {{Q("analyzer"), Q("fake")}, {Q("itemId"), itemId}, {Q("wait"), true}});
+    QCOMPARE(done.value(Q("status")).toString(), Q("done"));
+    QCOMPARE(fake->calls.load(), 1);
+    QVERIFY(!again.value(Q("jobId")).toString().isEmpty());
+
+    // errors are values
+    QCOMPARE(raw(Q("jobs.enqueue"), {{Q("analyzer"), Q("nope")}, {Q("assetId"), music}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("jobs.enqueue"), {{Q("analyzer"), Q("fake")}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("jobs.enqueue"), {{Q("analyzer"), Q("fake")}, {Q("assetId"), Q("ast_nope")}}).error.code, Q("not_found"));
+    QCOMPARE(raw(Q("jobs.cancel"), {{Q("jobId"), Q("job_nope")}}).error.code, Q("not_found"));
+
+    // hands: a handful of tiny frames when ONNX Runtime and the models are here, a clean `unavailable` otherwise
+    const Result hands = raw(Q("analysis.hands.track"), {{Q("itemId"), itemId}, {Q("fps"), 2}, {Q("wait"), true}, {Q("timeoutMs"), 120000}});
+    if (!hands.ok) {
+      QCOMPARE(hands.error.code, Q("unavailable"));
+    } else {
+      const QJsonObject h = hands.value.toObject();
+      QCOMPARE(h.value(Q("status")).toString(), Q("done"));
+      QCOMPARE(h.value(Q("result")).toObject().value(Q("frameCount")).toInt(), 4); // 2 s at 2 fps
+      QVERIFY(ok(Q("analysis.hands.track"), {{Q("itemId"), itemId}, {Q("fps"), 2}}).value(Q("cached")).toBool());
+    }
   }
 
   // ---- export ----

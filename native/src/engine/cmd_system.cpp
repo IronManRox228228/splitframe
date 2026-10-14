@@ -13,13 +13,15 @@
 
 namespace sf::engine {
 
-namespace {
-
 // One process, one machine: the service (profile, smoke cache, overrides, live monitor) is shared by every Engine.
-sys::SystemService& service() {
+sys::SystemService& sharedSystemService() {
   static sys::SystemService* s = new sys::SystemService; // never destroyed: its timer must not outlive the event loop in a static destructor
   return *s;
 }
+
+namespace {
+
+sys::SystemService& service() { return sharedSystemService(); }
 
 class NullMedia final : public render::MediaProvider {
 public:

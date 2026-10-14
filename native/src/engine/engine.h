@@ -16,6 +16,7 @@
 #include "editor/project.h"
 #include "engine/result.h"
 #include "export/exporter.h"
+#include "jobs/job_scheduler.h"
 #include "render/offscreen.h"
 
 #include <QJsonArray>
@@ -107,6 +108,8 @@ public:
   // ---- shared services used by command handlers ----
   render::OffscreenRenderer* renderer(QString* error); // created on first use
   std::map<QString, ExportRecord>& exports() { return exports_; }
+  // The background analysis scheduler (created on first use with the built-in analyzers; pauses itself while an export runs).
+  jobs::JobScheduler& jobs();
   void emitEvent(const QString& name, const QJsonObject& data);
   qint64 eventSeq() const { return seq_; }
 
@@ -124,6 +127,7 @@ private:
   std::vector<std::unique_ptr<CommandSpec>> commands_;
   std::map<QString, ExportRecord> exports_;
   std::unique_ptr<render::OffscreenRenderer> renderer_;
+  std::unique_ptr<jobs::JobScheduler> jobs_;
   qint64 seq_ = 0;
 };
 
@@ -140,5 +144,6 @@ void registerStyleCommands(Engine& e);
 void registerSystemCommands(Engine& e);
 void registerExportCommands(Engine& e);
 void registerFxCommands(Engine& e);
+void registerJobsCommands(Engine& e);
 
 } // namespace sf::engine
