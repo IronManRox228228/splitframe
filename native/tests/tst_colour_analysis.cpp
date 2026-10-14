@@ -131,6 +131,47 @@ private slots:
     QCOMPARE(q.primaries, PrimaryGrade{});
   }
 
+  void nightFrameWithLightsKeepsItsKey() {
+    // 1988 dark background pixels (median 0.012) and 12 small bright light sources (0.9, 0.6 % of the picture: p99 stays dark, so the key comes from the bright share): a night shot, not an underexposed one
+    std::vector<double> levels;
+    for (int i = 0; i < 1988; ++i) levels.push_back(0.008 + 0.008 * (i % 10) / 9.0);
+    for (int i = 0; i < 12; ++i) levels.push_back(0.9);
+    const PixelSet night = fromLinearGrey(levels);
+    const Proposal p = proposeAutoBalance(night);
+    QCOMPARE(p.sceneKey.requested, QStringLiteral("auto"));
+    QVERIFY2(p.sceneKey.detected == "low" && !p.sceneKey.reason.isEmpty(), qPrintable(p.sceneKey.detected + ": " + p.sceneKey.reason));
+    QVERIFY2(p.primaries.exposure <= 0.5 + 1e-9 && p.primaries.exposure >= -0.5, qPrintable(QString::number(p.primaries.exposure)));
+    // the same pixels forced to normal get the full mid-grey correction the key is there to prevent
+    AutoBalanceOptions forced;
+    forced.sceneKey = SceneKey::Normal;
+    const Proposal n = proposeAutoBalance(night, forced);
+    QCOMPARE(n.sceneKey.detected, QStringLiteral("normal"));
+    QCOMPARE(n.sceneKey.requested, QStringLiteral("normal"));
+    QVERIFY2(n.primaries.exposure > 1.0, qPrintable(QString::number(n.primaries.exposure)));
+  }
+
+  void underexposedGreyFrameIsStillCorrected() {
+    std::vector<double> levels;
+    for (int i = 0; i < 200; ++i) levels.push_back(0.02 + 0.04 * i / 199.0); // median 0.04, nothing bright in it
+    const Proposal p = proposeAutoBalance(fromLinearGrey(levels));
+    QCOMPARE(p.sceneKey.detected, QStringLiteral("normal"));
+    QVERIFY2(p.primaries.exposure > 1.5, qPrintable(QString::number(p.primaries.exposure)));
+  }
+
+  void brightFrameKeepsItsKeyAndNeverMovesMoreThanHalfAStop() {
+    std::vector<double> levels;
+    for (int i = 0; i < 200; ++i) levels.push_back(0.3 + 0.45 * i / 199.0); // median 0.52, blacks lifted, nothing clipped
+    const PixelSet bright = fromLinearGrey(levels);
+    const Proposal p = proposeAutoBalance(bright);
+    QCOMPARE(p.sceneKey.detected, QStringLiteral("high"));
+    QVERIFY2(p.primaries.exposure >= -0.5 - 1e-9 && p.primaries.exposure <= 0.0, qPrintable(QString::number(p.primaries.exposure)));
+    AutoBalanceOptions low;
+    low.sceneKey = SceneKey::Low;
+    const Proposal l = proposeAutoBalance(bright, low); // an explicit key is obeyed, and still capped
+    QCOMPARE(l.sceneKey.detected, QStringLiteral("low"));
+    QVERIFY(std::fabs(l.primaries.exposure) <= 0.5 + 1e-9);
+  }
+
   void skinPatchIsFoundWithItsHueOffset() {
     std::vector<std::array<int, 3>> px(200, {224, 172, 140});
     for (int i = 0; i < 200; ++i) px.push_back({20, 60, 160}); // a blue sky is not skin

@@ -100,18 +100,35 @@ ColourMetrics analyzeFrames(const std::vector<PixelSet>& frames, const std::vect
 
 // ---- proposals ----
 
+// How bright the scene is meant to be. low / high keep the shot's key: exposure moves at most kKeyedExposureStops either way and aims at the
+// key's own median (kLowKeyMedian / kHighKeyMedian), not mid grey. auto classifies from the measured luma distribution (detectSceneKey).
+enum class SceneKey { Auto, Low, Normal, High };
+inline constexpr double kKeyedExposureStops = 0.5;
+inline constexpr double kLowKeyMedian = 0.09;  // linear, one stop under mid grey
+inline constexpr double kHighKeyMedian = 0.36; // linear, one stop over
+struct SceneKeyReport {
+  QString requested, detected, reason;
+};
+// low: median at least a stop under grey (0.09) with real highlights (p99 >= 0.4, or 0.2 % or more of the pixels at display luma >= 0.75): a
+// night shot of lights, not an underexposed one. high: median at least a stop over grey (0.36) with lifted blacks (p5 >= 0.05) and under 1 %
+// clipped. Everything else, including a dark picture with no highlights at all, is normal.
+SceneKey detectSceneKey(const ColourMetrics& m, QString* reason = nullptr);
+QString sceneKeyName(SceneKey k);
+
 struct AutoBalanceOptions {
   double exposureTarget = 0.18;   // linear median luma to aim for
   double toleranceStops = 0.25;   // within this many stops of the target: leave exposure alone
   double maxExposureStops = 2.0;  // |exposure| never exceeds this
   double maxIncreasePct = 1.0;    // crushed / clipped percent may not grow by more than this (percentage points)
   bool whiteBalance = true;
+  SceneKey sceneKey = SceneKey::Auto;
 };
 struct Proposal {
   PrimaryGrade primaries;
   ColourMetrics before, predicted; // predicted = the CPU twin applied to the pixels
   QStringList notes;               // what was limited and why
-  double error = 0;                // match only: RMS residual in stops (see MatchResidual)
+  SceneKeyReport sceneKey;         // autoBalance only
+  double error = 0;               // match only: RMS residual in stops (see MatchResidual)
   QJsonObject residual;            // match only
   int iterations = 0;
   bool plausible = true;           // match only: false when reaching the reference took grade values no colourist would use

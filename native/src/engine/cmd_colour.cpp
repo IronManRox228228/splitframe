@@ -136,8 +136,17 @@ Result autoBalanceCmd(CallContext& c, const QJsonObject& a) {
   render::AutoBalanceOptions opt;
   if (a.contains(q("exposureTarget"))) opt.exposureTarget = a.value(q("exposureTarget")).toDouble();
   if (a.contains(q("toleranceStops"))) opt.toleranceStops = a.value(q("toleranceStops")).toDouble();
+  if (a.contains(q("sceneKey"))) {
+    const QString k = a.value(q("sceneKey")).toString();
+    if (k == QLatin1String("auto")) opt.sceneKey = render::SceneKey::Auto;
+    else if (k == QLatin1String("low")) opt.sceneKey = render::SceneKey::Low;
+    else if (k == QLatin1String("normal")) opt.sceneKey = render::SceneKey::Normal;
+    else if (k == QLatin1String("high")) opt.sceneKey = render::SceneKey::High;
+    else return invalid(QStringLiteral("sceneKey must be auto, low, normal or high."));
+  }
   const render::Proposal p = render::proposeAutoBalance(pooled, opt);
   QJsonObject o{{q("itemId"), it->id},
+                {q("sceneKey"), QJsonObject{{q("requested"), p.sceneKey.requested}, {q("detected"), p.sceneKey.detected}, {q("reason"), p.sceneKey.reason}}},
                 {q("proposedPrimaries"), toJson(p.primaries)},
                 {q("before"), p.before.toJson()},
                 {q("predicted"), p.predicted.toJson()},
@@ -241,12 +250,16 @@ void registerColourCommands(Engine& e) {
              analyzeCmd));
   e.add(spec("colour.autoBalance", "", "colour", true,
              QStringLiteral("Propose primaries that neutralise the clip's measured colour cast (temperature / tint, from near-neutral pixels) and bring its median exposure to exposureTarget (linear luma, default 0.18 = mid grey; "
-                            "left alone within toleranceStops, default 0.25; never beyond +-2 stops), without growing crushed or clipped pixels by more than 1 percentage point. The proposal is absolute (measured on the "
+                            "left alone within toleranceStops, default 0.25; never beyond +-2 stops), but a scene meant to be dark or bright keeps its key: `sceneKey` auto (default, classified from the measured luma "
+                            "distribution), low, normal or high; low (a dark scene with real highlights, e.g. a night shot of lights) aims at median 0.09 and a high-key one at 0.36, each moving exposure at most 0.5 stop, "
+                            "and `sceneKey {requested, detected, reason}` in the result says what was decided and why; a dark picture with no highlights is treated as underexposed (normal). Crushed or clipped pixels never grow by more than 1 percentage point. "
+                            "The proposal is absolute (measured on the "
                             "ungraded source, it replaces the current primaries) and verified on the CPU twin of the shader: `predicted` holds the metrics after it. With apply=true it is written like item.color.set "
                             "(one undo step, actor from origin). before / predicted are colour.analyze results; summary lists the headline numbers."),
              js::obj({{q("itemId"), js::str()},
                       {q("exposureTarget"), js::number(QStringLiteral("Target median linear luma, default 0.18"), 0.02, 0.9)},
                       {q("toleranceStops"), js::number(QStringLiteral("Leave exposure alone when already this close, default 0.25"), 0, 2)},
+                      {q("sceneKey"), js::choice({q("auto"), q("low"), q("normal"), q("high")})},
                       {q("samples"), js::integer(dflt, 1, 16)},
                       {q("apply"), js::boolean(QStringLiteral("Write the proposal to the clip (undoable)"))}},
                      {q("itemId")}),

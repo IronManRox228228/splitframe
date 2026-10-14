@@ -261,6 +261,61 @@ private slots:
                              .arg(QString::fromStdString(ms.sections[1].label)).arg(ms.sections[1].startSec).arg(ms.sections[1].endSec).arg(QString::fromStdString(ms.sections[2].label)).arg(ms.downbeatPhase);
   }
 
+  void breakdownThatKeepsItsBassIsStillABreakdown() {
+    // 120 BPM: 8 bars drop (kick, loud claps, hats), 8 bars where the kick stays but claps and hats go (low band unchanged, full and high band well down), 8 bars drop
+    Buf v = silence(48.5);
+    int k = 0;
+    for (double t = 0.13; t < 47.9; t += 0.5, ++k) {
+      const bool keepsBass = t >= 16 && t < 32;
+      kick(v, t, 0.3);
+      if (!keepsBass) {
+        clap(v, t, 0.9);
+        hat(v, t + 0.25, 0.5);
+      }
+    }
+    const MusicStructure ms = analyseMusic(v.data(), static_cast<std::int64_t>(48.5 * kSr));
+    QVERIFY(ms.valid);
+    QString got;
+    for (const MusicSection& x : ms.sections) got += QStringLiteral("%1[%2-%3] ").arg(QString::fromStdString(x.label)).arg(x.startSec).arg(x.endSec);
+    QVERIFY2(ms.sections.size() == 3u, qPrintable(got));
+    QCOMPARE(ms.sections[0].label, std::string("drop"));
+    QCOMPARE(ms.sections[1].label, std::string("breakdown")); // the low band is within 6 dB of the drops, so only the dip between peaks can say so
+    QCOMPARE(ms.sections[2].label, std::string("drop"));
+  }
+
+  void weakBoundaryInsideAPhraseIsMerged() {
+    // 120 BPM: 8 quiet bars, then 3 bars at medium level, then 6 dB louder: the 14 dB step is a real boundary, the 6 dB one 3 bars later is
+    // weak and would leave a section under a phrase
+    Buf v = silence(64.5);
+    for (double t = 0.13; t < 63.9; t += 0.5) {
+      const double amp = t < 16 ? 0.05 : t < 22 ? 0.25 : 0.5;
+      kick(v, t, amp);
+      hat(v, t + 0.25, amp * 0.5);
+    }
+    const MusicStructure ms = analyseMusic(v.data(), static_cast<std::int64_t>(64.5 * kSr));
+    QVERIFY(ms.valid);
+    QString got;
+    for (const MusicSection& x : ms.sections) got += QStringLiteral("%1[%2-%3] ").arg(QString::fromStdString(x.label)).arg(x.startSec).arg(x.endSec);
+    QVERIFY2(ms.sections.size() == 3u, qPrintable(got)); // intro, the body, and the partial last bar's outro
+    for (size_t i = 1; i < ms.sections.size(); ++i) QVERIFY2(ms.sections[i].startSec <= 16.8 || ms.sections[i].startSec >= 60, qPrintable(got)); // nothing cut at 22 s
+    QVERIFY2(std::fabs(ms.sections[1].startSec - 16.13) <= 0.7, qPrintable(got));
+  }
+
+  void finalHitIsTheLastStrongOnsetNotTheNextBar() {
+    // 120 BPM: 16 bars of kick, a big hit on the bar line at 32.13 s that rings out as a decaying noise tail for 8 s
+    Buf v = silence(40.5);
+    for (double t = 0.13; t < 32.0; t += 0.5) {
+      kick(v, t, std::fmod(t - 0.13, 2.0) < 0.01 ? 0.7 : 0.35); // accented bar lines, so the bar phase is not a guess
+    }
+    hit(v, 32.13, 0.95);
+    kick(v, 32.13, 0.8);
+    addAt(v, 32.13, static_cast<std::int64_t>(8 * kSr), [&](std::int64_t k, double t) { return 0.25 * std::exp(-t / 1.2) * noiseAt(k, 0, 1.0f); });
+    const MusicStructure ms = analyseMusic(v.data(), static_cast<std::int64_t>(40.5 * kSr));
+    QVERIFY(ms.valid);
+    QVERIFY2(ms.finalHitSec > 0 && std::fabs(ms.finalHitSec - 32.13) <= 0.03, qPrintable(QString::number(ms.finalHitSec)));
+    for (const MusicSection& x : ms.sections) QVERIFY2(x.startSec < 32.13 + 0.5, qPrintable(QString::number(x.startSec))); // no section starts a bar late
+  }
+
   void pickupBarShiftsThePhraseGrid() {
     // 120 BPM, bar-accented kick (beat 0 loud). Bar 0 is a pickup (hats only), then drop bars 1-8, breakdown (no kick) 9-16, drop 17-24
     Buf v = silence(50.5);

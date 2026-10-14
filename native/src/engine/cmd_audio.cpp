@@ -574,6 +574,10 @@ Result structureCmd(CallContext& c, const QJsonObject& a) {
     o.insert(q("downbeatFrames"), downFrames);
   }
   o.insert(q("bars"), static_cast<int>(ms.downbeats.size()));
+  if (ms.finalHitSec >= 0) {
+    o.insert(q("finalHitSec"), fin(ms.finalHitSec, 1000.0));
+    if (item) o.insert(q("finalHitFrame"), static_cast<double>(item->startFrame + static_cast<Frame>(std::llround(ms.finalHitSec / speed * f))));
+  }
   QJsonArray secs;
   for (const audio::MusicSection& s : ms.sections)
     secs.append(QJsonObject{{q("startSec"), fin(s.startSec, 1000.0)}, {q("endSec"), fin(s.endSec, 1000.0)}, {q("startBar"), s.startBar}, {q("endBar"), s.endBar}, {q("label"), QString::fromStdString(s.label)},
@@ -709,7 +713,9 @@ void registerAudioCommands(Engine& e) {
   e.add(spec("music.structure", "", "audio", false,
              QStringLiteral("Tempo, beats and sections of a piece of music (`assetId`, or `itemId` for the part of it that item plays; first 10 minutes). Deterministic DSP, no model: spectral-flux onset envelope, autocorrelation for the tempo "
                             "(60-200 BPM, octave chosen around 120), a comb fit for exact BPM and phase, downbeats every 4th beat (4/4 assumed) with the bar phase scored by low-band (< 150 Hz, kick) onsets plus how many section changes land on its bar lines (downbeatEvidence says how), and sections from bar level changes of 3 dB or more "
-                            "in the full or the low band, snapped to downbeats and preferably to 8- or 4-bar multiples, labelled intro / build / drop / breakdown (low band 6 dB under the loudest section) / outro, or main when the levels never move. Times are seconds from the start of the analysed audio; with itemId also beatFrames / downbeatFrames on the timeline. "
+                            "in the full or the low band, snapped to downbeats and preferably to 8- or 4-bar multiples, labelled intro / build / drop / breakdown (low band 6 dB under the loudest section, or a section 2.5 dB under both neighbours in the full or the high band even when the bass stays) / outro, or main when the levels never move. "
+                            "A boundary that would leave an interior section under 8 bars is merged unless it is strong. finalHitSec is the onset of the last strong hit before the tail decays (not snapped to the bar grid); a final cut a bar or two past a hit on a bar line moves back onto that hit's bar. "
+                            "Times are seconds from the start of the analysed audio; with itemId also beatFrames / downbeatFrames / finalHitFrame on the timeline. "
                             "tempoConfidence is the normalised autocorrelation at the beat period (0..1); below about 0.3 treat the grid as a guess."),
              js::obj({{q("assetId"), js::str()}, {q("itemId"), js::str()}}), structureCmd));
   e.add(spec("audio.check", "", "audio", false,

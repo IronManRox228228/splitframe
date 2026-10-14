@@ -408,6 +408,40 @@ std::array<double, 3> opponent(const ColourMetrics& m) {
 
 } // namespace
 
+QString sceneKeyName(SceneKey k) {
+  switch (k) {
+  case SceneKey::Low: return QStringLiteral("low");
+  case SceneKey::High: return QStringLiteral("high");
+  case SceneKey::Normal: return QStringLiteral("normal");
+  case SceneKey::Auto: break;
+  }
+  return QStringLiteral("auto");
+}
+
+SceneKey detectSceneKey(const ColourMetrics& m, QString* reason) {
+  const auto say = [&](const QString& s) {
+    if (reason) *reason = s;
+  };
+  double bright = 0; // share of pixels at display luma >= 0.75
+  for (int i = kHistogramBins * 3 / 4; i < kHistogramBins; ++i) bright += m.histogram[static_cast<size_t>(i)];
+  if (m.p50 <= kLowKeyMedian) {
+    if (m.p99 >= 0.4 || bright >= 0.002) {
+      say(QStringLiteral("median %1 is %2 stops under mid grey but there are real highlights (p99 %3, %4 % of pixels bright): a dark scene with lights, kept dark")
+              .arg(m.p50, 0, 'f', 3).arg(-std::log2(std::max(m.p50, 1e-6) / 0.18), 0, 'f', 1).arg(m.p99, 0, 'f', 2).arg(bright * 100, 0, 'f', 1));
+      return SceneKey::Low;
+    }
+    say(QStringLiteral("median %1 and no highlights (p99 %2): underexposed, not low-key").arg(m.p50, 0, 'f', 3).arg(m.p99, 0, 'f', 2));
+    return SceneKey::Normal;
+  }
+  if (m.p50 >= kHighKeyMedian && m.p5 >= 0.05 && m.clippedPct.all < 1.0) {
+    say(QStringLiteral("median %1 is %2 stops over mid grey with lifted blacks (p5 %3) and %4 % clipped: a bright scene, kept bright")
+            .arg(m.p50, 0, 'f', 3).arg(std::log2(m.p50 / 0.18), 0, 'f', 1).arg(m.p5, 0, 'f', 3).arg(m.clippedPct.all, 0, 'f', 1));
+    return SceneKey::High;
+  }
+  say(QStringLiteral("median %1 is within the normal range, or the picture has clipped highlights or crushed shadows that say it is mis-exposed").arg(m.p50, 0, 'f', 3));
+  return SceneKey::Normal;
+}
+
 Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& opt) {
   Proposal p;
   const PixelSet src = subsample(source, kProposalPixels);
@@ -417,7 +451,19 @@ Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& op
     p.notes << QStringLiteral("No pixels to measure.");
     return p;
   }
-  const double target = std::max(opt.exposureTarget, 1e-3);
+  // scene key: low / high keep the shot's own brightness (a small range around its key, never the full mid-grey correction)
+  SceneKey key = opt.sceneKey;
+  p.sceneKey.requested = sceneKeyName(opt.sceneKey);
+  if (key == SceneKey::Auto) {
+    key = detectSceneKey(p.before, &p.sceneKey.reason);
+  } else {
+    p.sceneKey.reason = QStringLiteral("set by the caller");
+  }
+  p.sceneKey.detected = sceneKeyName(key);
+  const bool keyed = key == SceneKey::Low || key == SceneKey::High;
+  const double maxStops = keyed ? std::min(opt.maxExposureStops, kKeyedExposureStops) : opt.maxExposureStops;
+  const double target = std::max(keyed ? (key == SceneKey::Low ? std::min(opt.exposureTarget, kLowKeyMedian) : std::max(opt.exposureTarget, kHighKeyMedian)) : opt.exposureTarget, 1e-3);
+  if (keyed) p.notes << QStringLiteral("%1-key scene: exposure moves at most %2 stops and aims at median %3, not mid grey.").arg(p.sceneKey.detected).arg(maxStops, 0, 'f', 1).arg(target, 0, 'f', 2);
   const std::vector<unsigned char> mask = neutralMask(src); // every "after" below measures the cast on THESE pixels
   const auto measure = [&](const PrimaryGrade& grade) { return analyze(gradePixels(src, grade), &mask); };
   PrimaryGrade g;
@@ -439,7 +485,7 @@ Proposal proposeAutoBalance(const PixelSet& source, const AutoBalanceOptions& op
     m = measure(g);
     const double off = std::log2(target / std::max(m.lumaMedian, 1e-6));
     if (std::fabs(off) > opt.toleranceStops || g.exposure != 0) {
-      const double e = clampD(g.exposure + off, -opt.maxExposureStops, opt.maxExposureStops);
+      const double e = clampD(g.exposure + off, -maxStops, maxStops);
       // inside the tolerance band only an exposure we already set is kept converging
       if (std::fabs(e - g.exposure) > 0.002) {
         g.exposure = e;

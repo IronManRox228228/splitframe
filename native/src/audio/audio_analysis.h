@@ -146,12 +146,13 @@ struct MusicStructure {
   std::vector<double> beats;     // seconds
   std::vector<double> downbeats; // seconds, every 4th beat from downbeatPhase
   std::vector<MusicSection> sections;
+  double finalHitSec = -1;       // onset of the last strong hit before the tail decays (not snapped to the bar grid); -1 when none
 };
 
 // Analyses at most the first 10 minutes. Time 0 is the first fed frame.
 MusicStructure analyseMusic(const float* interleaved, std::int64_t frames);
 
-// Sections use two bands (full and < 150 Hz); a breakdown is a section whose low band is 6 dB under the loudest section's.
+// Sections use two bands (full and < 150 Hz); a breakdown is a section whose low band is 6 dB under the loudest section's, or one that dips 2.5 dB under both neighbours.
 // Exposed for tests: spectral-flux onset envelope (detrended, non-negative) at kOnsetRate values per second.
 constexpr int kOnsetHop = 240; // 5 ms
 std::vector<float> onsetEnvelope(const float* interleaved, std::int64_t frames);

@@ -372,6 +372,15 @@ MusicStructure analyseMusic(const float* in, std::int64_t frames) {
   const std::int64_t ne = static_cast<std::int64_t>(env.size());
   r0 /= static_cast<double>(ne);
 
+  // final hit: the last onset peak of at least 20% of the strongest one, so the decaying tail (small peaks) is not taken for it
+  for (std::int64_t i = ne - 2; i >= 1; --i) {
+    const float v = env[static_cast<size_t>(i)];
+    if (v >= 0.2 * peak && v >= env[static_cast<size_t>(i - 1)] && v > env[static_cast<size_t>(i + 1)]) {
+      ms.finalHitSec = envTime(static_cast<double>(i));
+      break;
+    }
+  }
+
   // coarse tempo: autocorrelation of the onset envelope, 60..200 BPM, octave chosen with a prior around 120 BPM
   const std::int64_t lagMin = static_cast<std::int64_t>(std::llround(60.0 * kEnvRate / 200.0)), lagMax = static_cast<std::int64_t>(std::llround(60.0 * kEnvRate / 60.0));
   const std::int64_t lagTop = std::min<std::int64_t>(2 * lagMax, ne / 2);
@@ -597,6 +606,7 @@ MusicStructure analyseMusic(const float* in, std::int64_t frames) {
     return i < dn.size() ? dn[i] : 0.0;
   };
   std::vector<int> cuts{0};
+  std::vector<double> cutV{0.0}; // boundary strength per cut
   for (const Cand& cd : cands) {
     int b = cd.bar;
     for (const int mult : {8, 4}) {
@@ -615,11 +625,38 @@ MusicStructure analyseMusic(const float* in, std::int64_t frames) {
     bool free = true;
     for (int c : cuts)
       if (std::abs(c - b) < (c == 0 ? 1 : 2)) free = false;
-    if (free) cuts.push_back(b);
+    if (free) {
+      cuts.push_back(b);
+      cutV.push_back(cd.v);
+    }
+  }
+  // Weak boundaries merge: an interior section under 8 bars (a phrase) is not a section, so the weaker of its two bounding cuts goes,
+  // unless that cut is itself strong (at least half the strongest boundary), which keeps real short pickups and tails.
+  constexpr int kMinSectionBars = 8;
+  for (bool again = true; again;) {
+    again = false;
+    std::vector<size_t> order(cuts.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](size_t x, size_t y) { return cuts[x] < cuts[y]; });
+    for (size_t k = 1; k + 1 < order.size() && !again; ++k) {
+      const size_t a = order[k], b = order[k + 1];
+      if (cuts[b] - cuts[a] >= kMinSectionBars) continue;
+      const size_t weak = cutV[a] <= cutV[b] ? a : b;
+      if (cutV[weak] >= 0.5 * maxV) continue;
+      cuts.erase(cuts.begin() + static_cast<std::ptrdiff_t>(weak));
+      cutV.erase(cutV.begin() + static_cast<std::ptrdiff_t>(weak));
+      again = true;
+    }
   }
   std::sort(cuts.begin(), cuts.end());
+  // the tail after the final hit: when the last cut sits a bar or two past a hit that lands on a bar line, the hit and its decay are the outro
+  if (ms.finalHitSec >= 0 && cuts.size() >= 2) {
+    const int hitBar = static_cast<int>(std::lround((ms.finalHitSec - bars.front().start) / (4.0 * ms.beatPeriodSec)));
+    const double off = ms.finalHitSec - bars[static_cast<size_t>(std::clamp(hitBar, 0, nb - 1))].start;
+    if (hitBar > cuts[cuts.size() - 2] && hitBar < cuts.back() && cuts.back() - hitBar <= 2 && std::fabs(off) <= 0.25 * ms.beatPeriodSec) cuts.back() = hitBar;
+  }
   cuts.push_back(nb);
-  std::vector<double> secLow;
+  std::vector<double> secLow, secHigh;
   const auto meanOf = [&](const std::vector<double>& v, int a, int b) {
     double s = 0;
     for (int i = a; i < b; ++i) s += v[static_cast<size_t>(i)];
@@ -633,6 +670,10 @@ MusicStructure analyseMusic(const float* in, std::int64_t frames) {
     s.endSec = i + 2 == cuts.size() ? ms.durationSec : bars[static_cast<size_t>(cuts[i + 1])].start;
     s.energyDb = meanOf(barF, s.startBar, s.endBar);
     secLow.push_back(meanOf(barL, s.startBar, s.endBar));
+    // the band above 150 Hz, as mean-square: full band less the low band
+    double hf = 0;
+    for (int q = s.startBar; q < s.endBar; ++q) hf += std::max(0.0, std::pow(10.0, barF[static_cast<size_t>(q)] / 10.0) - std::pow(10.0, barL[static_cast<size_t>(q)] / 10.0));
+    secHigh.push_back(dbOf(hf / (s.endBar - s.startBar)));
     ms.sections.push_back(s);
   }
   double lo = kInf, hi = -kInf, loLow = kInf, hiLow = -kInf;
@@ -649,6 +690,16 @@ MusicStructure analyseMusic(const float* in, std::int64_t frames) {
   std::sort(loudLow.begin(), loudLow.end());
   const double refLow = loudLow.empty() ? hiLow : (loudLow.size() % 2 ? loudLow[loudLow.size() / 2] : 0.5 * (loudLow[loudLow.size() / 2 - 1] + loudLow[loudLow.size() / 2]));
   const size_t ns = ms.sections.size();
+  // A breakdown can keep its bass: a body section that sits 2.5 dB or more under both neighbouring body sections, in the full band or in the
+  // band above 150 Hz, is a dip between two peaks (a build only climbs, so it is under its next section alone). An intro or outro neighbour
+  // is quieter, so it never makes a dip.
+  const auto dipsBetweenPeaks = [&](size_t i) {
+    if (i == 0 || i + 1 >= ns) return false;
+    const auto dip = [&](const std::vector<double>& v) { return std::min(v[i - 1], v[i + 1]) - v[i] >= 2.5; };
+    std::vector<double> full;
+    for (const MusicSection& x : ms.sections) full.push_back(x.energyDb);
+    return dip(full) || dip(secHigh);
+  };
   for (size_t i = 0; i < ns; ++i) {
     MusicSection& s = ms.sections[i];
     // relative level in each band; a band whose level never moves by 3 dB says nothing against the section, so the louder reading counts
@@ -658,7 +709,7 @@ MusicStructure analyseMusic(const float* in, std::int64_t frames) {
     if (hi - lo < 3.0 && hiLow - loLow < 3.0) s.label = "main";
     else if (i == 0 && (lowDrop || s.relEnergy < 0.66)) s.label = "intro";
     else if (i + 1 == ns && (lowDrop || s.relEnergy < 0.66)) s.label = "outro";
-    else if (lowDrop) s.label = "breakdown";
+    else if (lowDrop || dipsBetweenPeaks(i)) s.label = "breakdown";
     else if (s.relEnergy >= 0.66 || refLow - secLow[i] < 3.0) s.label = "drop";
     else if (s.relEnergy < 0.4) s.label = "breakdown";
     else s.label = "build";
