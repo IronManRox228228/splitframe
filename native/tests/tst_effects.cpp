@@ -11,8 +11,11 @@
 #include <QImage>
 #include <QJsonDocument>
 #include <QPainter>
+#include <QSet>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <array>
 
 using namespace sf;
 using namespace sf::render;
@@ -465,6 +468,58 @@ private slots:
     SF_VERIFY_PIXEL(render(s, 17), 60, kH / 2, (Rgb{255, 0, 0}), 2);
     SF_VERIFY_PIXEL(render(s, 23), 100, kH / 2, (Rgb{0, 0, 255}), 2);  // 80%: edge at x = 102
     SF_VERIFY_PIXEL(render(s, 23), 120, kH / 2, (Rgb{255, 0, 0}), 2);
+  }
+
+  // ---- gl-transitions port: every gl_ transition, both ends ----
+  void glTransitionsEnds_data() {
+    QTest::addColumn<QString>("id");
+    for (const FxDef& d : FxRegistry::instance().all())
+      if (d.kind == FxKind::Transition && d.id.startsWith(QLatin1String("gl_"))) QTest::newRow(qPrintable(d.id)) << d.id;
+  }
+
+  // A pipeline per transition (a shader or pipeline failure shows as fxErrors), rendered at progress 0, 0.5 and 0.99 between a red
+  // and a blue clip. At the ends the picture must be the outgoing / incoming clip, on average: some transitions legitimately draw
+  // something else there (a flash, a border, a letterbox, a flip that has not finished), they are listed below.
+  void glTransitionsEnds() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    QFETCH(QString, id);
+    Scene s;
+    s.doc = newDoc(kW, kH);
+    const QString track = addTopTrack(s.doc, QStringLiteral("trk_gfx"), TrackKind::Overlay);
+    solid(s, QStringLiteral("itm_red"), track, QStringLiteral("#ff0000"), 0, 200);
+    solid(s, QStringLiteral("itm_blue"), track, QStringLiteral("#0000ff"), 200, 200);
+    blendIn(s, BlendSpace::Display);
+    s.doc.transitions = {transition(id, 100)}; // window 150..250, progress (f - 150) / 100
+
+    // mean absolute channel difference to a flat colour, 0..255
+    const auto distance = [](const QImage& img, int r, int g, int b) {
+      const QImage px = img.convertToFormat(QImage::Format_RGBA8888);
+      double sum = 0;
+      for (int y = 0; y < px.height(); ++y)
+        for (int x = 0; x < px.width(); ++x) {
+          const QRgb c = px.pixel(x, y);
+          sum += qAbs(qRed(c) - r) + qAbs(qGreen(c) - g) + qAbs(qBlue(c) - b);
+        }
+      return sum / (3.0 * px.width() * px.height());
+    };
+
+    const std::array<Frame, 3> frames{150, 200, 249};
+    double atStart = 0, atEnd = 0;
+    for (size_t i = 0; i < frames.size(); ++i) {
+      RenderStats stats;
+      const QImage img = render(s, frames[i], &stats);
+      QVERIFY2(!img.isNull(), qPrintable(id));
+      QVERIFY2(stats.fxErrors == 0, qPrintable(QStringLiteral("%1: shader or pipeline failure at frame %2").arg(id).arg(frames[i])));
+      QCOMPARE(stats.fxPasses, 1);
+      if (i == 0) atStart = distance(img, 255, 0, 0);
+      if (i == 2) atEnd = distance(img, 0, 0, 255);
+    }
+    // transitions that do not start on the outgoing picture or end on the incoming one (see the report in the log)
+    static const QSet<QString> startsElsewhere = {};
+    static const QSet<QString> endsElsewhere = {};
+    constexpr double kTolerance = 25;
+    if (!startsElsewhere.contains(id)) QVERIFY2(atStart < kTolerance, qPrintable(QStringLiteral("%1: progress 0 is %2 away from the outgoing colour").arg(id).arg(atStart)));
+    if (!endsElsewhere.contains(id)) QVERIFY2(atEnd < kTolerance, qPrintable(QStringLiteral("%1: progress 0.99 is %2 away from the incoming colour").arg(id).arg(atEnd)));
   }
 
   void clipEffectsRunInsideATransition() {

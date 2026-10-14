@@ -1,0 +1,4093 @@
+{
+ "effects": [
+  {
+   "id": "gl_advanced_mosaic",
+   "name": "Advanced Mosaic",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_advanced_mosaic.glsl",
+   "description": "Both images break into large blocks that blend, then sharpen into the incoming image",
+   "tags": [
+    "pixelate",
+    "mosaic",
+    "blend",
+    "geometric"
+   ],
+   "whenToUse": [
+    "advanced mosaic style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "pixelSize",
+     "label": "Pixel Size",
+     "type": "float",
+     "min": 2.5,
+     "max": 100,
+     "default": 50
+    }
+   ]
+  },
+  {
+   "id": "gl_angular",
+   "name": "Angular",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_angular.glsl",
+   "description": "A wipe that sweeps around the center from a starting angle",
+   "tags": [
+    "wipe",
+    "radial",
+    "clock",
+    "geometric"
+   ],
+   "whenToUse": [
+    "angular style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "startingAngle",
+     "label": "Starting Angle",
+     "type": "float",
+     "min": 0,
+     "max": 360,
+     "default": 90,
+     "description": "Angle where the wipe starts, in degrees"
+    }
+   ]
+  },
+  {
+   "id": "gl_block_dissolve",
+   "name": "Block Dissolve",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_block_dissolve.glsl",
+   "description": "The incoming image appears in small random blocks",
+   "tags": [
+    "dissolve",
+    "blocks",
+    "noise",
+    "organic"
+   ],
+   "whenToUse": [
+    "block dissolve style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "blocksize",
+     "label": "Blocksize",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.02
+    }
+   ]
+  },
+  {
+   "id": "gl_book_flip",
+   "name": "Book Flip",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_book_flip.glsl",
+   "description": "The outgoing image turns like a book page from right to left, revealing the incoming one",
+   "tags": [
+    "page",
+    "flip",
+    "3d"
+   ],
+   "whenToUse": [
+    "book flip style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_bounce",
+   "name": "Bounce",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_bounce.glsl",
+   "description": "The outgoing image drops out of the frame with a few bounces, revealing the incoming one",
+   "tags": [
+    "bounce",
+    "slide",
+    "vertical",
+    "shadow",
+    "3d"
+   ],
+   "whenToUse": [
+    "bounce style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "shadow_colour",
+     "label": "Shadow colour",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      0.6
+     ],
+     "description": "Color of the shadow cast on the incoming image"
+    },
+    {
+     "name": "shadow_height",
+     "label": "Shadow height",
+     "type": "float",
+     "min": 0.01,
+     "max": 0.5,
+     "default": 0.075,
+     "description": "Height of the shadow, relative to the image height"
+    },
+    {
+     "name": "bounces",
+     "label": "Bounces",
+     "type": "float",
+     "min": 1,
+     "max": 10,
+     "default": 3,
+     "description": "Number of bounces before settling"
+    }
+   ]
+  },
+  {
+   "id": "gl_bow_tie_horizontal",
+   "name": "Bow Tie Horizontal",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_bow_tie_horizontal.glsl",
+   "description": "Two triangles grow from the left and right edges into a bow tie that reveals the incoming image",
+   "tags": [
+    "wipe",
+    "shape",
+    "horizontal",
+    "geometric"
+   ],
+   "whenToUse": [
+    "bow tie horizontal style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_bow_tie_vertical",
+   "name": "Bow Tie Vertical",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_bow_tie_vertical.glsl",
+   "description": "Two triangles grow from the top and bottom edges into a bow tie that reveals the incoming image",
+   "tags": [
+    "wipe",
+    "shape",
+    "vertical",
+    "geometric"
+   ],
+   "whenToUse": [
+    "bow tie vertical style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_bow_tie_with_parameter",
+   "name": "Bow Tie With Parameter",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_bow_tie_with_parameter.glsl",
+   "description": "A bow-tie wipe with an adjustable shape that can run in reverse",
+   "tags": [
+    "wipe",
+    "shape",
+    "geometric"
+   ],
+   "whenToUse": [
+    "bow tie with parameter style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "adjust",
+     "label": "Adjust",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5
+    },
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Run the wipe in reverse"
+    }
+   ]
+  },
+  {
+   "id": "gl_box",
+   "name": "Box",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_box.glsl",
+   "description": "The outgoing image shrinks into a box, toward the center or a corner, revealing the incoming one",
+   "tags": [
+    "box",
+    "zoom",
+    "shape",
+    "geometric"
+   ],
+   "whenToUse": [
+    "box style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "rectIn",
+     "label": "Rect In",
+     "type": "int",
+     "min": 0,
+     "max": 1,
+     "default": 1
+    },
+    {
+     "name": "location",
+     "label": "Location",
+     "type": "int",
+     "min": 0,
+     "max": 4,
+     "default": 0,
+     "description": "Where the box goes: 0 center, 1 left top, 2 left bottom, 3 right top, 4 right bottom"
+    }
+   ]
+  },
+  {
+   "id": "gl_burn",
+   "name": "Burn",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_burn.glsl",
+   "description": "A crossfade that brightens toward a color in the middle",
+   "tags": [
+    "fade",
+    "color",
+    "flash",
+    "light"
+   ],
+   "whenToUse": [
+    "burn style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "color",
+     "label": "Color",
+     "type": "color",
+     "default": [
+      0.9,
+      0.4,
+      0.2,
+      1
+     ],
+     "description": "Color the images brighten toward"
+    }
+   ]
+  },
+  {
+   "id": "gl_burn_0",
+   "name": "Burn 0",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_burn_0.glsl",
+   "description": "The outgoing image burns away in noisy, glowing patches",
+   "tags": [
+    "burn",
+    "fire",
+    "noise",
+    "light"
+   ],
+   "whenToUse": [
+    "burn 0 style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "burnColor",
+     "label": "Burn Color",
+     "type": "color",
+     "default": [
+      1,
+      0.5,
+      0,
+      1
+     ],
+     "description": "Color of the burning edges"
+    }
+   ]
+  },
+  {
+   "id": "gl_butterfly_wave_scrawler",
+   "name": "Butterfly Wave Scrawler",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_butterfly_wave_scrawler.glsl",
+   "description": "Wavy, color-separated ripples scramble the outgoing image into the incoming one",
+   "tags": [
+    "wave",
+    "distort",
+    "chromatic",
+    "organic"
+   ],
+   "whenToUse": [
+    "butterfly wave scrawler style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "amplitude",
+     "label": "Amplitude",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "waves",
+     "label": "Waves",
+     "type": "float",
+     "min": 1.5,
+     "max": 60,
+     "default": 30
+    },
+    {
+     "name": "colorSeparation",
+     "label": "Color Separation",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.3
+    }
+   ]
+  },
+  {
+   "id": "gl_cannabisleaf",
+   "name": "Cannabisleaf",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_cannabisleaf.glsl",
+   "description": "A cannabis-leaf shape grows from the center to reveal the incoming image",
+   "tags": [
+    "shape",
+    "wipe",
+    "organic"
+   ],
+   "whenToUse": [
+    "cannabisleaf style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_chessboard",
+   "name": "Chessboard",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_chessboard.glsl",
+   "description": "A chessboard pattern of squares reveals the incoming image",
+   "tags": [
+    "grid",
+    "squares",
+    "pattern",
+    "geometric"
+   ],
+   "whenToUse": [
+    "chessboard style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "grid_num",
+     "label": "Grid num",
+     "type": "float",
+     "min": 0.5,
+     "max": 20,
+     "default": 10,
+     "description": "Number of squares per row"
+    }
+   ]
+  },
+  {
+   "id": "gl_circle",
+   "name": "Circle",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_circle.glsl",
+   "description": "The outgoing image closes into a circle over a background color, then the incoming one opens from it",
+   "tags": [
+    "circle",
+    "iris",
+    "shape",
+    "geometric"
+   ],
+   "whenToUse": [
+    "circle style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "center",
+     "label": "Center",
+     "type": "point",
+     "default": [
+      0.5,
+      0.5
+     ],
+     "description": "Center of the circle"
+    },
+    {
+     "name": "backColor",
+     "label": "Back Color",
+     "type": "color",
+     "default": [
+      0.1,
+      0.1,
+      0.1,
+      1
+     ],
+     "description": "Background color"
+    }
+   ]
+  },
+  {
+   "id": "gl_circle_crop",
+   "name": "Circle Crop",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_circle_crop.glsl",
+   "description": "The outgoing image closes into a circle over a background color, then the incoming one opens from it",
+   "tags": [
+    "circle",
+    "iris",
+    "shape",
+    "geometric"
+   ],
+   "whenToUse": [
+    "circle crop style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "bgcolor",
+     "label": "Bgcolor",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      1
+     ],
+     "description": "Background color"
+    }
+   ]
+  },
+  {
+   "id": "gl_circleopen",
+   "name": "Circleopen",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_circleopen.glsl",
+   "description": "A soft-edged circle opens from the center to reveal the incoming image",
+   "tags": [
+    "circle",
+    "iris",
+    "wipe",
+    "geometric"
+   ],
+   "whenToUse": [
+    "circleopen style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.3,
+     "description": "Softness of the circle's edge"
+    },
+    {
+     "name": "opening",
+     "label": "Opening",
+     "type": "bool",
+     "default": true,
+     "description": "Open the circle; false closes it instead"
+    }
+   ]
+  },
+  {
+   "id": "gl_colorphase",
+   "name": "Colorphase",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_colorphase.glsl",
+   "description": "A crossfade in which each color channel changes at a different time",
+   "tags": [
+    "fade",
+    "color"
+   ],
+   "whenToUse": [
+    "colorphase style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "fromStep_x",
+     "label": "From Step X",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 0,
+     "description": "When each channel (r, g, b, a) starts changing"
+    },
+    {
+     "name": "fromStep_y",
+     "label": "From Step Y",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 0.2
+    },
+    {
+     "name": "fromStep_z",
+     "label": "From Step Z",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 0.4
+    },
+    {
+     "name": "fromStep_w",
+     "label": "From Step W",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 0
+    },
+    {
+     "name": "toStep_x",
+     "label": "To Step X",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 0.6,
+     "description": "When each channel (r, g, b, a) finishes changing"
+    },
+    {
+     "name": "toStep_y",
+     "label": "To Step Y",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 0.8
+    },
+    {
+     "name": "toStep_z",
+     "label": "To Step Z",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "toStep_w",
+     "label": "To Step W",
+     "type": "float",
+     "min": -1,
+     "max": 2,
+     "default": 1
+    }
+   ]
+  },
+  {
+   "id": "gl_colour_distance",
+   "name": "Colour Distance",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_colour_distance.glsl",
+   "description": "Pixels switch to the incoming image in order of how close their colors are",
+   "tags": [
+    "blend",
+    "color"
+   ],
+   "whenToUse": [
+    "colour distance style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "power",
+     "label": "Power",
+     "type": "float",
+     "min": 0,
+     "max": 10,
+     "default": 5
+    }
+   ]
+  },
+  {
+   "id": "gl_coord_from_in",
+   "name": "Coord From In",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_coord_from_in.glsl",
+   "description": "A crossfade in which the colors of one image displace the other",
+   "tags": [
+    "displace",
+    "distort",
+    "blend"
+   ],
+   "whenToUse": [
+    "coord from in style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_crazy_parametric_fun",
+   "name": "Crazy Parametric Fun",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_crazy_parametric_fun.glsl",
+   "description": "The outgoing image is pulled along a parametric curve into a psychedelic swirl",
+   "tags": [
+    "distort",
+    "psychedelic"
+   ],
+   "whenToUse": [
+    "crazy parametric fun style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "aValue",
+     "label": "A Value",
+     "type": "float",
+     "min": 0,
+     "max": 8,
+     "default": 4
+    },
+    {
+     "name": "bValue",
+     "label": "B Value",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "amplitude",
+     "label": "Amplitude",
+     "type": "float",
+     "min": 0,
+     "max": 240,
+     "default": 120
+    },
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    }
+   ]
+  },
+  {
+   "id": "gl_crosshatch",
+   "name": "Crosshatch",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_crosshatch.glsl",
+   "description": "The incoming image appears through a crosshatch of lines spreading from the center",
+   "tags": [
+    "pattern",
+    "lines",
+    "noise"
+   ],
+   "whenToUse": [
+    "crosshatch style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "center",
+     "label": "Center",
+     "type": "point",
+     "default": [
+      0.5,
+      0.5
+     ],
+     "description": "Point the lines spread from"
+    },
+    {
+     "name": "threshold",
+     "label": "Threshold",
+     "type": "float",
+     "min": 0,
+     "max": 6,
+     "default": 3
+    },
+    {
+     "name": "fadeEdge",
+     "label": "Fade Edge",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    }
+   ]
+  },
+  {
+   "id": "gl_crosswarp",
+   "name": "Crosswarp",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_crosswarp.glsl",
+   "description": "The outgoing image zooms in while the incoming one zooms out into place, sweeping from right to left",
+   "tags": [
+    "warp",
+    "zoom",
+    "horizontal"
+   ],
+   "whenToUse": [
+    "crosswarp style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_cross_zoom",
+   "name": "Cross Zoom",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_cross_zoom.glsl",
+   "description": "A crossfade through a strong zoom blur",
+   "tags": [
+    "zoom",
+    "blur",
+    "blend"
+   ],
+   "whenToUse": [
+    "cross zoom style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "strength",
+     "label": "Strength",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.4,
+     "description": "Blur strength"
+    }
+   ]
+  },
+  {
+   "id": "gl_cube",
+   "name": "Cube",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_cube.glsl",
+   "description": "The two images are faces of a rotating 3D cube, with a floor reflection",
+   "tags": [
+    "3d",
+    "cube",
+    "rotate",
+    "reflection"
+   ],
+   "whenToUse": [
+    "cube style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "persp",
+     "label": "Persp",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.7,
+     "description": "Amount of perspective"
+    },
+    {
+     "name": "unzoom",
+     "label": "Unzoom",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.3
+    },
+    {
+     "name": "reflection",
+     "label": "Reflection",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.4,
+     "description": "Strength of the reflection"
+    },
+    {
+     "name": "floating",
+     "label": "Floating",
+     "type": "float",
+     "min": 0.15,
+     "max": 6,
+     "default": 3
+    }
+   ]
+  },
+  {
+   "id": "gl_defocus_blur",
+   "name": "Defocus Blur",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_defocus_blur.glsl",
+   "description": "A crossfade through an out-of-focus blur",
+   "tags": [
+    "blur",
+    "blend"
+   ],
+   "whenToUse": [
+    "defocus blur style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "blurSize",
+     "label": "Blur Size",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.02,
+     "description": "Amount of blur"
+    }
+   ]
+  },
+  {
+   "id": "gl_directional",
+   "name": "Directional",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_directional.glsl",
+   "description": "The incoming image pushes the outgoing one out in a given direction",
+   "tags": [
+    "slide",
+    "push",
+    "directional",
+    "geometric"
+   ],
+   "whenToUse": [
+    "directional style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "vec2",
+     "min": -2,
+     "max": 2,
+     "default": [
+      0,
+      1
+     ],
+     "description": "Direction of the movement"
+    }
+   ]
+  },
+  {
+   "id": "gl_directional_easing",
+   "name": "Directional Easing",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_directional_easing.glsl",
+   "description": "Like Directional, with an eased movement",
+   "tags": [
+    "slide",
+    "push",
+    "directional",
+    "geometric"
+   ],
+   "whenToUse": [
+    "directional easing style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "vec2",
+     "min": -2,
+     "max": 2,
+     "default": [
+      0,
+      1
+     ],
+     "description": "Direction of the movement"
+    }
+   ]
+  },
+  {
+   "id": "gl_directional_scaled",
+   "name": "Directional Scaled",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_directional_scaled.glsl",
+   "description": "Like Directional, with both images scaled down while they slide",
+   "tags": [
+    "slide",
+    "push",
+    "zoom",
+    "directional",
+    "geometric"
+   ],
+   "whenToUse": [
+    "directional scaled style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "vec2",
+     "min": -2,
+     "max": 2,
+     "default": [
+      0,
+      1
+     ],
+     "description": "Direction of the movement"
+    },
+    {
+     "name": "scale",
+     "label": "Scale",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.7
+    }
+   ]
+  },
+  {
+   "id": "gl_directionalwarp",
+   "name": "Directionalwarp",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_directionalwarp.glsl",
+   "description": "A diagonal wipe with a warped, smeared edge",
+   "tags": [
+    "wipe",
+    "warp",
+    "directional",
+    "geometric"
+   ],
+   "whenToUse": [
+    "directionalwarp style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1,
+     "description": "Softness of the edge"
+    },
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "vec2",
+     "min": -2,
+     "max": 2,
+     "default": [
+      -1,
+      1
+     ],
+     "description": "Direction of the wipe"
+    }
+   ]
+  },
+  {
+   "id": "gl_directionalwipe",
+   "name": "Directionalwipe",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_directionalwipe.glsl",
+   "description": "A soft-edged diagonal wipe",
+   "tags": [
+    "wipe",
+    "directional",
+    "geometric"
+   ],
+   "whenToUse": [
+    "directionalwipe style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "vec2",
+     "min": -2,
+     "max": 2,
+     "default": [
+      1,
+      -1
+     ],
+     "description": "Direction of the wipe"
+    },
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5,
+     "description": "Softness of the edge"
+    }
+   ]
+  },
+  {
+   "id": "gl_dissolve",
+   "name": "Dissolve",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_dissolve.glsl",
+   "description": "The incoming image spreads over the outgoing one with a hot, glowing edge",
+   "tags": [
+    "dissolve",
+    "burn",
+    "glow",
+    "organic"
+   ],
+   "whenToUse": [
+    "dissolve style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "uLineWidth",
+     "label": "U Line Width",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    },
+    {
+     "name": "uSpreadClr",
+     "label": "U Spread Clr",
+     "type": "color",
+     "default": [
+      1,
+      0,
+      0,
+      1
+     ],
+     "description": "Color of the spreading edge"
+    },
+    {
+     "name": "uHotClr",
+     "label": "U Hot Clr",
+     "type": "color",
+     "default": [
+      0.9,
+      0.9,
+      0.2,
+      1
+     ],
+     "description": "Color of the hottest part of the edge"
+    },
+    {
+     "name": "uPow",
+     "label": "U Pow",
+     "type": "float",
+     "min": 0,
+     "max": 10,
+     "default": 5
+    },
+    {
+     "name": "uIntensity",
+     "label": "U Intensity",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    }
+   ]
+  },
+  {
+   "id": "gl_doom_screen_transition",
+   "name": "Doom Screen Transition",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_doom_screen_transition.glsl",
+   "description": "The outgoing image melts down in uneven columns, like the Doom screen wipe",
+   "tags": [
+    "melt",
+    "columns",
+    "retro"
+   ],
+   "whenToUse": [
+    "doom screen transition style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "bars",
+     "label": "Bars",
+     "type": "int",
+     "min": 1,
+     "max": 90,
+     "default": 30
+    },
+    {
+     "name": "amplitude",
+     "label": "Amplitude",
+     "type": "float",
+     "min": 0,
+     "max": 4,
+     "default": 2
+    },
+    {
+     "name": "noise",
+     "label": "Noise",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    },
+    {
+     "name": "frequency",
+     "label": "Frequency",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5
+    },
+    {
+     "name": "dripScale",
+     "label": "Drip Scale",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5
+    }
+   ]
+  },
+  {
+   "id": "gl_doorway",
+   "name": "Doorway",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_doorway.glsl",
+   "description": "The outgoing image opens like double doors as the incoming one comes forward, with a floor reflection",
+   "tags": [
+    "doors",
+    "3d",
+    "reflection"
+   ],
+   "whenToUse": [
+    "doorway style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reflection",
+     "label": "Reflection",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.4,
+     "description": "Strength of the reflection"
+    },
+    {
+     "name": "perspective",
+     "label": "Perspective",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.4,
+     "description": "Amount of perspective"
+    },
+    {
+     "name": "depth",
+     "label": "Depth",
+     "type": "float",
+     "min": 0,
+     "max": 6,
+     "default": 3
+    }
+   ]
+  },
+  {
+   "id": "gl_dreamy",
+   "name": "Dreamy",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_dreamy.glsl",
+   "description": "A crossfade with a gentle wavy distortion",
+   "tags": [
+    "wave",
+    "blend",
+    "organic"
+   ],
+   "whenToUse": [
+    "dreamy style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_dreamy_zoom",
+   "name": "Dreamy Zoom",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_dreamy_zoom.glsl",
+   "description": "Zooms and rotates into a bright flash, then out to the incoming image",
+   "tags": [
+    "zoom",
+    "rotate",
+    "flash",
+    "organic"
+   ],
+   "whenToUse": [
+    "dreamy zoom style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "rotation",
+     "label": "Rotation",
+     "type": "float",
+     "min": 0,
+     "max": 12,
+     "default": 6
+    },
+    {
+     "name": "scale",
+     "label": "Scale",
+     "type": "float",
+     "min": 0.06,
+     "max": 2.4,
+     "default": 1.2
+    }
+   ]
+  },
+  {
+   "id": "gl_drop_zone_flicker",
+   "name": "Drop Zone Flicker",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_drop_zone_flicker.glsl",
+   "description": "A flickering glitch with RGB offset, ghosting and scanlines that flashes back to the outgoing image",
+   "tags": [
+    "glitch",
+    "flicker",
+    "chromatic",
+    "scanlines"
+   ],
+   "whenToUse": [
+    "drop zone flicker style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "frameRate",
+     "label": "Frame Rate",
+     "type": "float",
+     "min": 0,
+     "max": 48,
+     "default": 24
+    },
+    {
+     "name": "rgbOffset",
+     "label": "Rgb Offset",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.014
+    },
+    {
+     "name": "blockAmount",
+     "label": "Block Amount",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.72
+    },
+    {
+     "name": "ghostAmount",
+     "label": "Ghost Amount",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.62
+    },
+    {
+     "name": "redCyan",
+     "label": "Red Cyan",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.58
+    },
+    {
+     "name": "scanline",
+     "label": "Scanline",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.075
+    }
+   ]
+  },
+  {
+   "id": "gl_edge_transition",
+   "name": "Edge Transition",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_edge_transition.glsl",
+   "description": "Both images fade through black with their edges glowing",
+   "tags": [
+    "edges",
+    "fade"
+   ],
+   "whenToUse": [
+    "edge transition style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "edge_thickness",
+     "label": "Edge thickness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.001
+    },
+    {
+     "name": "edge_brightness",
+     "label": "Edge brightness",
+     "type": "float",
+     "min": 0,
+     "max": 16,
+     "default": 8
+    }
+   ]
+  },
+  {
+   "id": "gl_fade",
+   "name": "Fade",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_fade.glsl",
+   "description": "A linear crossfade between the two images",
+   "tags": [
+    "fade",
+    "blend",
+    "light"
+   ],
+   "whenToUse": [
+    "fade style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_fadecolor",
+   "name": "Fadecolor",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_fadecolor.glsl",
+   "description": "A fade through a solid color, black by default",
+   "tags": [
+    "fade",
+    "color",
+    "light"
+   ],
+   "whenToUse": [
+    "fadecolor style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "color",
+     "label": "Color",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      1
+     ],
+     "description": "Color to fade through"
+    },
+    {
+     "name": "colorPhase",
+     "label": "Color Phase",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.4,
+     "description": "How long the color shows in the middle"
+    }
+   ]
+  },
+  {
+   "id": "gl_fadegrayscale",
+   "name": "Fadegrayscale",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_fadegrayscale.glsl",
+   "description": "A crossfade through grayscale",
+   "tags": [
+    "fade",
+    "grayscale",
+    "color",
+    "zoom",
+    "light"
+   ],
+   "whenToUse": [
+    "fadegrayscale style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "intensity",
+     "label": "Intensity",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.3,
+     "description": "How long the grayscale phase lasts"
+    }
+   ]
+  },
+  {
+   "id": "gl_film_burn",
+   "name": "Film Burn",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_film_burn.glsl",
+   "description": "Glowing film-burn light leaks wash over the image and reveal the incoming one",
+   "tags": [
+    "burn",
+    "film",
+    "light-leak",
+    "light"
+   ],
+   "whenToUse": [
+    "film burn style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "Seed",
+     "label": "Seed",
+     "type": "float",
+     "min": 0,
+     "max": 4.62,
+     "default": 2.31,
+     "description": "Random seed"
+    }
+   ]
+  },
+  {
+   "id": "gl_flyeye",
+   "name": "Flyeye",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_flyeye.glsl",
+   "description": "The image breaks into a fly's-eye grid of lenses with color separation",
+   "tags": [
+    "lens",
+    "distort",
+    "chromatic"
+   ],
+   "whenToUse": [
+    "flyeye style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "size",
+     "label": "Size",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.04
+    },
+    {
+     "name": "zoom",
+     "label": "Zoom",
+     "type": "float",
+     "min": 2.5,
+     "max": 100,
+     "default": 50
+    },
+    {
+     "name": "colorSeparation",
+     "label": "Color Separation",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.3
+    }
+   ]
+  },
+  {
+   "id": "gl_fold",
+   "name": "Fold",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_fold.glsl",
+   "description": "The incoming image unfolds from the left while the outgoing one folds away to the right",
+   "tags": [
+    "fold",
+    "slide",
+    "horizontal",
+    "3d"
+   ],
+   "whenToUse": [
+    "fold style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_fragment",
+   "name": "Fragment",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_fragment.glsl",
+   "description": "The outgoing image shatters into fragments that fly away",
+   "tags": [
+    "shatter",
+    "fragments"
+   ],
+   "whenToUse": [
+    "fragment style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_glitch_displace",
+   "name": "Glitch Displace",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_glitch_displace.glsl",
+   "description": "Blocks of the image are displaced in a glitch that flashes into the incoming image",
+   "tags": [
+    "glitch",
+    "displace"
+   ],
+   "whenToUse": [
+    "glitch displace style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_glitch_memories",
+   "name": "Glitch Memories",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_glitch_memories.glsl",
+   "description": "A crossfade with glitchy, color-shifted blocks",
+   "tags": [
+    "glitch",
+    "chromatic",
+    "blend"
+   ],
+   "whenToUse": [
+    "glitch memories style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_grid_flip",
+   "name": "Grid Flip",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_grid_flip.glsl",
+   "description": "The image splits into a grid of tiles that flip one by one to the incoming image",
+   "tags": [
+    "grid",
+    "tiles",
+    "flip",
+    "geometric",
+    "3d"
+   ],
+   "whenToUse": [
+    "grid flip style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "sizeX",
+     "label": "Size X",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 4,
+     "description": "Number of tiles (columns, rows)"
+    },
+    {
+     "name": "sizeY",
+     "label": "Size Y",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 4
+    },
+    {
+     "name": "pause",
+     "label": "Pause",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    },
+    {
+     "name": "dividerWidth",
+     "label": "Divider Width",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.05
+    },
+    {
+     "name": "bgcolor",
+     "label": "Bgcolor",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      1
+     ],
+     "description": "Color behind the tiles"
+    },
+    {
+     "name": "randomness",
+     "label": "Randomness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    }
+   ]
+  },
+  {
+   "id": "gl_heart",
+   "name": "Heart",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_heart.glsl",
+   "description": "A heart shape grows from the center to reveal the incoming image",
+   "tags": [
+    "shape",
+    "wipe",
+    "heart",
+    "geometric"
+   ],
+   "whenToUse": [
+    "heart style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_hexagonalize",
+   "name": "Hexagonalize",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_hexagonalize.glsl",
+   "description": "Both images turn into hexagons, crossfade, then sharpen again",
+   "tags": [
+    "pixelate",
+    "hexagon",
+    "blend",
+    "geometric"
+   ],
+   "whenToUse": [
+    "hexagonalize style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "steps",
+     "label": "Steps",
+     "type": "int",
+     "min": 1,
+     "max": 150,
+     "default": 50
+    },
+    {
+     "name": "horizontalHexagons",
+     "label": "Horizontal Hexagons",
+     "type": "float",
+     "min": 1,
+     "max": 40,
+     "default": 20,
+     "description": "Number of hexagons across"
+    }
+   ]
+  },
+  {
+   "id": "gl_horizontal_close",
+   "name": "Horizontal Close",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_horizontal_close.glsl",
+   "description": "The incoming image closes in from the top and bottom edges toward the middle",
+   "tags": [
+    "wipe",
+    "split"
+   ],
+   "whenToUse": [
+    "horizontal close style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_horizontal_open",
+   "name": "Horizontal Open",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_horizontal_open.glsl",
+   "description": "The incoming image opens from a line in the middle toward the top and bottom edges",
+   "tags": [
+    "wipe",
+    "split"
+   ],
+   "whenToUse": [
+    "horizontal open style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_hsv_fade",
+   "name": "HSV Fade",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_hsv_fade.glsl",
+   "description": "A crossfade through the HSV color space that cycles through hues",
+   "tags": [
+    "fade",
+    "color",
+    "hue",
+    "light"
+   ],
+   "whenToUse": [
+    "hsv fade style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_inverted_page_curl",
+   "name": "Inverted Page Curl",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_inverted_page_curl.glsl",
+   "description": "The outgoing image curls away like a page, revealing the incoming one",
+   "tags": [
+    "page",
+    "curl",
+    "3d"
+   ],
+   "whenToUse": [
+    "inverted page curl style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_kaleidoscope",
+   "name": "Kaleidoscope",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_kaleidoscope.glsl",
+   "description": "A crossfade through a spinning kaleidoscope",
+   "tags": [
+    "kaleidoscope",
+    "distort",
+    "blend"
+   ],
+   "whenToUse": [
+    "kaleidoscope style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "speed",
+     "label": "Speed",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "angle",
+     "label": "Angle",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "power",
+     "label": "Power",
+     "type": "float",
+     "min": 0,
+     "max": 3,
+     "default": 1.5
+    }
+   ]
+  },
+  {
+   "id": "gl_left_right",
+   "name": "Left Right",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_left_right.glsl",
+   "description": "The outgoing image shrinks away to the left while the incoming one slides in from the right",
+   "tags": [
+    "slide",
+    "zoom",
+    "horizontal",
+    "wipe"
+   ],
+   "whenToUse": [
+    "left right style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_linear_blur",
+   "name": "Linear Blur",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_linear_blur.glsl",
+   "description": "A crossfade through a blur",
+   "tags": [
+    "blur",
+    "blend"
+   ],
+   "whenToUse": [
+    "linear blur style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "intensity",
+     "label": "Intensity",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1,
+     "description": "Amount of blur"
+    }
+   ]
+  },
+  {
+   "id": "gl_luminance_melt",
+   "name": "Luminance Melt",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_luminance_melt.glsl",
+   "description": "The outgoing image melts away in noisy vertical streaks, depending on its brightness",
+   "tags": [
+    "melt",
+    "noise",
+    "luma",
+    "organic"
+   ],
+   "whenToUse": [
+    "luminance melt style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "bool",
+     "default": true,
+     "description": "Direction of the melt (false: up, true: down)"
+    },
+    {
+     "name": "l_threshold",
+     "label": "L threshold",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.8,
+     "description": "Luminance threshold"
+    },
+    {
+     "name": "above",
+     "label": "Above",
+     "type": "bool",
+     "default": false,
+     "description": "Melt the parts above the threshold instead of below"
+    }
+   ]
+  },
+  {
+   "id": "gl_morph",
+   "name": "Morph",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_morph.glsl",
+   "description": "A crossfade in which each image is displaced by the other's colors, like a morph",
+   "tags": [
+    "morph",
+    "distort",
+    "blend",
+    "organic"
+   ],
+   "whenToUse": [
+    "morph style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "strength",
+     "label": "Strength",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1,
+     "description": "Strength of the displacement"
+    }
+   ]
+  },
+  {
+   "id": "gl_mosaic",
+   "name": "Mosaic",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_mosaic.glsl",
+   "description": "The view pans across a mosaic of rotated tiles from both images and settles on the incoming one",
+   "tags": [
+    "mosaic",
+    "tiles",
+    "zoom",
+    "geometric"
+   ],
+   "whenToUse": [
+    "mosaic style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "endx",
+     "label": "Endx",
+     "type": "int",
+     "min": -4,
+     "max": 4,
+     "default": 2
+    },
+    {
+     "name": "endy",
+     "label": "Endy",
+     "type": "int",
+     "min": -4,
+     "max": 4,
+     "default": -1
+    }
+   ]
+  },
+  {
+   "id": "gl_mosaic_transition",
+   "name": "Mosaic Transition",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_mosaic_transition.glsl",
+   "description": "Both images break into mosaic blocks that blend, then sharpen into the incoming image",
+   "tags": [
+    "mosaic",
+    "pixelate",
+    "blend",
+    "geometric"
+   ],
+   "whenToUse": [
+    "mosaic transition style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "mosaicNum",
+     "label": "Mosaic Num",
+     "type": "float",
+     "min": 0.5,
+     "max": 20,
+     "default": 10,
+     "description": "Number of mosaic blocks"
+    }
+   ]
+  },
+  {
+   "id": "gl_multiply_blend",
+   "name": "Multiply Blend",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_multiply_blend.glsl",
+   "description": "A crossfade through the multiplied blend of both images",
+   "tags": [
+    "blend",
+    "fade"
+   ],
+   "whenToUse": [
+    "multiply blend style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_old_tv_lost_signal",
+   "name": "Old TV Lost Signal",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_old_tv_lost_signal.glsl",
+   "description": "A crossfade with drifting tracking lines and tearing, like a TV losing its signal",
+   "tags": [
+    "retro",
+    "glitch",
+    "scanlines"
+   ],
+   "whenToUse": [
+    "old tv lost signal style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_overexposure",
+   "name": "Overexposure",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_overexposure.glsl",
+   "description": "A crossfade through a washed-out, overexposed white",
+   "tags": [
+    "flash",
+    "light",
+    "fade"
+   ],
+   "whenToUse": [
+    "overexposure style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "strength",
+     "label": "Strength",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.6,
+     "description": "Amount of overexposure"
+    }
+   ]
+  },
+  {
+   "id": "gl_parametric_glitch",
+   "name": "Parametric Glitch",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_parametric_glitch.glsl",
+   "description": "A crossfade with glitchy horizontal bands and color shifts",
+   "tags": [
+    "glitch",
+    "blend"
+   ],
+   "whenToUse": [
+    "parametric glitch style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "ampx",
+     "label": "Ampx",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1,
+     "description": "Horizontal amplitude of the glitch"
+    },
+    {
+     "name": "ampy",
+     "label": "Ampy",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1,
+     "description": "Vertical amplitude of the glitch"
+    }
+   ]
+  },
+  {
+   "id": "gl_perlin",
+   "name": "Perlin",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_perlin.glsl",
+   "description": "The incoming image appears through blobs of Perlin noise",
+   "tags": [
+    "noise",
+    "dissolve",
+    "organic"
+   ],
+   "whenToUse": [
+    "perlin style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "scale",
+     "label": "Scale",
+     "type": "float",
+     "min": 0.2,
+     "max": 8,
+     "default": 4,
+     "description": "Scale of the noise; higher values make smaller blobs"
+    },
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.01,
+     "description": "Softness of the blob edges"
+    },
+    {
+     "name": "seed",
+     "label": "Seed",
+     "type": "float",
+     "min": 0,
+     "max": 25.9796,
+     "default": 12.9898,
+     "description": "Random seed"
+    }
+   ]
+  },
+  {
+   "id": "gl_pinwheel",
+   "name": "Pinwheel",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_pinwheel.glsl",
+   "description": "A spinning pinwheel reveals the incoming image",
+   "tags": [
+    "pinwheel",
+    "radial",
+    "rotate",
+    "geometric"
+   ],
+   "whenToUse": [
+    "pinwheel style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "speed",
+     "label": "Speed",
+     "type": "float",
+     "min": 0,
+     "max": 4,
+     "default": 2,
+     "description": "Rotation speed"
+    }
+   ]
+  },
+  {
+   "id": "gl_pixelize",
+   "name": "Pixelize",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_pixelize.glsl",
+   "description": "Both images pixelate, crossfade, then sharpen again",
+   "tags": [
+    "pixelate",
+    "blend",
+    "geometric"
+   ],
+   "whenToUse": [
+    "pixelize style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "squaresMinX",
+     "label": "Squares Min X",
+     "type": "int",
+     "min": 1,
+     "max": 60,
+     "default": 20,
+     "description": "Number of squares at the strongest pixelation"
+    },
+    {
+     "name": "squaresMinY",
+     "label": "Squares Min Y",
+     "type": "int",
+     "min": 1,
+     "max": 60,
+     "default": 20
+    },
+    {
+     "name": "steps",
+     "label": "Steps",
+     "type": "int",
+     "min": 1,
+     "max": 150,
+     "default": 50,
+     "description": "Number of pixelation steps; 0 for a continuous effect"
+    }
+   ]
+  },
+  {
+   "id": "gl_polar_function",
+   "name": "Polar Function",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_polar_function.glsl",
+   "description": "A flower shape with several petals grows to reveal the incoming image",
+   "tags": [
+    "shape",
+    "wipe",
+    "polar"
+   ],
+   "whenToUse": [
+    "polar function style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "segments",
+     "label": "Segments",
+     "type": "int",
+     "min": 1,
+     "max": 15,
+     "default": 5,
+     "description": "Number of petals"
+    }
+   ]
+  },
+  {
+   "id": "gl_polka_dots_curtain",
+   "name": "Polka Dots Curtain",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_polka_dots_curtain.glsl",
+   "description": "The incoming image appears through growing polka dots",
+   "tags": [
+    "dots",
+    "pattern",
+    "geometric"
+   ],
+   "whenToUse": [
+    "polka dots curtain style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "dots",
+     "label": "Dots",
+     "type": "float",
+     "min": 1,
+     "max": 40,
+     "default": 20,
+     "description": "Number of dots across the image"
+    },
+    {
+     "name": "center",
+     "label": "Center",
+     "type": "point",
+     "default": [
+      0,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gl_power_kaleido",
+   "name": "Power Kaleido",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_power_kaleido.glsl",
+   "description": "The image folds into an animated kaleidoscope before revealing the incoming one",
+   "tags": [
+    "kaleidoscope",
+    "distort"
+   ],
+   "whenToUse": [
+    "power kaleido style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "scale",
+     "label": "Scale",
+     "type": "float",
+     "min": 0.1,
+     "max": 4,
+     "default": 2
+    },
+    {
+     "name": "zValue",
+     "label": "Z Value",
+     "type": "float",
+     "min": 0,
+     "max": 3,
+     "default": 1.5
+    },
+    {
+     "name": "speed",
+     "label": "Speed",
+     "type": "float",
+     "min": 0,
+     "max": 10,
+     "default": 5
+    }
+   ]
+  },
+  {
+   "id": "gl_puzzle_right",
+   "name": "Puzzle Right",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_puzzle_right.glsl",
+   "description": "The image splits into a grid of tiles that flip one by one to the incoming image",
+   "tags": [
+    "grid",
+    "tiles",
+    "flip",
+    "wipe"
+   ],
+   "whenToUse": [
+    "puzzle right style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "sizeX",
+     "label": "Size X",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 4
+    },
+    {
+     "name": "sizeY",
+     "label": "Size Y",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 4
+    },
+    {
+     "name": "pause",
+     "label": "Pause",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.1
+    },
+    {
+     "name": "dividerWidth",
+     "label": "Divider Width",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.005
+    }
+   ]
+  },
+  {
+   "id": "gl_radial",
+   "name": "Radial",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_radial.glsl",
+   "description": "A radial wipe that sweeps around the center like a clock hand",
+   "tags": [
+    "wipe",
+    "radial",
+    "clock",
+    "geometric"
+   ],
+   "whenToUse": [
+    "radial style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    }
+   ]
+  },
+  {
+   "id": "gl_random_noise_x",
+   "name": "Random Noise X",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_random_noise_x.glsl",
+   "description": "The incoming image appears pixel by pixel in random noise",
+   "tags": [
+    "dissolve",
+    "noise",
+    "glitch"
+   ],
+   "whenToUse": [
+    "random noise x style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_randomsquares",
+   "name": "Randomsquares",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_randomsquares.glsl",
+   "description": "The incoming image appears in random squares",
+   "tags": [
+    "squares",
+    "grid",
+    "dissolve",
+    "geometric"
+   ],
+   "whenToUse": [
+    "randomsquares style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "sizeX",
+     "label": "Size X",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 10,
+     "description": "Number of squares (columns, rows)"
+    },
+    {
+     "name": "sizeY",
+     "label": "Size Y",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 10
+    },
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5,
+     "description": "Softness of each square's switch"
+    }
+   ]
+  },
+  {
+   "id": "gl_rectangle",
+   "name": "Rectangle",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_rectangle.glsl",
+   "description": "A rectangle grows from the center to cover the outgoing image, then shrinks to reveal the incoming one",
+   "tags": [
+    "box",
+    "shape",
+    "iris",
+    "geometric"
+   ],
+   "whenToUse": [
+    "rectangle style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "bgcolor",
+     "label": "Bgcolor",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      1
+     ],
+     "description": "Color of the rectangle"
+    }
+   ]
+  },
+  {
+   "id": "gl_rectangle_crop",
+   "name": "Rectangle Crop",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_rectangle_crop.glsl",
+   "description": "The outgoing image shrinks into a small rectangle over a background color, then the incoming one grows from it",
+   "tags": [
+    "box",
+    "iris",
+    "zoom",
+    "geometric"
+   ],
+   "whenToUse": [
+    "rectangle crop style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "bgcolor",
+     "label": "Bgcolor",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      1
+     ],
+     "description": "Background color"
+    }
+   ]
+  },
+  {
+   "id": "gl_revolve_left",
+   "name": "Revolve Left",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_revolve_left.glsl",
+   "description": "The outgoing image swirls and zooms with motion blur into the incoming one",
+   "tags": [
+    "swirl",
+    "zoom",
+    "rotate",
+    "blur",
+    "wipe"
+   ],
+   "whenToUse": [
+    "revolve left style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "center",
+     "label": "Center",
+     "type": "point",
+     "default": [
+      0.46,
+      0.48
+     ],
+     "description": "Center of the swirl"
+    },
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "float",
+     "min": -2,
+     "max": 2,
+     "default": -1
+    },
+    {
+     "name": "maxRotation",
+     "label": "Max Rotation",
+     "type": "float",
+     "min": 0,
+     "max": 3.9,
+     "default": 1.95
+    },
+    {
+     "name": "peakZoom",
+     "label": "Peak Zoom",
+     "type": "float",
+     "min": 0,
+     "max": 4.44,
+     "default": 2.22
+    },
+    {
+     "name": "swirl",
+     "label": "Swirl",
+     "type": "float",
+     "min": 0,
+     "max": 5.7,
+     "default": 2.85
+    },
+    {
+     "name": "barrel",
+     "label": "Barrel",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.38
+    },
+    {
+     "name": "motionBlur",
+     "label": "Motion Blur",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "switchStart",
+     "label": "Switch Start",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.3
+    },
+    {
+     "name": "switchEnd",
+     "label": "Switch End",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5
+    },
+    {
+     "name": "shadow",
+     "label": "Shadow",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.16
+    }
+   ]
+  },
+  {
+   "id": "gl_ripple",
+   "name": "Ripple",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_ripple.glsl",
+   "description": "Ripples spread from the center while crossfading",
+   "tags": [
+    "ripple",
+    "wave",
+    "blend",
+    "organic"
+   ],
+   "whenToUse": [
+    "ripple style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "amplitude",
+     "label": "Amplitude",
+     "type": "float",
+     "min": 0,
+     "max": 200,
+     "default": 100,
+     "description": "Frequency of the ripples"
+    },
+    {
+     "name": "speed",
+     "label": "Speed",
+     "type": "float",
+     "min": 0,
+     "max": 100,
+     "default": 50,
+     "description": "Speed of the ripples"
+    }
+   ]
+  },
+  {
+   "id": "gl_rolls",
+   "name": "Rolls",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_rolls.glsl",
+   "description": "The outgoing image rolls away around a corner, revealing the incoming one",
+   "tags": [
+    "rotate",
+    "roll",
+    "3d"
+   ],
+   "whenToUse": [
+    "rolls style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "type",
+     "label": "Type",
+     "type": "int",
+     "min": 0,
+     "max": 3,
+     "default": 0,
+     "description": "Corner to roll around"
+    },
+    {
+     "name": "RotDown",
+     "label": "Rot Down",
+     "type": "bool",
+     "default": false,
+     "description": "Roll the outgoing image down instead of up"
+    }
+   ]
+  },
+  {
+   "id": "gl_rotate_scale_fade",
+   "name": "Rotate Scale Fade",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_rotate_scale_fade.glsl",
+   "description": "The outgoing image spins and zooms while fading to the incoming one, over a background color",
+   "tags": [
+    "rotate",
+    "zoom",
+    "fade",
+    "light"
+   ],
+   "whenToUse": [
+    "rotate scale fade style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "center",
+     "label": "Center",
+     "type": "point",
+     "default": [
+      0.5,
+      0.5
+     ],
+     "description": "Center of the rotation"
+    },
+    {
+     "name": "rotations",
+     "label": "Rotations",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1,
+     "description": "Number of turns"
+    },
+    {
+     "name": "scale",
+     "label": "Scale",
+     "type": "float",
+     "min": 0.4,
+     "max": 16,
+     "default": 8,
+     "description": "Maximum zoom"
+    },
+    {
+     "name": "backColor",
+     "label": "Back Color",
+     "type": "color",
+     "default": [
+      0.15,
+      0.15,
+      0.15,
+      1
+     ],
+     "description": "Background color"
+    }
+   ]
+  },
+  {
+   "id": "gl_rotate_scale_vanish",
+   "name": "Rotate Scale Vanish",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_rotate_scale_vanish.glsl",
+   "description": "The outgoing image spins and shrinks away over the incoming one",
+   "tags": [
+    "rotate",
+    "zoom",
+    "spin"
+   ],
+   "whenToUse": [
+    "rotate scale vanish style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "FadeInSecond",
+     "label": "Fade In Second",
+     "type": "bool",
+     "default": true,
+     "description": "Fade in the incoming image"
+    },
+    {
+     "name": "ReverseEffect",
+     "label": "Reverse Effect",
+     "type": "bool",
+     "default": false,
+     "description": "Run the effect in reverse"
+    },
+    {
+     "name": "ReverseRotation",
+     "label": "Reverse Rotation",
+     "type": "bool",
+     "default": false,
+     "description": "Rotate the other way"
+    }
+   ]
+  },
+  {
+   "id": "gl_rotate_transition",
+   "name": "Rotate Transition",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_rotate_transition.glsl",
+   "description": "The images spin around the center while crossfading",
+   "tags": [
+    "rotate",
+    "spin",
+    "blend"
+   ],
+   "whenToUse": [
+    "rotate transition style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_scale_in",
+   "name": "Scale In",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_scale_in.glsl",
+   "description": "The incoming image scales in from the center while fading in",
+   "tags": [
+    "zoom",
+    "fade"
+   ],
+   "whenToUse": [
+    "scale in style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_simple_flip",
+   "name": "Simple Flip",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_simple_flip.glsl",
+   "description": "The outgoing image flips around the vertical axis into the incoming one",
+   "tags": [
+    "flip",
+    "horizontal",
+    "3d"
+   ],
+   "whenToUse": [
+    "simple flip style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_simple_zoom",
+   "name": "Simple Zoom",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_simple_zoom.glsl",
+   "description": "Zooms into the outgoing image, then fades to the incoming one",
+   "tags": [
+    "zoom",
+    "fade"
+   ],
+   "whenToUse": [
+    "simple zoom style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "zoom_quickness",
+     "label": "Zoom quickness",
+     "type": "float",
+     "min": 0.2,
+     "max": 1,
+     "default": 0.8,
+     "description": "Part of the transition spent zooming"
+    }
+   ]
+  },
+  {
+   "id": "gl_simple_zoom_out",
+   "name": "Simple Zoom Out",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_simple_zoom_out.glsl",
+   "description": "The incoming image zooms out into place while fading in",
+   "tags": [
+    "zoom",
+    "fade"
+   ],
+   "whenToUse": [
+    "simple zoom out style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "zoom_quickness",
+     "label": "Zoom quickness",
+     "type": "float",
+     "min": 0.2,
+     "max": 1,
+     "default": 0.8,
+     "description": "Part of the transition spent zooming"
+    },
+    {
+     "name": "fade",
+     "label": "Fade",
+     "type": "bool",
+     "default": true,
+     "description": "Fade instead of cutting to the incoming image"
+    }
+   ]
+  },
+  {
+   "id": "gl_slides",
+   "name": "Slides",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_slides.glsl",
+   "description": "The outgoing image slides out, or the incoming one slides in, toward an edge, a corner or the center",
+   "tags": [
+    "slide",
+    "directional",
+    "wipe"
+   ],
+   "whenToUse": [
+    "slides style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "type",
+     "label": "Type",
+     "type": "int",
+     "min": 0,
+     "max": 8,
+     "default": 0
+    },
+    {
+     "name": "In",
+     "label": "In",
+     "type": "bool",
+     "default": false,
+     "description": "Slide the incoming image in instead of the outgoing one out"
+    }
+   ]
+  },
+  {
+   "id": "gl_split_slide_in_horizontal",
+   "name": "Split Slide In Horizontal",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_split_slide_in_horizontal.glsl",
+   "description": "The incoming image slides in as two halves moving horizontally in opposite directions",
+   "tags": [
+    "slide",
+    "split",
+    "horizontal",
+    "wipe"
+   ],
+   "whenToUse": [
+    "split slide in horizontal style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Swap the directions of the halves"
+    }
+   ]
+  },
+  {
+   "id": "gl_split_slide_in_out_horizontal",
+   "name": "Split Slide In Out Horizontal",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_split_slide_in_out_horizontal.glsl",
+   "description": "The halves of both images slide horizontally in opposite directions, out and in at once",
+   "tags": [
+    "slide",
+    "split",
+    "horizontal",
+    "wipe"
+   ],
+   "whenToUse": [
+    "split slide in out horizontal style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Swap the directions of the halves"
+    }
+   ]
+  },
+  {
+   "id": "gl_split_slide_in_out_vertical",
+   "name": "Split Slide In Out Vertical",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_split_slide_in_out_vertical.glsl",
+   "description": "The halves of both images slide vertically in opposite directions, out and in at once",
+   "tags": [
+    "slide",
+    "split",
+    "vertical",
+    "wipe",
+    "glitch"
+   ],
+   "whenToUse": [
+    "split slide in out vertical style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Swap the directions of the halves"
+    }
+   ]
+  },
+  {
+   "id": "gl_split_slide_in_vertical",
+   "name": "Split Slide In Vertical",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_split_slide_in_vertical.glsl",
+   "description": "The incoming image slides in as two halves moving vertically in opposite directions",
+   "tags": [
+    "slide",
+    "split",
+    "vertical",
+    "wipe"
+   ],
+   "whenToUse": [
+    "split slide in vertical style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Swap the directions of the halves"
+    }
+   ]
+  },
+  {
+   "id": "gl_split_slide_out_horizontal",
+   "name": "Split Slide Out Horizontal",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_split_slide_out_horizontal.glsl",
+   "description": "The outgoing image slides out as two halves moving horizontally in opposite directions",
+   "tags": [
+    "slide",
+    "split",
+    "horizontal",
+    "wipe"
+   ],
+   "whenToUse": [
+    "split slide out horizontal style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Swap the directions of the halves"
+    }
+   ]
+  },
+  {
+   "id": "gl_split_slide_out_vertical",
+   "name": "Split Slide Out Vertical",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_split_slide_out_vertical.glsl",
+   "description": "The outgoing image slides out as two halves moving vertically in opposite directions",
+   "tags": [
+    "slide",
+    "split",
+    "vertical",
+    "wipe",
+    "glitch"
+   ],
+   "whenToUse": [
+    "split slide out vertical style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reverse",
+     "label": "Reverse",
+     "type": "bool",
+     "default": false,
+     "description": "Swap the directions of the halves"
+    }
+   ]
+  },
+  {
+   "id": "gl_squareswire",
+   "name": "Squareswire",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_squareswire.glsl",
+   "description": "Squares grow along a diagonal sweep to reveal the incoming image",
+   "tags": [
+    "squares",
+    "grid",
+    "wipe",
+    "directional",
+    "geometric"
+   ],
+   "whenToUse": [
+    "squareswire style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "squaresX",
+     "label": "Squares X",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 10,
+     "description": "Number of squares (columns, rows)"
+    },
+    {
+     "name": "squaresY",
+     "label": "Squares Y",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 10
+    },
+    {
+     "name": "direction",
+     "label": "Direction",
+     "type": "vec2",
+     "min": -2,
+     "max": 2,
+     "default": [
+      1,
+      -0.5
+     ],
+     "description": "Direction of the sweep"
+    },
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 3.2,
+     "default": 1.6,
+     "description": "Softness of the sweep"
+    }
+   ]
+  },
+  {
+   "id": "gl_squeeze",
+   "name": "Squeeze",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_squeeze.glsl",
+   "description": "The outgoing image is squeezed into a line with color separation, revealing the incoming one",
+   "tags": [
+    "squeeze",
+    "chromatic",
+    "vertical"
+   ],
+   "whenToUse": [
+    "squeeze style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "colorSeparation",
+     "label": "Color Separation",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.04,
+     "description": "Amount of color separation"
+    }
+   ]
+  },
+  {
+   "id": "gl_star_wipe",
+   "name": "Star Wipe",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_star_wipe.glsl",
+   "description": "A growing star reveals the incoming image",
+   "tags": [
+    "wipe",
+    "shape",
+    "star",
+    "geometric"
+   ],
+   "whenToUse": [
+    "star wipe style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "border_thickness",
+     "label": "Border thickness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.01,
+     "description": "Thickness of the star's border"
+    },
+    {
+     "name": "star_rotation",
+     "label": "Star rotation",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.75
+    },
+    {
+     "name": "border_color",
+     "label": "Border color",
+     "type": "color",
+     "default": [
+      1,
+      1,
+      1,
+      1
+     ],
+     "description": "Color of the star's border"
+    },
+    {
+     "name": "star_center",
+     "label": "Star center",
+     "type": "point",
+     "default": [
+      0.5,
+      0.5
+     ],
+     "description": "Center of the star"
+    }
+   ]
+  },
+  {
+   "id": "gl_static_wipe",
+   "name": "Static Wipe",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_static_wipe.glsl",
+   "description": "A wipe from top to bottom with a band of TV static at its edge",
+   "tags": [
+    "wipe",
+    "static",
+    "noise",
+    "vertical",
+    "glitch"
+   ],
+   "whenToUse": [
+    "static wipe style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "u_transitionUpToDown",
+     "label": "U transition Up To Down",
+     "type": "bool",
+     "default": true,
+     "description": "Wipe from top to bottom; false wipes from bottom to top"
+    },
+    {
+     "name": "u_max_static_span",
+     "label": "U max static span",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5,
+     "description": "Maximum height of the static band"
+    }
+   ]
+  },
+  {
+   "id": "gl_static_fade",
+   "name": "Static Fade",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_static_fade.glsl",
+   "description": "Cuts to the incoming image halfway, hidden behind a burst of TV static",
+   "tags": [
+    "static",
+    "noise",
+    "retro",
+    "glitch",
+    "light"
+   ],
+   "whenToUse": [
+    "static fade style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "n_noise_pixels",
+     "label": "N noise pixels",
+     "type": "float",
+     "min": 10,
+     "max": 400,
+     "default": 200
+    },
+    {
+     "name": "static_luminosity",
+     "label": "Static luminosity",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.8
+    }
+   ]
+  },
+  {
+   "id": "gl_stereo_viewer",
+   "name": "Stereo Viewer",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_stereo_viewer.glsl",
+   "description": "Stereo Viewer",
+   "tags": [
+    "3d"
+   ],
+   "whenToUse": [
+    "stereo viewer style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "zoom",
+     "label": "Zoom",
+     "type": "float",
+     "min": 0.5,
+     "max": 1,
+     "default": 0.88,
+     "description": "How much the images zoom out"
+    },
+    {
+     "name": "corner_radius",
+     "label": "Corner radius",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.22
+    }
+   ]
+  },
+  {
+   "id": "gl_strip_datamosh_glitch",
+   "name": "Strip Datamosh Glitch",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_strip_datamosh_glitch.glsl",
+   "description": "A datamosh glitch: torn strips, chroma shifts and scan noise drag the outgoing image into the incoming one",
+   "tags": [
+    "glitch",
+    "datamosh",
+    "chromatic"
+   ],
+   "whenToUse": [
+    "strip datamosh glitch style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "strength",
+     "label": "Strength",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 1
+    },
+    {
+     "name": "horizontalBars",
+     "label": "Horizontal Bars",
+     "type": "float",
+     "min": 2.1,
+     "max": 84,
+     "default": 42
+    },
+    {
+     "name": "verticalSlits",
+     "label": "Vertical Slits",
+     "type": "float",
+     "min": 0.9,
+     "max": 36,
+     "default": 18
+    },
+    {
+     "name": "tear",
+     "label": "Tear",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.18
+    },
+    {
+     "name": "chroma",
+     "label": "Chroma",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.032
+    },
+    {
+     "name": "residue",
+     "label": "Residue",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.62
+    },
+    {
+     "name": "noiseAmount",
+     "label": "Noise Amount",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.16
+    },
+    {
+     "name": "scanAmount",
+     "label": "Scan Amount",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.13
+    },
+    {
+     "name": "flashAmount",
+     "label": "Flash Amount",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.2
+    }
+   ]
+  },
+  {
+   "id": "gl_swap",
+   "name": "Swap",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_swap.glsl",
+   "description": "The two images swap places in 3D, with a floor reflection",
+   "tags": [
+    "3d",
+    "swap",
+    "reflection"
+   ],
+   "whenToUse": [
+    "swap style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "reflection",
+     "label": "Reflection",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.4,
+     "description": "Strength of the reflection"
+    },
+    {
+     "name": "perspective",
+     "label": "Perspective",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.2,
+     "description": "Amount of perspective"
+    },
+    {
+     "name": "depth",
+     "label": "Depth",
+     "type": "float",
+     "min": 0,
+     "max": 6,
+     "default": 3
+    }
+   ]
+  },
+  {
+   "id": "gl_swirl",
+   "name": "Swirl",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_swirl.glsl",
+   "description": "Both images swirl around the center while crossfading",
+   "tags": [
+    "swirl",
+    "rotate",
+    "blend",
+    "organic"
+   ],
+   "whenToUse": [
+    "swirl style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_tangent_motion_blur",
+   "name": "Tangent Motion Blur",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_tangent_motion_blur.glsl",
+   "description": "The outgoing image is flung away along a curve with motion blur",
+   "tags": [
+    "motion-blur",
+    "rotate",
+    "slide"
+   ],
+   "whenToUse": [
+    "tangent motion blur style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_tiles_wave",
+   "name": "Tiles Wave",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_tiles_wave.glsl",
+   "description": "The incoming image is revealed tile by tile in a diagonal wave",
+   "tags": [
+    "tiles",
+    "wave",
+    "wipe",
+    "geometric",
+    "organic"
+   ],
+   "whenToUse": [
+    "tiles wave style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "tileCountX",
+     "label": "Tile Count X",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 8,
+     "description": "Number of tiles (columns, rows)"
+    },
+    {
+     "name": "tileCountY",
+     "label": "Tile Count Y",
+     "type": "int",
+     "min": 1,
+     "max": 32,
+     "default": 8
+    },
+    {
+     "name": "flipX",
+     "label": "Flip X",
+     "type": "bool",
+     "default": true
+    },
+    {
+     "name": "flipY",
+     "label": "Flip Y",
+     "type": "bool",
+     "default": false
+    }
+   ]
+  },
+  {
+   "id": "gl_top_bottom",
+   "name": "Top Bottom",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_top_bottom.glsl",
+   "description": "The outgoing image shrinks away upward while the incoming one slides in from the bottom",
+   "tags": [
+    "slide",
+    "zoom",
+    "vertical"
+   ],
+   "whenToUse": [
+    "top bottom style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_tv_static",
+   "name": "TV Static",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_tv_static.glsl",
+   "description": "Cuts to full-screen TV static, then to the incoming image",
+   "tags": [
+    "static",
+    "noise",
+    "retro",
+    "glitch"
+   ],
+   "whenToUse": [
+    "tv static style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "offset",
+     "label": "Offset",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.05,
+     "description": "Part of the transition, at each end, that shows the images instead of static"
+    }
+   ]
+  },
+  {
+   "id": "gl_undulating_burn_out",
+   "name": "Undulating Burn Out",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_undulating_burn_out.glsl",
+   "description": "A circle with a wavy edge burns out from the center to reveal the incoming image",
+   "tags": [
+    "circle",
+    "burn",
+    "wipe",
+    "light"
+   ],
+   "whenToUse": [
+    "undulating burn out style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.03,
+     "description": "Softness of the edge"
+    },
+    {
+     "name": "center",
+     "label": "Center",
+     "type": "point",
+     "default": [
+      0.5,
+      0.5
+     ],
+     "description": "Center of the circle"
+    },
+    {
+     "name": "color",
+     "label": "Color",
+     "type": "color",
+     "default": [
+      0,
+      0,
+      0,
+      1
+     ],
+     "description": "Color of the burning edge"
+    }
+   ]
+  },
+  {
+   "id": "gl_vertical_close",
+   "name": "Vertical Close",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_vertical_close.glsl",
+   "description": "The incoming image closes in from the left and right edges toward the middle",
+   "tags": [
+    "wipe",
+    "split"
+   ],
+   "whenToUse": [
+    "vertical close style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_vertical_open",
+   "name": "Vertical Open",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_vertical_open.glsl",
+   "description": "The incoming image opens from a line in the middle toward the left and right edges",
+   "tags": [
+    "wipe",
+    "split"
+   ],
+   "whenToUse": [
+    "vertical open style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_water_drop",
+   "name": "Water Drop",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_water_drop.glsl",
+   "description": "Ripples spread from the center like a drop falling into water, crossfading to the incoming image",
+   "tags": [
+    "ripple",
+    "water",
+    "blend",
+    "organic"
+   ],
+   "whenToUse": [
+    "water drop style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "amplitude",
+     "label": "Amplitude",
+     "type": "float",
+     "min": 0,
+     "max": 60,
+     "default": 30,
+     "description": "Frequency of the ripples"
+    },
+    {
+     "name": "speed",
+     "label": "Speed",
+     "type": "float",
+     "min": 0,
+     "max": 60,
+     "default": 30,
+     "description": "Speed of the ripples"
+    }
+   ]
+  },
+  {
+   "id": "gl_wind",
+   "name": "Wind",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_wind.glsl",
+   "description": "A ragged left-to-right wipe, as if the image was blown away by the wind",
+   "tags": [
+    "wipe",
+    "horizontal",
+    "noise",
+    "organic"
+   ],
+   "whenToUse": [
+    "wind style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "size",
+     "label": "Size",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.2,
+     "description": "Width of the ragged edge"
+    },
+    {
+     "name": "reversed",
+     "label": "Reversed",
+     "type": "bool",
+     "default": false,
+     "description": "Wipe from right to left instead"
+    }
+   ]
+  },
+  {
+   "id": "gl_windowblinds",
+   "name": "Windowblinds",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_windowblinds.glsl",
+   "description": "A crossfade through horizontal window blinds",
+   "tags": [
+    "blinds",
+    "stripes",
+    "blend",
+    "organic"
+   ],
+   "whenToUse": [
+    "windowblinds style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_windowslice",
+   "name": "Windowslice",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_windowslice.glsl",
+   "description": "The incoming image appears through vertical slices that widen",
+   "tags": [
+    "slices",
+    "stripes",
+    "wipe",
+    "organic"
+   ],
+   "whenToUse": [
+    "windowslice style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "count",
+     "label": "Count",
+     "type": "float",
+     "min": 0.5,
+     "max": 20,
+     "default": 10,
+     "description": "Number of slices"
+    },
+    {
+     "name": "smoothness",
+     "label": "Smoothness",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5,
+     "description": "Softness of the slices' edges"
+    }
+   ]
+  },
+  {
+   "id": "gl_wipe_down",
+   "name": "Wipe Down",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_wipe_down.glsl",
+   "description": "A hard-edged wipe from top to bottom",
+   "tags": [
+    "wipe",
+    "vertical"
+   ],
+   "whenToUse": [
+    "wipe down style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_wipe_left",
+   "name": "Wipe Left",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_wipe_left.glsl",
+   "description": "A hard-edged wipe from right to left",
+   "tags": [
+    "wipe",
+    "horizontal"
+   ],
+   "whenToUse": [
+    "wipe left style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_wipe_right",
+   "name": "Wipe Right",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_wipe_right.glsl",
+   "description": "A hard-edged wipe from left to right",
+   "tags": [
+    "wipe",
+    "horizontal"
+   ],
+   "whenToUse": [
+    "wipe right style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_wipe_up",
+   "name": "Wipe Up",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_wipe_up.glsl",
+   "description": "A hard-edged wipe from bottom to top",
+   "tags": [
+    "wipe",
+    "vertical"
+   ],
+   "whenToUse": [
+    "wipe up style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_x_axis_translation",
+   "name": "X Axis Translation",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_x_axis_translation.glsl",
+   "description": "The outgoing image slides to the right, uncovering a crossfade to the incoming one",
+   "tags": [
+    "slide",
+    "horizontal",
+    "blend"
+   ],
+   "whenToUse": [
+    "x axis translation style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_zoom_in_circles",
+   "name": "Zoom In Circles",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_zoom_in_circles.glsl",
+   "description": "Concentric rings of the outgoing image zoom at different speeds before revealing the incoming one",
+   "tags": [
+    "zoom",
+    "circle",
+    "geometric"
+   ],
+   "whenToUse": [
+    "zoom in circles style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_zoom_in_out",
+   "name": "Zoom In Out",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_zoom_in_out.glsl",
+   "description": "Zooms into the outgoing image until it blurs into a flat color, then out to the incoming one",
+   "tags": [
+    "zoom",
+    "blur"
+   ],
+   "whenToUse": [
+    "zoom in out style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": []
+  },
+  {
+   "id": "gl_zoom_left_wipe",
+   "name": "Zoom Left Wipe",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_zoom_left_wipe.glsl",
+   "description": "Zooms into the outgoing image, then the incoming one wipes in from right to left",
+   "tags": [
+    "zoom",
+    "wipe",
+    "horizontal"
+   ],
+   "whenToUse": [
+    "zoom left wipe style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "zoom_quickness",
+     "label": "Zoom quickness",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.8,
+     "description": "Part of the first half spent zooming (capped at 0.5)"
+    }
+   ]
+  },
+  {
+   "id": "gl_zoom_right_wipe",
+   "name": "Zoom Right Wipe",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_zoom_right_wipe.glsl",
+   "description": "Zooms into the outgoing image, then the incoming one wipes in from left to right",
+   "tags": [
+    "zoom",
+    "wipe",
+    "horizontal"
+   ],
+   "whenToUse": [
+    "zoom right wipe style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "zoom_quickness",
+     "label": "Zoom quickness",
+     "type": "float",
+     "min": 0,
+     "max": 2,
+     "default": 0.8,
+     "description": "Part of the first half spent zooming (capped at 0.5)"
+    }
+   ]
+  }
+ ]
+}

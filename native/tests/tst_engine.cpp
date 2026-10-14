@@ -1281,6 +1281,10 @@ private slots:
     const QJsonArray transitions = ok(Q("effect.list"), {{Q("kind"), Q("transition")}}).value(Q("effects")).toArray();
     QCOMPARE(filters.size() + transitions.size(), all.size());
     QVERIFY(ok(Q("effect.list"), {{Q("category"), Q("wipe")}}).value(Q("effects")).toArray().size() >= 1);
+    QVERIFY2(transitions.size() >= 100, qPrintable(Q("transitions: ") + QString::number(transitions.size()))); // the gl-transitions port
+    int glCount = 0;
+    for (const QJsonValue& v : transitions) glCount += v.toObject().value(Q("id")).toString().startsWith(Q("gl_")) ? 1 : 0;
+    QVERIFY2(glCount >= 100, qPrintable(QString::number(glCount)));
     QJsonObject vignette;
     for (const QJsonValue& v : filters)
       if (v.toObject().value(Q("id")).toString() == Q("vignette")) vignette = v.toObject();
