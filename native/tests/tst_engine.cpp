@@ -1280,6 +1280,7 @@ private slots:
     const QJsonArray filters = ok(Q("effect.list"), {{Q("kind"), Q("filter")}}).value(Q("effects")).toArray();
     const QJsonArray transitions = ok(Q("effect.list"), {{Q("kind"), Q("transition")}}).value(Q("effects")).toArray();
     QCOMPARE(filters.size() + transitions.size(), all.size());
+    QVERIFY2(filters.size() >= 25, qPrintable(Q("filters: ") + QString::number(filters.size())));
     QVERIFY(ok(Q("effect.list"), {{Q("category"), Q("wipe")}}).value(Q("effects")).toArray().size() >= 1);
     QVERIFY2(transitions.size() >= 100, qPrintable(Q("transitions: ") + QString::number(transitions.size()))); // the gl-transitions port
     int glCount = 0;

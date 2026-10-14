@@ -629,14 +629,16 @@ struct Compositor::Impl {
     cb->draw(4);
     cb->endPass();
     for (const FxStep& st : l.steps) {
+      FxTarget* orig = cur; // the step's input stays readable (getOriginal) until its last pass
       for (int pass = 0; pass < st.def->passes; ++pass) {
         FxTarget* out = acquireTarget(l.content);
         if (!out) return cur;
-        recordFxPass(cb, st.pipe, out, cur->tex.get(), dummy.get(), st.firstIdx + pass);
-        cur->busy = false; // consumed: the next pass may draw into it
+        recordFxPass(cb, st.pipe, out, cur->tex.get(), orig->tex.get(), st.firstIdx + pass);
+        if (cur != orig) cur->busy = false; // consumed: the next pass may draw into it
         cur = out;
         ++stats.fxPasses;
       }
+      if (cur != orig) orig->busy = false;
     }
     return cur;
   }

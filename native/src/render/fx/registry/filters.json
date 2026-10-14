@@ -1,0 +1,423 @@
+{
+  "effects": [
+    {
+      "id": "glow",
+      "name": "Glow",
+      "category": "light",
+      "kind": "filter",
+      "body": "bodies/glow.glsl",
+      "description": "Bloom: the bright parts bleed soft light into their surroundings (three passes: bright-pass + blur, blur, add back).",
+      "tags": ["bloom", "light", "dreamy", "cinematic"],
+      "whenToUse": ["make highlights glow", "dreamy or romantic look", "sell a bright light source or neon"],
+      "passes": 3,
+      "params": [
+        {"name": "threshold", "label": "Threshold", "type": "float", "min": 0, "max": 1, "default": 0.65, "description": "Brightness above which a pixel starts to glow"},
+        {"name": "intensity", "label": "Intensity", "type": "float", "min": 0, "max": 2, "default": 0.4, "description": "How much glow is added"},
+        {"name": "radius", "label": "Radius", "type": "float", "min": 0.002, "max": 0.15, "default": 0.04, "description": "Spread of the glow as a fraction of the frame height"}
+      ]
+    },
+    {
+      "id": "light_leak",
+      "name": "Light Leak",
+      "category": "light",
+      "kind": "filter",
+      "body": "bodies/light_leak.glsl",
+      "description": "Procedural warm light leaking in from an edge, drifting with time (screen blend).",
+      "tags": ["film", "light", "warm", "analog", "organic"],
+      "whenToUse": ["warm analog film feel", "transition-like flare at a cut", "soften a digital-looking shot"],
+      "params": [
+        {"name": "intensity", "label": "Intensity", "type": "float", "min": 0, "max": 1, "default": 0.4, "description": "Strength of the leak"},
+        {"name": "hue", "label": "Hue", "type": "float", "min": 0, "max": 360, "default": 25, "description": "Colour of the leak in degrees (25 orange, 0 red, 330 pink)"},
+        {"name": "speed", "label": "Speed", "type": "float", "min": 0, "max": 3, "default": 0.25, "description": "How fast the leak drifts"},
+        {"name": "angle", "label": "Angle", "type": "float", "min": 0, "max": 360, "default": 180, "description": "Edge the light enters from, in degrees (180 left, 0 right, 90 top)"},
+        {"name": "spread", "label": "Spread", "type": "float", "min": 0.1, "max": 1.5, "default": 0.6, "description": "How far into the frame it reaches"}
+      ]
+    },
+    {
+      "id": "lens_flare_simple",
+      "name": "Lens Flare",
+      "category": "light",
+      "kind": "filter",
+      "body": "bodies/lens_flare_simple.glsl",
+      "description": "A light source with a soft core, halo, anamorphic streak and a few ghost reflections along the line through the frame centre.",
+      "tags": ["flare", "light", "sun", "cinematic"],
+      "whenToUse": ["add a sun or lamp flare to a shot", "sci-fi / cinematic highlight", "draw the eye to a light source"],
+      "params": [
+        {"name": "position", "label": "Position", "type": "point", "default": [0.7, 0.3], "description": "Where the light source sits in the frame"},
+        {"name": "intensity", "label": "Intensity", "type": "float", "min": 0, "max": 2, "default": 0.4, "description": "Brightness of the flare"},
+        {"name": "size", "label": "Size", "type": "float", "min": 0.05, "max": 1.5, "default": 0.5, "description": "Overall size"},
+        {"name": "streak", "label": "Streak", "type": "float", "min": 0, "max": 1, "default": 0.5, "description": "Horizontal anamorphic streak"},
+        {"name": "tint", "label": "Tint", "type": "color", "default": [1.0, 0.86, 0.62, 1.0], "description": "Colour of the flare"}
+      ]
+    },
+    {
+      "id": "god_rays",
+      "name": "God Rays",
+      "category": "light",
+      "kind": "filter",
+      "body": "bodies/god_rays.glsl",
+      "description": "Crepuscular rays: bright areas are smeared radially away from a light point.",
+      "tags": ["light", "rays", "sun", "atmosphere"],
+      "whenToUse": ["sunbeams through trees or windows", "dramatic backlit subject", "atmospheric haze around a light"],
+      "params": [
+        {"name": "position", "label": "Light position", "type": "point", "default": [0.5, 0.25], "description": "Where the rays radiate from"},
+        {"name": "intensity", "label": "Intensity", "type": "float", "min": 0, "max": 2, "default": 0.4, "description": "Strength of the rays"},
+        {"name": "reach", "label": "Reach", "type": "float", "min": 0, "max": 1, "default": 0.6, "description": "How far towards the light the smear travels"},
+        {"name": "threshold", "label": "Threshold", "type": "float", "min": 0, "max": 1, "default": 0.65, "description": "Brightness above which a pixel casts rays"},
+        {"name": "tint", "label": "Tint", "type": "color", "default": [1.0, 0.95, 0.85, 1.0], "description": "Colour of the rays"}
+      ]
+    },
+    {
+      "id": "lens_distortion",
+      "name": "Lens Distortion",
+      "category": "lens",
+      "kind": "filter",
+      "body": "bodies/lens_distortion.glsl",
+      "description": "Barrel (positive) or pincushion (negative) lens distortion with a zoom to hide the corners.",
+      "tags": ["lens", "distort", "wide-angle", "fisheye"],
+      "whenToUse": ["wide-angle or fisheye look", "correct or add lens curvature", "bulge a subject in the middle"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": -1, "max": 1, "default": 0.12, "description": "Positive = barrel, negative = pincushion"},
+        {"name": "zoom", "label": "Zoom", "type": "float", "min": 0.5, "max": 2, "default": 1.15, "description": "Zoom into the result (barrel needs about 1.15 to hide the corners)"}
+      ]
+    },
+    {
+      "id": "radial_blur",
+      "name": "Radial Blur",
+      "category": "lens",
+      "kind": "filter",
+      "body": "bodies/radial_blur.glsl",
+      "description": "Zoom blur: the picture streaks towards (or away from) a centre point.",
+      "tags": ["blur", "zoom", "speed", "energy"],
+      "whenToUse": ["zoom-punch on a beat", "speed or impact", "focus attention on the centre"],
+      "params": [
+        {"name": "centre", "label": "Centre", "type": "point", "default": [0.5, 0.5], "description": "Centre of the zoom"},
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.3, "description": "Length of the streaks"}
+      ]
+    },
+    {
+      "id": "directional_blur",
+      "name": "Directional Blur",
+      "category": "lens",
+      "kind": "filter",
+      "body": "bodies/directional_blur.glsl",
+      "description": "Motion-style blur along a direction.",
+      "tags": ["blur", "motion", "speed", "pan"],
+      "whenToUse": ["fake a fast pan", "whoosh transition helper", "motion smear on a moving subject"],
+      "params": [
+        {"name": "angle", "label": "Angle", "type": "float", "min": 0, "max": 360, "default": 0, "description": "Direction of the blur in degrees"},
+        {"name": "reach", "label": "Length", "type": "float", "min": 0, "max": 0.3, "default": 0.03, "description": "Blur length as a fraction of the frame height"}
+      ]
+    },
+    {
+      "id": "tilt_shift",
+      "name": "Tilt Shift",
+      "category": "lens",
+      "kind": "filter",
+      "body": "bodies/tilt_shift.glsl",
+      "description": "Keeps a band of the frame sharp and blurs above and below it, for a miniature look.",
+      "tags": ["blur", "miniature", "focus", "depth"],
+      "whenToUse": ["miniature or toy-town look", "guide focus along a band", "fake shallow depth of field on a landscape"],
+      "params": [
+        {"name": "focus", "label": "Focus", "type": "float", "min": 0, "max": 1, "default": 0.5, "description": "Position of the sharp band from the top of the frame"},
+        {"name": "band", "label": "Band", "type": "float", "min": 0, "max": 1, "default": 0.25, "description": "Height of the sharp band"},
+        {"name": "falloff", "label": "Falloff", "type": "float", "min": 0.01, "max": 1, "default": 0.3, "description": "How gradually the blur grows away from the band"},
+        {"name": "maxblur", "label": "Max blur", "type": "float", "min": 0, "max": 0.05, "default": 0.015, "description": "Strongest blur radius as a fraction of the frame height"},
+        {"name": "angle", "label": "Angle", "type": "float", "min": -90, "max": 90, "default": 0, "description": "Tilt of the band in degrees"}
+      ]
+    },
+    {
+      "id": "sharpen",
+      "name": "Sharpen",
+      "category": "lens",
+      "kind": "filter",
+      "body": "bodies/sharpen.glsl",
+      "description": "Unsharp mask: adds back the difference between the picture and a soft copy.",
+      "tags": ["sharpen", "detail", "clarity"],
+      "whenToUse": ["crisp up soft footage", "add punch to detail", "counter a blur from scaling"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 3, "default": 0.5, "description": "Strength of the sharpening"},
+        {"name": "radius", "label": "Radius", "type": "float", "min": 0.5, "max": 4, "default": 1, "description": "Width of the detail it acts on, in pixels"}
+      ]
+    },
+    {
+      "id": "defocus",
+      "name": "Defocus",
+      "category": "lens",
+      "kind": "filter",
+      "body": "bodies/defocus.glsl",
+      "description": "Small disc blur with brighter highlights, like an out-of-focus lens (use gaussian_blur for large soft blurs).",
+      "tags": ["blur", "bokeh", "lens", "focus"],
+      "whenToUse": ["rack-focus start or end", "soft out-of-focus background", "bokeh-like highlights"],
+      "params": [
+        {"name": "radius", "label": "Radius", "type": "float", "min": 0, "max": 32, "default": 4, "description": "Disc radius in pixels"},
+        {"name": "bokeh", "label": "Bokeh", "type": "float", "min": 0, "max": 1, "default": 0.3, "description": "Extra weight for bright highlights"}
+      ]
+    },
+    {
+      "id": "film_grain",
+      "name": "Film Grain",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/film_grain.glsl",
+      "description": "Animated film grain, strongest in the mid-tones; changes every frame step, repeatable for the same time and seed.",
+      "tags": ["film", "grain", "texture", "analog", "cinematic"],
+      "whenToUse": ["cinematic texture", "hide digital banding", "gritty or vintage look"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.3, "description": "Grain strength"},
+        {"name": "size", "label": "Size", "type": "float", "min": 0.5, "max": 6, "default": 1.5, "description": "Grain size in pixels"},
+        {"name": "rate", "label": "Rate", "type": "float", "min": 1, "max": 60, "default": 24, "description": "Grain changes per second"},
+        {"name": "chroma", "label": "Colour", "type": "float", "min": 0, "max": 1, "default": 0.25, "description": "How colourful the grain is"},
+        {"name": "seed", "label": "Seed", "type": "int", "min": 0, "max": 999, "default": 0, "description": "Different seeds give different grain patterns"}
+      ]
+    },
+    {
+      "id": "vhs",
+      "name": "VHS",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/vhs.glsl",
+      "description": "Analog tape: per-line jitter, a drifting tracking band, chroma bleed and static.",
+      "tags": ["vhs", "retro", "analog", "glitch", "nostalgia"],
+      "whenToUse": ["80s/90s home-video look", "found-footage feel", "flashback or memory"],
+      "params": [
+        {"name": "amount", "label": "Distortion", "type": "float", "min": 0, "max": 1, "default": 0.4, "description": "Line jitter and the tracking band"},
+        {"name": "bleed", "label": "Colour bleed", "type": "float", "min": 0, "max": 1, "default": 0.4, "description": "Red/blue smear sideways"},
+        {"name": "noise", "label": "Noise", "type": "float", "min": 0, "max": 1, "default": 0.3, "description": "Static and band noise"},
+        {"name": "seed", "label": "Seed", "type": "int", "min": 0, "max": 999, "default": 0, "description": "Changes the pattern of the jitter"}
+      ]
+    },
+    {
+      "id": "crt",
+      "name": "CRT",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/crt.glsl",
+      "description": "Old tube monitor: screen curvature, scanlines, RGB phosphor mask and corner shading.",
+      "tags": ["crt", "retro", "tv", "scanlines", "arcade"],
+      "whenToUse": ["old TV or monitor look", "retro game or computer screen", "screen-within-a-scene"],
+      "params": [
+        {"name": "curvature", "label": "Curvature", "type": "float", "min": 0, "max": 1, "default": 0.25, "description": "How much the screen bulges"},
+        {"name": "scanlines", "label": "Scanlines", "type": "float", "min": 0, "max": 1, "default": 0.35, "description": "Strength of the dark lines between scan rows"},
+        {"name": "mask", "label": "Phosphor mask", "type": "float", "min": 0, "max": 1, "default": 0.25, "description": "RGB dot-triad pattern"},
+        {"name": "line_size", "label": "Line size", "type": "float", "min": 1, "max": 8, "default": 3, "description": "Height of one scan row in pixels"}
+      ]
+    },
+    {
+      "id": "halftone",
+      "name": "Halftone",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/halftone.glsl",
+      "description": "Print-style dots whose size follows brightness; mono (coloured dots) or CMYK screens.",
+      "tags": ["halftone", "print", "comic", "pop-art", "retro"],
+      "whenToUse": ["comic or pop-art look", "newspaper / print texture", "stylised background"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.5, "description": "Mix with the original picture"},
+        {"name": "size", "label": "Dot spacing", "type": "float", "min": 0.005, "max": 0.2, "default": 0.025, "description": "Distance between dots as a fraction of the frame height"},
+        {"name": "angle", "label": "Angle", "type": "float", "min": 0, "max": 90, "default": 45, "description": "Angle of the dot grid in degrees"},
+        {"name": "cmyk", "label": "CMYK", "type": "bool", "default": false, "description": "Four-ink screens at print angles instead of one mono grid"}
+      ]
+    },
+    {
+      "id": "posterize",
+      "name": "Posterize",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/posterize.glsl",
+      "description": "Reduces each colour channel to a few levels.",
+      "tags": ["posterize", "graphic", "poster", "flat"],
+      "whenToUse": ["graphic poster look", "reduce colour detail", "stylised flat shading"],
+      "params": [
+        {"name": "levels", "label": "Levels", "type": "int", "min": 2, "max": 32, "default": 6, "description": "Number of levels per channel"},
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 1, "description": "Mix with the original picture"}
+      ]
+    },
+    {
+      "id": "pixelate",
+      "name": "Pixelate",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/pixelate.glsl",
+      "description": "Mosaic of square blocks.",
+      "tags": ["pixel", "mosaic", "retro", "censor", "8-bit"],
+      "whenToUse": ["8-bit or retro game look", "censor a face or plate", "transition into/out of a pixel mosaic (animate size)"],
+      "params": [
+        {"name": "size", "label": "Block size", "type": "float", "min": 1, "max": 128, "default": 8, "description": "Block size in pixels"}
+      ]
+    },
+    {
+      "id": "dither",
+      "name": "Dither",
+      "category": "retro",
+      "kind": "filter",
+      "body": "bodies/dither.glsl",
+      "description": "Ordered (Bayer 8x8) dithering down to a few levels per channel.",
+      "tags": ["dither", "retro", "pixel", "1-bit", "game-boy"],
+      "whenToUse": ["old computer / game console look", "1-bit or low-colour aesthetic", "printed texture"],
+      "params": [
+        {"name": "levels", "label": "Levels", "type": "int", "min": 2, "max": 16, "default": 6, "description": "Levels per channel"},
+        {"name": "scale", "label": "Pixel size", "type": "float", "min": 1, "max": 8, "default": 1, "description": "Size of one dither cell in pixels"},
+        {"name": "amount", "label": "Dither", "type": "float", "min": 0, "max": 1, "default": 1, "description": "Strength of the dither pattern (0 = plain banding)"}
+      ]
+    },
+    {
+      "id": "mirror",
+      "name": "Mirror",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/mirror.glsl",
+      "description": "Mirrors one half of the picture onto the other (horizontal, vertical, both) or folds it radially into segments.",
+      "tags": ["mirror", "symmetry", "kaleidoscope", "graphic"],
+      "whenToUse": ["symmetrical composition", "mirrored reflection look", "psychedelic radial symmetry"],
+      "params": [
+        {"name": "axis", "label": "Axis", "type": "enum", "options": ["horizontal", "vertical", "both", "radial"], "default": "horizontal", "description": "Where the mirror line runs (radial folds around the centre)"},
+        {"name": "offset", "label": "Offset", "type": "float", "min": -0.5, "max": 0.5, "default": 0, "description": "Moves the mirror line (radial: rotates the segments, in turns)"},
+        {"name": "flip", "label": "Flip side", "type": "bool", "default": false, "description": "Keep the other half instead"},
+        {"name": "segments", "label": "Segments", "type": "int", "min": 2, "max": 24, "default": 6, "description": "Radial only: number of segments"}
+      ]
+    },
+    {
+      "id": "kaleidoscope",
+      "name": "Kaleidoscope",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/kaleidoscope.glsl",
+      "description": "Folds the picture into rotating mirrored wedges around a centre.",
+      "tags": ["kaleidoscope", "psychedelic", "symmetry", "music"],
+      "whenToUse": ["psychedelic or trippy visual", "music-video abstract", "turn footage into a pattern (animate rotation)"],
+      "params": [
+        {"name": "segments", "label": "Segments", "type": "int", "min": 2, "max": 16, "default": 6, "description": "Number of wedges"},
+        {"name": "rotation", "label": "Rotation", "type": "float", "min": -360, "max": 360, "default": 0, "description": "Rotation of the pattern in degrees"},
+        {"name": "zoom", "label": "Zoom", "type": "float", "min": 0.25, "max": 4, "default": 1, "description": "Zoom into the source"},
+        {"name": "centre", "label": "Centre", "type": "point", "default": [0.5, 0.5], "description": "Centre of the pattern"},
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 1, "description": "Mix with the original picture"}
+      ]
+    },
+    {
+      "id": "duotone",
+      "name": "Duotone",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/duotone.glsl",
+      "description": "Maps brightness onto a gradient between a shadow colour and a highlight colour.",
+      "tags": ["duotone", "colour", "grade", "graphic", "stylised"],
+      "whenToUse": ["bold two-colour brand look", "unify messy footage colours", "moody coloured monochrome"],
+      "params": [
+        {"name": "shadow", "label": "Shadows", "type": "color", "default": [0.06, 0.08, 0.22, 1.0], "description": "Colour of the darkest parts"},
+        {"name": "highlight", "label": "Highlights", "type": "color", "default": [1.0, 0.82, 0.58, 1.0], "description": "Colour of the brightest parts"},
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.6, "description": "Mix with the original picture"}
+      ]
+    },
+    {
+      "id": "invert",
+      "name": "Invert",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/invert.glsl",
+      "description": "Inverts the colours (a negative), judged perceptually.",
+      "tags": ["invert", "negative", "flash", "graphic"],
+      "whenToUse": ["negative or x-ray look", "flash frame on a beat", "dream or hallucination moment"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 1, "description": "0 = original, 1 = fully inverted"}
+      ]
+    },
+    {
+      "id": "threshold",
+      "name": "Threshold",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/threshold.glsl",
+      "description": "Pure black and white: every pixel goes to one or the other depending on its brightness.",
+      "tags": ["threshold", "bw", "graphic", "high-contrast"],
+      "whenToUse": ["stark graphic look", "silhouette or stencil", "cut a matte from brightness"],
+      "params": [
+        {"name": "level", "label": "Level", "type": "float", "min": 0, "max": 1, "default": 0.5, "description": "Brightness (perceptual) at which black turns to white"},
+        {"name": "softness", "label": "Softness", "type": "float", "min": 0, "max": 0.5, "default": 0, "description": "Width of the transition (0 = hard edge, only pure black and white)"},
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 1, "description": "Mix with the original picture"}
+      ]
+    },
+    {
+      "id": "edge_detect",
+      "name": "Edge Detect",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/edge_detect.glsl",
+      "description": "Sobel edge lines over the picture, with an optional soft glow around the edges.",
+      "tags": ["edges", "outline", "sketch", "neon", "graphic"],
+      "whenToUse": ["line-art or sketch look", "neon outlines", "highlight shapes in a scene"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.5, "description": "Mix of the edge image into the picture"},
+        {"name": "strength", "label": "Strength", "type": "float", "min": 0, "max": 4, "default": 1, "description": "Edge contrast"},
+        {"name": "width", "label": "Width", "type": "float", "min": 0.5, "max": 4, "default": 1, "description": "Line width in pixels"},
+        {"name": "glow", "label": "Glow", "type": "float", "min": 0, "max": 1, "default": 0.3, "description": "Soft halo around the edges"},
+        {"name": "tint", "label": "Line colour", "type": "color", "default": [1.0, 1.0, 1.0, 1.0], "description": "Colour of the lines"}
+      ]
+    },
+    {
+      "id": "rgb_split_glitch",
+      "name": "RGB Split Glitch",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/rgb_split_glitch.glsl",
+      "description": "Digital glitch: blocks of the picture slip sideways while red and blue separate. Repeatable for the same time and seed.",
+      "tags": ["glitch", "digital", "rgb", "energy", "cyber"],
+      "whenToUse": ["glitch hit on an impact or beat", "digital or cyber look", "signal-loss moment"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.35, "description": "How many blocks glitch and how far they slip"},
+        {"name": "blocks", "label": "Blocks", "type": "int", "min": 4, "max": 48, "default": 10, "description": "Number of block rows"},
+        {"name": "rate", "label": "Rate", "type": "float", "min": 1, "max": 30, "default": 8, "description": "How many times per second the pattern changes"},
+        {"name": "seed", "label": "Seed", "type": "int", "min": 0, "max": 999, "default": 0, "description": "Different seeds give different glitch patterns"}
+      ]
+    },
+    {
+      "id": "wave_warp",
+      "name": "Wave Warp",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/wave_warp.glsl",
+      "description": "Ripples the picture with a travelling sine wave.",
+      "tags": ["wave", "warp", "ripple", "underwater", "dream"],
+      "whenToUse": ["underwater or heat-haze look", "dream or flashback wobble", "liquid distortion"],
+      "params": [
+        {"name": "amplitude", "label": "Amplitude", "type": "float", "min": 0, "max": 0.1, "default": 0.012, "description": "Wave height as a fraction of the frame height"},
+        {"name": "wavelength", "label": "Wavelength", "type": "float", "min": 0.02, "max": 2, "default": 0.3, "description": "Distance between wave crests (frame heights)"},
+        {"name": "speed", "label": "Speed", "type": "float", "min": -4, "max": 4, "default": 0.4, "description": "Waves travelled per second"},
+        {"name": "angle", "label": "Direction", "type": "float", "min": 0, "max": 360, "default": 90, "description": "Direction the waves travel, in degrees"}
+      ]
+    },
+    {
+      "id": "swirl",
+      "name": "Swirl",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/swirl.glsl",
+      "description": "Twists the picture around a centre point, strongest in the middle.",
+      "tags": ["swirl", "twist", "whirl", "distort"],
+      "whenToUse": ["whirlpool or hypnotic effect", "twist transition helper (animate angle)", "stylised bulge around a subject"],
+      "params": [
+        {"name": "angle", "label": "Angle", "type": "float", "min": -720, "max": 720, "default": 60, "description": "Twist at the centre in degrees"},
+        {"name": "radius", "label": "Radius", "type": "float", "min": 0.05, "max": 1.5, "default": 0.6, "description": "Size of the affected area (frame heights)"},
+        {"name": "centre", "label": "Centre", "type": "point", "default": [0.5, 0.5], "description": "Centre of the swirl"}
+      ]
+    },
+    {
+      "id": "camera_shake",
+      "name": "Camera Shake",
+      "category": "motion",
+      "kind": "filter",
+      "body": "bodies/camera_shake.glsl",
+      "description": "Handheld shake: smooth deterministic noise moves and rotates the picture. Limited to the clip's own bounds (edges are mirrored or clamped, and a small crop hides them).",
+      "tags": ["shake", "handheld", "impact", "energy", "documentary"],
+      "whenToUse": ["handheld documentary feel", "explosion or impact shake", "add life to a locked-off shot"],
+      "params": [
+        {"name": "amount", "label": "Amount", "type": "float", "min": 0, "max": 1, "default": 0.4, "description": "Overall shake strength"},
+        {"name": "frequency", "label": "Frequency", "type": "float", "min": 0.2, "max": 30, "default": 6, "description": "Shake speed in Hz"},
+        {"name": "rotation", "label": "Rotation", "type": "float", "min": 0, "max": 1, "default": 0.5, "description": "How much of the shake is rotation"},
+        {"name": "crop", "label": "Crop", "type": "float", "min": 1, "max": 1.3, "default": 1.04, "description": "Zoom in to hide the edges"},
+        {"name": "edges", "label": "Edges", "type": "enum", "options": ["clamp", "mirror"], "default": "mirror", "description": "What shows where the picture is shifted away from the border"},
+        {"name": "seed", "label": "Seed", "type": "int", "min": 0, "max": 999, "default": 0, "description": "Different seeds give different shake paths"}
+      ]
+    }
+  ]
+}

@@ -29,7 +29,7 @@ from pathlib import Path
 FX = Path(__file__).resolve().parent.parent / "src" / "render" / "fx"
 MAX_PARAMS = 16
 RESERVED = {"progress", "time", "ratio", "resolution", "fxPass", "fxPasses", "fxSrc", "fxSrc2", "fxUv", "fxTiming", "fxRes", "fxP", "u",
-            "getColor", "getFromColor", "getToColor", "effect", "transition", "main", "fragColor"}
+            "getColor", "getOriginal", "fxHash", "fxNoise", "fxLuma", "fxUnpremul", "fxPerc", "fxLin", "getFromColor", "getToColor", "effect", "transition", "main", "fragColor"}
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 READ = {
     "float": "(u.fxP[{i}].x)",

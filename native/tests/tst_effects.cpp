@@ -16,6 +16,7 @@
 #include <QTest>
 
 #include <array>
+#include <set>
 
 using namespace sf;
 using namespace sf::render;
@@ -43,7 +44,7 @@ class TstEffects : public QObject {
   QTemporaryDir dir_;
   std::unique_ptr<OffscreenRenderer> gpu_;
   QString skip_;
-  QString halves_, checker_;
+  QString halves_, checker_, pattern_;
 
   struct Scene {
     TimelineDoc doc;
@@ -137,6 +138,16 @@ private slots:
       p.fillRect(kW / 2, kH / 2, kW / 2, kH / 2, Qt::white);
     }
     QVERIFY(c.save(checker_));
+    // test pattern: a horizontal gradient on the top half, an 8 px checker below
+    pattern_ = dir_.filePath(QStringLiteral("pattern.png"));
+    QImage pat(kW, kH, QImage::Format_RGBA8888);
+    for (int y = 0; y < kH; ++y)
+      for (int x = 0; x < kW; ++x) {
+        const bool top = y < kH / 2;
+        const int v = top ? x * 255 / (kW - 1) : (((x / 8) + (y / 8)) % 2 ? 255 : 0);
+        pat.setPixel(x, y, qRgb(v, top ? v : v / 2 + 20, top ? 255 - v : v));
+      }
+    QVERIFY(pat.save(pattern_));
   }
 
   // ---- schema ----
@@ -520,6 +531,147 @@ private slots:
     constexpr double kTolerance = 25;
     if (!startsElsewhere.contains(id)) QVERIFY2(atStart < kTolerance, qPrintable(QStringLiteral("%1: progress 0 is %2 away from the outgoing colour").arg(id).arg(atStart)));
     if (!endsElsewhere.contains(id)) QVERIFY2(atEnd < kTolerance, qPrintable(QStringLiteral("%1: progress 0.99 is %2 away from the incoming colour").arg(id).arg(atEnd)));
+  }
+
+  // ---- the filter pack (light, lens, retro, stylize, motion) ----
+  void filterPackRenders_data() {
+    QTest::addColumn<QString>("id");
+    QTest::addColumn<int>("passes");
+    for (const FxDef& d : FxRegistry::instance().all()) {
+      if (d.kind != FxKind::Filter) continue;
+      if (d.id == QLatin1String("vignette") || d.id == QLatin1String("gaussian_blur") || d.id == QLatin1String("chromatic_aberration")) continue;
+      QTest::newRow(qPrintable(d.id)) << d.id << d.passes;
+    }
+  }
+
+  // Every new filter at its default params: no pipeline error, the right number of passes, a picture that differs from the
+  // input, and the same pixels again for the same frame (time and seed).
+  void filterPackRenders() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    QFETCH(QString, id);
+    QFETCH(int, passes);
+    Scene s = still(pattern_);
+    const QImage plain = render(s, 7);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_p"), id)};
+    RenderStats stats;
+    const QImage a = render(s, 7, &stats);
+    QCOMPARE(stats.fxErrors, 0);
+    QCOMPARE(stats.fxPasses, passes);
+    QVERIFY2(maxAbsDiff(plain, a) >= 2, qPrintable(id + QStringLiteral(" left the picture unchanged")));
+    QCOMPARE(maxAbsDiff(a, render(s, 7)), 0);
+  }
+
+  void filterPackIsDescribed() {
+    int n = 0;
+    for (const FxDef& d : FxRegistry::instance().all()) n += d.kind == FxKind::Filter ? 1 : 0;
+    QVERIFY2(n >= 28, qPrintable(QString::number(n)));
+    for (const char* id : {"glow", "light_leak", "lens_flare_simple", "god_rays", "lens_distortion", "radial_blur", "directional_blur", "tilt_shift", "sharpen", "defocus",
+                           "film_grain", "vhs", "crt", "halftone", "posterize", "pixelate", "dither", "mirror", "kaleidoscope", "duotone", "invert", "threshold",
+                           "edge_detect", "rgb_split_glitch", "wave_warp", "swirl", "camera_shake"}) {
+      const FxDef* d = FxRegistry::instance().find(Q(id));
+      QVERIFY2(d, id);
+      QVERIFY2(!d->description.isEmpty() && !d->tags.isEmpty() && !d->whenToUse.isEmpty(), id);
+      QVERIFY2(d->category == Q("light") || d->category == Q("lens") || d->category == Q("retro") || d->category == Q("stylize") || d->category == Q("motion"), id);
+    }
+  }
+
+  void seedAndTimeChangeTheRandomLooks() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(pattern_);
+    for (const char* id : {"film_grain", "rgb_split_glitch", "camera_shake", "vhs"}) {
+      s.doc.items[0].fx = {fx(QStringLiteral("fx_p"), Q(id), QJsonObject{{Q("seed"), 1}})};
+      const QImage a = render(s, 7);
+      s.doc.items[0].fx = {fx(QStringLiteral("fx_p"), Q(id), QJsonObject{{Q("seed"), 2}})};
+      QVERIFY2(maxAbsDiff(a, render(s, 7)) > 0, id);
+      QVERIFY2(maxAbsDiff(render(s, 7), render(s, 19)) > 0, id);
+    }
+  }
+
+  void invertTwiceIsTheOriginal() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(pattern_);
+    const QImage plain = render(s, 0);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_a"), QStringLiteral("invert")), fx(QStringLiteral("fx_b"), QStringLiteral("invert"))};
+    QVERIFY2(maxAbsDiff(plain, render(s, 0)) <= 3, "invert o invert");
+    s.doc.items[0].fx.pop_back();
+    QVERIFY(maxAbsDiff(plain, render(s, 0)) > 100);
+  }
+
+  void thresholdIsOnlyBlackAndWhite() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(pattern_);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_t"), QStringLiteral("threshold"))};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    int whites = 0, blacks = 0;
+    for (int y = 0; y < kH; ++y)
+      for (int x = 0; x < kW; ++x) {
+        const QRgb c = img.pixel(x, y);
+        for (int v : {qRed(c), qGreen(c), qBlue(c)}) QVERIFY2(v == 0 || v == 255, qPrintable(describe(c)));
+        (qRed(c) ? whites : blacks)++;
+      }
+    QVERIFY(whites > 500 && blacks > 500);
+  }
+
+  void posterizeLimitsTheLevels() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(pattern_);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_p"), QStringLiteral("posterize"), QJsonObject{{Q("levels"), 4}})};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    std::set<int> reds, blues;
+    for (int y = 0; y < kH / 2; ++y) // the gradient half: red climbs through every level, blue falls through them
+      for (int x = 0; x < kW; ++x) {
+        reds.insert(qRed(img.pixel(x, y)));
+        blues.insert(qBlue(img.pixel(x, y)));
+      }
+    QCOMPARE(int(reds.size()), 4);
+    QCOMPARE(int(blues.size()), 4);
+  }
+
+  void pixelateMakesConstantBlocks() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(pattern_);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_p"), QStringLiteral("pixelate"), QJsonObject{{Q("size"), 8.0}})};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    for (int by = 0; by < kH / 8; ++by)
+      for (int bx = 0; bx < kW / 8; ++bx) {
+        const QRgb first = img.pixel(bx * 8, by * 8);
+        for (int y = 0; y < 8; y += 2)
+          for (int x = 0; x < 8; x += 2) QVERIFY2(closeTo(img.pixel(bx * 8 + x, by * 8 + y), Rgb{qRed(first), qGreen(first), qBlue(first)}, 2), "block not constant");
+      }
+  }
+
+  void mirrorIsSymmetric() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(pattern_);
+    const QImage plain = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_m"), QStringLiteral("mirror"))};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    for (int y = 0; y < kH; y += 5)
+      for (int x = 0; x < kW / 2; x += 3) {
+        const QRgb l = img.pixel(x, y), r = img.pixel(kW - 1 - x, y), p = plain.pixel(x, y);
+        QVERIFY2(closeTo(r, Rgb{qRed(l), qGreen(l), qBlue(l)}, 3), qPrintable(QStringLiteral("(%1,%2) %3 vs %4").arg(x).arg(y).arg(describe(l), describe(r))));
+        QVERIFY2(closeTo(l, Rgb{qRed(p), qGreen(p), qBlue(p)}, 3), "kept half changed");
+      }
+  }
+
+  void duotoneHitsItsColoursAtTheExtremes() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(halves_);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_d"), QStringLiteral("duotone"),
+                            QJsonObject{{Q("amount"), 1.0}, {Q("shadow"), Q("#102030")}, {Q("highlight"), Q("#f0e0a0")}})};
+    const QImage img = render(s, 0);
+    SF_VERIFY_PIXEL(img, 10, 10, (Rgb{0xf0, 0xe0, 0xa0}), 3);
+    SF_VERIFY_PIXEL(img, 120, 60, (Rgb{0x10, 0x20, 0x30}), 3);
+  }
+
+  void glowAddsLightAroundBrightEdges() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = still(halves_);
+    const QImage plain = render(s, 0);
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_g"), QStringLiteral("glow"), QJsonObject{{Q("radius"), 0.1}, {Q("intensity"), 1.0}})};
+    const QImage img = render(s, 0);
+    QVERIFY2(qRed(img.pixel(kW / 2 + 4, kH / 2)) > qRed(plain.pixel(kW / 2 + 4, kH / 2)) + 20, "no glow on the dark side of the edge");
+    SF_VERIFY_PIXEL(img, kW - 3, kH / 2, (Rgb{0, 0, 0}), 40); // far away stays dark
   }
 
   void clipEffectsRunInsideATransition() {
