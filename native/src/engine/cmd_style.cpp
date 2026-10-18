@@ -4,6 +4,7 @@
 // small bounded offsets; every number is computed here.
 
 #include "engine/cmd_util.h"
+#include "engine/cmd_style.h"
 #include "engine/style_library.h"
 #include "engine/timeline_analysis.h"
 #include "render/color.h"
@@ -18,9 +19,9 @@
 
 namespace sf::engine {
 
-namespace {
-
 using namespace style;
+
+namespace {
 
 QJsonValue fin(double v, double scale = 1000.0) { return std::isfinite(v) ? QJsonValue(std::round(v * scale) / scale) : QJsonValue(QJsonValue::Null); }
 
@@ -92,8 +93,13 @@ Result suggestCmd(CallContext&, const QJsonObject& a) {
       cands.push_back({f.id, strs(f.tags) + f.whenToUse, {}});
       info[f.id] = QJsonObject{{q("name"), f.name}, {q("category"), f.category}, {q("kind"), f.kind == sf::render::FxKind::Filter ? q("filter") : q("transition")}, {q("description"), f.description}};
     }
+  } else if (kind == QLatin1String("recipe")) {
+    for (const Recipe& r : recipes()) {
+      cands.push_back({r.name, r.whenToUse, r.avoidWhen});
+      info[r.name] = QJsonObject{{q("description"), r.description}};
+    }
   } else {
-    return invalid(QStringLiteral("kind must be look, pacing, mix, audio or effect."));
+    return invalid(QStringLiteral("kind must be look, pacing, mix, audio, effect or recipe."));
   }
   const std::vector<Suggestion> ranked = rankByTags(cands, tags);
   QJsonArray out;
@@ -209,7 +215,9 @@ struct Plan {
   bool changed = false;
 };
 
-Result lookApplyCmd(CallContext& c, const QJsonObject& a) {
+} // namespace
+
+Result buildLookOps(CallContext& c, const QJsonObject& a, QJsonArray* opsOut, QJsonObject* infoOut) {
   const QString name = a.value(q("look")).toString();
   const Look* look = findLook(name);
   if (!look) return notFound(QStringLiteral("No look named \"%1\".").arg(name), QStringLiteral("Names: %1. See style.list.").arg(lookNames().join(QStringLiteral(", "))));
@@ -263,11 +271,11 @@ Result lookApplyCmd(CallContext& c, const QJsonObject& a) {
   const auto itemsJson = [&] {
     QJsonArray arr;
     for (const Plan& p : plans) {
-      QJsonObject o{{q("itemId"), p.id}, {q("currentPrimaries"), sf::toJson(p.current)}, {q("proposedPrimaries"), sf::toJson(p.proposed)}, {q("before"), summary(p.before)},
+      QJsonObject obj{{q("itemId"), p.id}, {q("currentPrimaries"), sf::toJson(p.current)}, {q("proposedPrimaries"), sf::toJson(p.proposed)}, {q("before"), summary(p.before)},
                     {q("predicted"), summary(p.predicted)}, {q("check"), QJsonObject{{q("ok"), p.violations.isEmpty()}, {q("violations"), p.violations}}}};
-      if (!p.violations.isEmpty()) o.insert(q("suggestedIntensity"), p.suggested ? fin(*p.suggested, 100.0) : QJsonValue(QJsonValue::Null));
-      if (!p.measured.isEmpty()) o.insert(q("measured"), summary(p.measured));
-      arr.append(o);
+      if (!p.violations.isEmpty()) obj.insert(q("suggestedIntensity"), p.suggested ? fin(*p.suggested, 100.0) : QJsonValue(QJsonValue::Null));
+      if (!p.measured.isEmpty()) obj.insert(q("measured"), summary(p.measured));
+      arr.append(obj);
     }
     return arr;
   };
@@ -278,12 +286,14 @@ Result lookApplyCmd(CallContext& c, const QJsonObject& a) {
   if (!apply) {
     o.insert(q("items"), itemsJson());
     o.insert(q("notes"), notes);
+    if (infoOut) *infoOut = o;
     return Result::success(o);
   }
   if (!allOk && !force) {
     notes.append(q("Not applied: a guard failed (see items[].check and suggestedIntensity). Lower the intensity, relax `guards`, or pass force=true."));
     o.insert(q("items"), itemsJson());
     o.insert(q("notes"), notes);
+    if (infoOut) *infoOut = o;
     return Result::success(o);
   }
   QJsonArray ops;
@@ -297,26 +307,55 @@ Result lookApplyCmd(CallContext& c, const QJsonObject& a) {
     notes.append(q("Nothing to write: the clips already carry this grade."));
     o.insert(q("items"), itemsJson());
     o.insert(q("notes"), notes);
+    if (infoOut) *infoOut = o;
     return Result::success(o);
   }
-  const Result w = applyToSession(c, parseOps(ops), QStringLiteral("look.apply %1").arg(look->name), {{q("look"), look->name}});
+  if (opsOut) *opsOut = ops;
+  o.insert(q("items"), itemsJson());
+  o.insert(q("notes"), notes);
+  if (infoOut) *infoOut = o;
+  return Result::success(o);
+}
+
+namespace {
+
+Result lookApplyCmd(CallContext& c, const QJsonObject& a) {
+  QJsonArray ops;
+  QJsonObject o;
+  Result r = buildLookOps(c, a, &ops, &o);
+  if (!r.ok) return r;
+  const bool apply = a.value(q("apply")).toBool(false);
+  const bool allOk = o.value(q("ok")).toBool();
+  const bool force = a.value(q("force")).toBool(false);
+  if (!apply || (!allOk && !force) || ops.isEmpty()) {
+    return Result::success(o);
+  }
+  const QString lookName = o.value(q("look")).toString();
+  const Result w = applyToSession(c, parseOps(ops), QStringLiteral("look.apply %1").arg(lookName), {{q("look"), lookName}});
   if (!w.ok) return w;
   o.insert(q("applied"), true);
   o.insert(q("undoLabel"), w.value.toObject().value(q("undoLabel")));
   // verify: measure the clips as they are now and compare with what was predicted
+  const int samples = std::clamp(a.value(q("samples")).toInt(3), 1, 16);
   bool verified = true;
-  for (Plan& p : plans) {
-    const Result r = c.engine->call(q("colour.analyze"), {{q("itemId"), p.id}, {q("samples"), samples}, {q("session"), c.session->id}});
-    if (!r.ok) return r;
-    p.measured = r.value.toObject();
-    const QJsonObject pm = summary(p.predicted), mm = summary(p.measured);
+  QJsonArray itemsArr = o.value(q("items")).toArray();
+  for (qsizetype i = 0; i < itemsArr.size(); ++i) {
+    QJsonObject itemObj = itemsArr[i].toObject();
+    const QString itemId = itemObj.value(q("itemId")).toString();
+    const Result rAnalyze = c.engine->call(q("colour.analyze"), {{q("itemId"), itemId}, {q("samples"), samples}, {q("session"), c.session->id}});
+    if (!rAnalyze.ok) return rAnalyze;
+    const QJsonObject measuredMetrics = rAnalyze.value.toObject();
+    itemObj.insert(q("measured"), summary(measuredMetrics));
+    itemsArr[i] = itemObj;
+    const QJsonObject pm = itemObj.value(q("predicted")).toObject(), mm = itemObj.value(q("measured")).toObject();
     if (std::fabs(pm.value(q("exposureStops")).toDouble() - mm.value(q("exposureStops")).toDouble()) > 0.15 ||
         std::fabs(pm.value(q("castTemperature")).toDouble() - mm.value(q("castTemperature")).toDouble()) > 0.06)
       verified = false;
   }
+  o.insert(q("items"), itemsArr);
   o.insert(q("verified"), verified);
+  QJsonArray notes = o.value(q("notes")).toArray();
   if (!verified) notes.append(q("The measured clip differs from the prediction by more than 0.15 stops or 0.06 of cast (the clip's input transform or LUT acts outside the primaries)."));
-  o.insert(q("items"), itemsJson());
   o.insert(q("notes"), notes);
   return Result::success(o);
 }
@@ -438,9 +477,9 @@ Result mixApplyCmd(CallContext& c, const QJsonObject& a) {
 
 void registerStyleCommands(Engine& e) {
   e.add(spec("style.suggest", "", "engine", false,
-             QStringLiteral("Rank library items for a situation, deterministically. `kind` look | pacing | mix | audio (presets) | effect (the GPU registry); `tags` are situation words (interview, outdoor, noisy, music-bed, trailer ...). "
+             QStringLiteral("Rank library items for a situation, deterministically. `kind` look | pacing | mix | audio (presets) | effect (the GPU registry) | recipe; `tags` are situation words (interview, outdoor, noisy, music-bed, trailer ...). "
                             "score = tags matched in the item's whenToUse (looks also match their tags; effects their tags and whenToUse phrases, by whole word) minus tags hit in avoidWhen; ties break by id. Returns ranked[{id, score, matched, avoided, description}], best first (`limit` default 5, 0 = all)."),
-             js::obj({{q("kind"), js::choice({q("look"), q("pacing"), q("mix"), q("audio"), q("effect")})}, {q("tags"), [] { QJsonObject o = js::array(js::str()); o.insert(q("minItems"), 1); return o; }()}, {q("limit"), js::integer(QString(), 0, 500)}},
+             js::obj({{q("kind"), js::choice({q("look"), q("pacing"), q("mix"), q("audio"), q("effect"), q("recipe")})}, {q("tags"), [] { QJsonObject o = js::array(js::str()); o.insert(q("minItems"), 1); return o; }()}, {q("limit"), js::integer(QString(), 0, 500)}},
                      {q("kind"), q("tags")}),
              suggestCmd, false));
   e.add(spec("look.exportLut", "", "colour", false,

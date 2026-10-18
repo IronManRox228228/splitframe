@@ -28,8 +28,8 @@ from pathlib import Path
 
 FX = Path(__file__).resolve().parent.parent / "src" / "render" / "fx"
 MAX_PARAMS = 16
-RESERVED = {"progress", "time", "ratio", "resolution", "fxPass", "fxPasses", "fxSrc", "fxSrc2", "fxUv", "fxTiming", "fxRes", "fxP", "u",
-            "getColor", "getOriginal", "fxHash", "fxNoise", "fxLuma", "fxUnpremul", "fxPerc", "fxLin", "getFromColor", "getToColor", "effect", "transition", "main", "fragColor"}
+RESERVED = {"progress", "time", "ratio", "resolution", "fxPass", "fxPasses", "fxSrc", "fxSrc2", "fxTex0", "fxUv", "fxTiming", "fxRes", "fxP", "u",
+            "getColor", "getOriginal", "getTexture", "fxHash", "fxNoise", "fxLuma", "fxUnpremul", "fxPerc", "fxLin", "getFromColor", "getToColor", "effect", "transition", "main", "fragColor"}
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 READ = {
     "float": "(u.fxP[{i}].x)",
@@ -55,6 +55,10 @@ def params_block(params):
         name, typ = p.get("name", ""), p.get("type", "")
         if not IDENT.match(name) or name in RESERVED or name in seen:
             raise SystemExit(f"bad or reserved or duplicate param name: {name!r}")
+        if typ == "texture":
+            seen.add(name)
+            lines.append(f"// slot {i}: texture {name} (sampled via getTexture(uv))")
+            continue
         if typ not in READ:
             raise SystemExit(f"param {name}: unknown type {typ!r}")
         seen.add(name)

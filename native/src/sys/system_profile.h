@@ -237,6 +237,9 @@ private:
   QTimer timer_;
 };
 
+// Process-wide owner shared across subsystems
+SystemService& sharedSystemService();
+
 } // namespace sf::sys
 
 Q_DECLARE_METATYPE(sf::sys::Decisions)

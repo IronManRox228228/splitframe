@@ -3,6 +3,7 @@
 #include "engine/cmd_util.h"
 #include "export/export_cli.h"
 #include "export/export_settings.h"
+#include "sys/system_profile.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -49,6 +50,69 @@ Result exportStart(CallContext& c, const QJsonObject& a) {
   xport::ExportSettings settings;
   QString err;
   if (!xport::exportSettingsFromJson(opts, doc, &settings, &err)) return invalid(err);
+
+  const bool hasCallerChoice = opts.contains(q("hw")) || opts.contains(q("hardware")) || opts.contains(q("encoder")) || opts.contains(q("exportEncoder"));
+  QJsonObject encoderDecision;
+  if (hasCallerChoice) {
+    QString callerVal;
+    if (opts.contains(q("exportEncoder"))) {
+      callerVal = opts.value(q("exportEncoder")).toString();
+    } else if (opts.contains(q("encoder"))) {
+      callerVal = opts.value(q("encoder")).toString();
+    } else if (opts.contains(q("hardware"))) {
+      const QJsonValue v = opts.value(q("hardware"));
+      if (v.isBool()) {
+        callerVal = v.toBool() ? QStringLiteral("nvenc") : QStringLiteral("software");
+      } else {
+        callerVal = v.toString();
+      }
+    } else if (opts.contains(q("hw"))) {
+      const QJsonValue v = opts.value(q("hw"));
+      if (v.isBool()) {
+        callerVal = v.toBool() ? QStringLiteral("nvenc") : QStringLiteral("software");
+      } else {
+        callerVal = v.toString();
+      }
+    }
+
+    const QString lowerVal = callerVal.toLower();
+    if (lowerVal == QLatin1String("nvenc") || lowerVal == QLatin1String("auto") ||
+        lowerVal == QLatin1String("qsv") || lowerVal == QLatin1String("amf")) {
+      settings.hardware = xport::Hardware::Auto;
+    } else if (lowerVal == QLatin1String("software") || lowerVal == QLatin1String("off")) {
+      settings.hardware = xport::Hardware::Off;
+    }
+
+    encoderDecision = QJsonObject{
+      {q("value"), callerVal},
+      {q("reason"), QStringLiteral("explicit caller choice")},
+      {q("source"), QStringLiteral("caller")}
+    };
+  } else {
+    const auto decisions = sharedSystemService().decisions();
+    const QString polVal = decisions.exportEncoder;
+    const QString polReason = decisions.reasons.value(q("exportEncoder")).toString();
+    QString note;
+    if (polVal == QLatin1String("nvenc")) {
+      settings.hardware = xport::Hardware::Auto;
+    } else if (polVal == QLatin1String("software")) {
+      settings.hardware = xport::Hardware::Off;
+    } else if (polVal == QLatin1String("amf") || polVal == QLatin1String("qsv")) {
+      settings.hardware = xport::Hardware::Off;
+      note = QStringLiteral("amf/qsv export not implemented yet; using software");
+    } else {
+      settings.hardware = xport::Hardware::Off;
+    }
+    encoderDecision = QJsonObject{
+      {q("value"), polVal},
+      {q("reason"), polReason},
+      {q("source"), QStringLiteral("policy")}
+    };
+    if (!note.isEmpty()) {
+      encoderDecision.insert(q("note"), note);
+    }
+  }
+
   const auto plan = xport::planExport(doc, settings, &err);
   if (!plan) return invalid(err);
   if (QFileInfo::exists(settings.outputPath) && !settings.overwrite)
@@ -101,6 +165,7 @@ Result exportStart(CallContext& c, const QJsonObject& a) {
   rec.job->start();
   QJsonObject out{{q("jobId"), id}, {q("outputPath"), QDir::toNativeSeparators(rec.outputPath)}, {q("plan"), planJson(*plan)}, {q("note"), QStringLiteral("Poll export.status with this jobId, or subscribe to export.progress / export.finished events.")}};
   if (autoOut) out.insert(q("autoOutput"), true);
+  out.insert(q("encoderDecision"), encoderDecision);
   return Result::success(out);
 }
 
@@ -138,7 +203,7 @@ void registerExportCommands(Engine& e) {
                       {q("range"), [] { QJsonObject o = js::array(js::integer(QString(), 0)); o.insert(q("minItems"), 2); o.insert(q("maxItems"), 2); return o; }()},
                       {q("tenBit"), js::boolean()}, {q("proresProfile"), js::choice({q("proxy"), q("lt"), q("standard"), q("hq"), q("4444")})}, {q("dnxProfile"), js::str()},
                       {q("lufs"), js::number(QString(), -70, 0)}, {q("truePeak"), js::number(QString(), -20, 3)}, {q("hw"), js::boolean(QStringLiteral("Use NVENC when available"))},
-                      {q("hwDecode"), js::boolean()}}),
+                      {q("hwDecode"), js::boolean()}, {q("hardware"), js::anything()}, {q("encoder"), js::str()}, {q("exportEncoder"), js::str()}}),
              exportStart));
   e.add(spec("export.status", "getExportStatus", "engine", false,
              QStringLiteral("State of an export job: running | done | failed | cancelled, with progress, output path and result. Without jobId lists all jobs. waitMs blocks (processing events) up to that long for it to finish."),

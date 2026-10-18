@@ -82,6 +82,20 @@ class History {
   // For UI labels: "Split clip" etc.
   std::optional<QString> undoLabel() const;
 
+  std::size_t openGroupOpsCount() const { return openGroup_ ? openGroup_->ops.size() : 0; }
+  std::size_t openGroupInversesCount() const { return openGroup_ ? openGroup_->inverses.size() : 0; }
+  void discardOpenGroup() { openGroup_.reset(); }
+  void trimOpenGroup(std::size_t opsCount, std::size_t invCount) {
+    if (!openGroup_) return;
+    if (openGroup_->ops.size() > opsCount) {
+      openGroup_->ops.resize(opsCount);
+    }
+    if (openGroup_->inverses.size() > invCount) {
+      const auto toErase = openGroup_->inverses.size() - invCount;
+      openGroup_->inverses.erase(openGroup_->inverses.begin(), openGroup_->inverses.begin() + static_cast<std::ptrdiff_t>(toErase));
+    }
+  }
+
  private:
   UndoGroup commit(UndoGroup group);
 

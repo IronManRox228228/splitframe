@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "kind": "title",
+  "items": [
+    {
+      "name": "lower-third-clean",
+      "description": "Name + role bar, slides in from the left, holds, slides out.",
+      "whenToUse": ["interview", "documentary", "speaker", "corporate"],
+      "avoidWhen": ["music-video"],
+      "aspect": "landscape",
+      "fields": {
+        "title": {"default": "Jane Doe", "maxChars": 32},
+        "subtitle": {"default": "Director", "maxChars": 40}
+      },
+      "durationSec": 4.0,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "bar",
+          "shape": {"shape": "rect", "fill": "#111111", "width": 0.34, "height": 0.09, "radius": 0.004},
+          "transform": {"x": 0.07, "y": 0.80, "anchor": "left"},
+          "keyframes": {
+            "positionX": [[0.0, -0.4, "easeOutCubic"], [0.45, 0.07, "linear"], [3.55, 0.07, "easeInCubic"], [4.0, -0.4, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t1",
+          "text": "{title}",
+          "style": {"fontSize": 0.042, "fontWeight": 700, "color": "#FFFFFF", "align": "left"},
+          "transform": {"x": 0.085, "y": 0.79},
+          "keyframes": {
+            "opacity": [[0.2, 0.0, "linear"], [0.55, 1.0, "linear"], [3.5, 1.0, "linear"], [3.8, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t2",
+          "text": "{subtitle}",
+          "style": {"fontSize": 0.026, "fontWeight": 500, "color": "#BBBBBB", "align": "left"},
+          "transform": {"x": 0.085, "y": 0.835},
+          "keyframes": {
+            "opacity": [[0.3, 0.0, "linear"], [0.65, 1.0, "linear"], [3.5, 1.0, "linear"], [3.8, 0.0, "linear"]]
+          }
+        }
+      ],
+      "effects": [{"layer": "t1", "effectId": "glow", "params": {"intensity": 0.2}}]
+    },
+    {
+      "name": "lower-third-bold",
+      "description": "Bold lower-third with an accent colour bar (#F43F5E), slides in with overshoot.",
+      "whenToUse": ["promo", "sports", "bold", "event"],
+      "avoidWhen": ["funeral", "calm"],
+      "aspect": "landscape",
+      "fields": {
+        "title": {"default": "Alex Rivera", "maxChars": 28},
+        "subtitle": {"default": "Lead Producer", "maxChars": 36}
+      },
+      "durationSec": 4.0,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "accent",
+          "shape": {"shape": "rect", "fill": "#F43F5E", "width": 0.008, "height": 0.10, "radius": 0.002},
+          "transform": {"x": 0.07, "y": 0.80, "anchor": "left"},
+          "keyframes": {
+            "positionX": [[0.0, -0.4, "easeOutCubic"], [0.4, 0.07, "linear"], [3.6, 0.07, "easeInCubic"], [4.0, -0.4, "linear"]]
+          }
+        },
+        {
+          "kind": "shape",
+          "id": "bg",
+          "shape": {"shape": "rect", "fill": "#18181B", "width": 0.36, "height": 0.10, "radius": 0.004},
+          "transform": {"x": 0.08, "y": 0.80, "anchor": "left"},
+          "keyframes": {
+            "positionX": [[0.05, -0.4, "easeOutCubic"], [0.45, 0.08, "linear"], [3.55, 0.08, "easeInCubic"], [3.95, -0.4, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t1",
+          "text": "{title}",
+          "style": {"fontSize": 0.044, "fontWeight": 800, "color": "#FFFFFF", "align": "left"},
+          "transform": {"x": 0.095, "y": 0.785},
+          "keyframes": {
+            "opacity": [[0.2, 0.0, "linear"], [0.55, 1.0, "linear"], [3.5, 1.0, "linear"], [3.8, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t2",
+          "text": "{subtitle}",
+          "style": {"fontSize": 0.026, "fontWeight": 600, "color": "#F43F5E", "align": "left"},
+          "transform": {"x": 0.095, "y": 0.835},
+          "keyframes": {
+            "opacity": [[0.3, 0.0, "linear"], [0.65, 1.0, "linear"], [3.5, 1.0, "linear"], [3.8, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "lower-third-clean-portrait",
+      "description": "Clean lower-third formatted safely for vertical 9:16 canvases above caption zones.",
+      "whenToUse": ["portrait", "tiktok", "reels", "shorts", "vertical"],
+      "avoidWhen": ["landscape"],
+      "aspect": "portrait",
+      "fields": {
+        "title": {"default": "Jane Doe", "maxChars": 24},
+        "subtitle": {"default": "Creator", "maxChars": 32}
+      },
+      "durationSec": 4.0,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "bar",
+          "shape": {"shape": "rect", "fill": "#111111", "width": 0.60, "height": 0.07, "radius": 0.005},
+          "transform": {"x": 0.08, "y": 0.68, "anchor": "left"},
+          "keyframes": {
+            "positionX": [[0.0, -0.7, "easeOutCubic"], [0.45, 0.08, "linear"], [3.55, 0.08, "easeInCubic"], [4.0, -0.7, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t1",
+          "text": "{title}",
+          "style": {"fontSize": 0.028, "fontWeight": 700, "color": "#FFFFFF", "align": "left"},
+          "transform": {"x": 0.10, "y": 0.67},
+          "keyframes": {
+            "opacity": [[0.2, 0.0, "linear"], [0.55, 1.0, "linear"], [3.5, 1.0, "linear"], [3.8, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t2",
+          "text": "{subtitle}",
+          "style": {"fontSize": 0.018, "fontWeight": 500, "color": "#BBBBBB", "align": "left"},
+          "transform": {"x": 0.10, "y": 0.70},
+          "keyframes": {
+            "opacity": [[0.3, 0.0, "linear"], [0.65, 1.0, "linear"], [3.5, 1.0, "linear"], [3.8, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "headline-kinetic",
+      "description": "Dynamic headline where words punch in sequentially 0.15s apart.",
+      "whenToUse": ["hook", "headline", "dynamic", "intro", "short"],
+      "avoidWhen": ["calm", "formal"],
+      "aspect": "any",
+      "fields": {
+        "words": {"default": "MAKE IT POP", "maxChars": 36}
+      },
+      "durationSec": 3.5,
+      "layers": [
+        {
+          "kind": "text",
+          "id": "word_{i}",
+          "repeat": "words",
+          "repeatMin": 1,
+          "repeatMax": 3,
+          "text": "{word}",
+          "stepSec": 0.15,
+          "ySpacing": 0.09,
+          "shiftRule": "cascade",
+          "style": {"fontSize": 0.07, "fontWeight": 800, "color": "#FFFFFF", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.50},
+          "keyframes": {
+            "scale": [[0.0, 0.0, "easeOutCubic"], [0.25, 1.0, "linear"], [3.2, 1.0, "easeInCubic"], [3.5, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "big-number",
+      "description": "Stat counter style with large focal number and descriptive label.",
+      "whenToUse": ["stats", "data", "metric", "business", "explainer"],
+      "avoidWhen": ["cinematic", "music-video"],
+      "aspect": "any",
+      "fields": {
+        "number": {"default": "98%", "maxChars": 12},
+        "label": {"default": "Customer Satisfaction", "maxChars": 36}
+      },
+      "durationSec": 4.0,
+      "layers": [
+        {
+          "kind": "text",
+          "id": "num",
+          "text": "{number}",
+          "style": {"fontSize": 0.11, "fontWeight": 900, "color": "#38BDF8", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.44},
+          "keyframes": {
+            "scale": [[0.0, 0.5, "easeOutCubic"], [0.4, 1.0, "linear"], [3.6, 1.0, "easeInCubic"], [4.0, 0.8, "linear"]],
+            "opacity": [[0.0, 0.0, "linear"], [0.3, 1.0, "linear"], [3.6, 1.0, "linear"], [4.0, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "lbl",
+          "text": "{label}",
+          "style": {"fontSize": 0.035, "fontWeight": 600, "color": "#F3F4F6", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.56},
+          "keyframes": {
+            "opacity": [[0.2, 0.0, "linear"], [0.6, 1.0, "linear"], [3.5, 1.0, "linear"], [3.9, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "quote-card",
+      "description": "Editorial quote card on a dim full-frame backdrop with speaker attribution.",
+      "whenToUse": ["quote", "interview", "testimonial", "documentary"],
+      "avoidWhen": ["action", "trailer"],
+      "aspect": "any",
+      "fields": {
+        "quote": {"default": "Simplicity is the ultimate sophistication.", "maxChars": 80},
+        "author": {"default": "Leonardo da Vinci", "maxChars": 32}
+      },
+      "durationSec": 5.0,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "dim",
+          "shape": {"shape": "rect", "fill": "#000000", "width": 1.0, "height": 1.0, "radius": 0.0},
+          "transform": {"x": 0.50, "y": 0.50, "anchor": "center"},
+          "keyframes": {
+            "opacity": [[0.0, 0.0, "linear"], [0.5, 0.7, "linear"], [4.5, 0.7, "linear"], [5.0, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "qtext",
+          "text": "\"{quote}\"",
+          "style": {"fontSize": 0.045, "fontWeight": 600, "color": "#FFFFFF", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.46},
+          "keyframes": {
+            "opacity": [[0.3, 0.0, "linear"], [0.8, 1.0, "linear"], [4.3, 1.0, "linear"], [4.8, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "qauthor",
+          "text": "— {author}",
+          "style": {"fontSize": 0.028, "fontWeight": 400, "color": "#9CA3AF", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.56},
+          "keyframes": {
+            "opacity": [[0.5, 0.0, "linear"], [1.0, 1.0, "linear"], [4.2, 1.0, "linear"], [4.7, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "end-card",
+      "description": "Full outro end-card with channel title, call-to-action, and website link.",
+      "whenToUse": ["outro", "end-screen", "cta", "closing"],
+      "avoidWhen": ["intro", "middle"],
+      "aspect": "landscape",
+      "fields": {
+        "title": {"default": "Thanks for watching!", "maxChars": 32},
+        "cta": {"default": "Subscribe for weekly videos", "maxChars": 40},
+        "url": {"default": "splitframe.dev", "maxChars": 30}
+      },
+      "durationSec": 6.0,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "card_bg",
+          "shape": {"shape": "rect", "fill": "#0F172A", "width": 0.70, "height": 0.50, "radius": 0.015},
+          "transform": {"x": 0.50, "y": 0.50, "anchor": "center"},
+          "keyframes": {
+            "scale": [[0.0, 0.8, "easeOutCubic"], [0.5, 1.0, "linear"], [5.5, 1.0, "easeInCubic"], [6.0, 0.8, "linear"]],
+            "opacity": [[0.0, 0.0, "linear"], [0.4, 0.95, "linear"], [5.5, 0.95, "linear"], [6.0, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t_title",
+          "text": "{title}",
+          "style": {"fontSize": 0.055, "fontWeight": 800, "color": "#FFFFFF", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.40},
+          "keyframes": {
+            "opacity": [[0.3, 0.0, "linear"], [0.7, 1.0, "linear"], [5.3, 1.0, "linear"], [5.7, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t_cta",
+          "text": "{cta}",
+          "style": {"fontSize": 0.032, "fontWeight": 600, "color": "#38BDF8", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.50},
+          "keyframes": {
+            "opacity": [[0.5, 0.0, "linear"], [0.9, 1.0, "linear"], [5.2, 1.0, "linear"], [5.6, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t_url",
+          "text": "{url}",
+          "style": {"fontSize": 0.026, "fontWeight": 400, "color": "#94A3B8", "align": "center"},
+          "transform": {"x": 0.50, "y": 0.58},
+          "keyframes": {
+            "opacity": [[0.7, 0.0, "linear"], [1.1, 1.0, "linear"], [5.1, 1.0, "linear"], [5.5, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "end-card-portrait",
+      "description": "Vertical outro card formatted safely within 9:16 safe zones, with title, CTA and link.",
+      "whenToUse": ["portrait", "tiktok", "reels", "shorts", "vertical", "outro"],
+      "avoidWhen": ["landscape"],
+      "aspect": "portrait",
+      "fields": {
+        "title": {"default": "Thanks for watching!", "maxChars": 24},
+        "cta": {"default": "Follow for more", "maxChars": 28},
+        "url": {"default": "splitframe.dev", "maxChars": 24}
+      },
+      "durationSec": 6.0,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "card_bg",
+          "shape": {"shape": "rect", "fill": "#0F172A", "width": 0.66, "height": 0.28, "radius": 0.015},
+          "transform": {"x": 0.43, "y": 0.30, "anchor": "center"},
+          "keyframes": {
+            "scale": [[0.0, 0.8, "easeOutCubic"], [0.5, 1.0, "linear"], [5.5, 1.0, "easeInCubic"], [6.0, 0.8, "linear"]],
+            "opacity": [[0.0, 0.0, "linear"], [0.4, 0.95, "linear"], [5.5, 0.95, "linear"], [6.0, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t_title",
+          "text": "{title}",
+          "style": {"fontSize": 0.026, "fontWeight": 800, "color": "#FFFFFF", "align": "center"},
+          "transform": {"x": 0.43, "y": 0.24},
+          "keyframes": {
+            "opacity": [[0.3, 0.0, "linear"], [0.7, 1.0, "linear"], [5.3, 1.0, "linear"], [5.7, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t_cta",
+          "text": "{cta}",
+          "style": {"fontSize": 0.019, "fontWeight": 600, "color": "#38BDF8", "align": "center"},
+          "transform": {"x": 0.43, "y": 0.30},
+          "keyframes": {
+            "opacity": [[0.5, 0.0, "linear"], [0.9, 1.0, "linear"], [5.2, 1.0, "linear"], [5.6, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "t_url",
+          "text": "{url}",
+          "style": {"fontSize": 0.016, "fontWeight": 400, "color": "#94A3B8", "align": "center"},
+          "transform": {"x": 0.43, "y": 0.36},
+          "keyframes": {
+            "opacity": [[0.7, 0.0, "linear"], [1.1, 1.0, "linear"], [5.1, 1.0, "linear"], [5.5, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "chapter-marker",
+      "description": "Minimal chapter indicator in the top-left title-safe area with an accent line.",
+      "whenToUse": ["chapter", "section", "tutorial", "documentary", "header"],
+      "avoidWhen": ["music-video"],
+      "aspect": "landscape",
+      "fields": {
+        "chapter": {"default": "01", "maxChars": 6},
+        "title": {"default": "INTRODUCTION", "maxChars": 30}
+      },
+      "durationSec": 3.5,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "line",
+          "shape": {"shape": "rect", "fill": "#38BDF8", "width": 0.003, "height": 0.045, "radius": 0.001},
+          "transform": {"x": 0.07, "y": 0.09, "anchor": "left"},
+          "keyframes": {
+            "opacity": [[0.0, 0.0, "linear"], [0.3, 1.0, "linear"], [3.2, 1.0, "linear"], [3.5, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "ch_num",
+          "text": "CH. {chapter}",
+          "style": {"fontSize": 0.018, "fontWeight": 700, "color": "#38BDF8", "align": "left"},
+          "transform": {"x": 0.08, "y": 0.075},
+          "keyframes": {
+            "opacity": [[0.1, 0.0, "linear"], [0.4, 1.0, "linear"], [3.1, 1.0, "linear"], [3.4, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "ch_title",
+          "text": "{title}",
+          "style": {"fontSize": 0.026, "fontWeight": 600, "color": "#FFFFFF", "align": "left"},
+          "transform": {"x": 0.08, "y": 0.105},
+          "keyframes": {
+            "opacity": [[0.2, 0.0, "linear"], [0.5, 1.0, "linear"], [3.1, 1.0, "linear"], [3.4, 0.0, "linear"]]
+          }
+        }
+      ]
+    },
+    {
+      "name": "subscribe-nudge",
+      "description": "Subtle pill-shaped subscribe prompt in the bottom-right corner with a bouncy pop-in.",
+      "whenToUse": ["subscribe", "cta", "social", "nudge", "reminder"],
+      "avoidWhen": ["funeral", "somber"],
+      "aspect": "landscape",
+      "fields": {
+        "label": {"default": "SUBSCRIBE", "maxChars": 16}
+      },
+      "durationSec": 3.5,
+      "layers": [
+        {
+          "kind": "shape",
+          "id": "pill",
+          "shape": {"shape": "rect", "fill": "#E11D48", "width": 0.12, "height": 0.05, "radius": 0.025},
+          "transform": {"x": 0.85, "y": 0.86, "anchor": "center"},
+          "keyframes": {
+            "scale": [[0.0, 0.0, "easeOutBack"], [0.4, 1.0, "linear"], [3.1, 1.0, "easeInCubic"], [3.5, 0.0, "linear"]]
+          }
+        },
+        {
+          "kind": "text",
+          "id": "txt",
+          "text": "{label}",
+          "style": {"fontSize": 0.022, "fontWeight": 800, "color": "#FFFFFF", "align": "center"},
+          "transform": {"x": 0.85, "y": 0.86},
+          "keyframes": {
+            "scale": [[0.0, 0.0, "easeOutBack"], [0.4, 1.0, "linear"], [3.1, 1.0, "easeInCubic"], [3.5, 0.0, "linear"]]
+          }
+        }
+      ]
+    }
+  ]
+}

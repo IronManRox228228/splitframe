@@ -10,6 +10,7 @@ add_library(sf_audio STATIC
   effects.h effects.cpp
   loudness.h loudness.cpp
   audio_analysis.h audio_analysis.cpp
+  music_fit.h music_fit.cpp
   engine.h engine.cpp
   clap_host.h clap_host.cpp
   audio_output.h audio_output.cpp

@@ -60,7 +60,9 @@ public:
   // supported; begin while open closes the previous group.
   void beginGroup(const QString& label = {}, const QString& actor = QStringLiteral("user"));
   void endGroup();
+  void rollbackGroup();
   bool groupOpen() const { return groupOpen_; }
+  int groupDepth() const { return groupDepth_; }
 
   bool undo();
   bool redo();
@@ -142,6 +144,13 @@ private:
   ProjectBundle saved_;
   History history_;
   bool groupOpen_ = false;
+  int groupDepth_ = 0;
+  struct GroupCheckpoint {
+    TimelineDoc doc;
+    std::size_t opsCount = 0;
+    std::size_t invCount = 0;
+  };
+  std::vector<GroupCheckpoint> groupCheckpoints_;
   QStringList selection_;
   QString path_;
   QString lastError_;

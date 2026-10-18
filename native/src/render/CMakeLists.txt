@@ -11,6 +11,7 @@ add_library(sf_render STATIC
   compositor.h compositor.cpp
   offscreen.h offscreen.cpp
   effects.h effects.cpp
+  fx_textures.h fx_textures.cpp
 )
 target_include_directories(sf_render PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_render

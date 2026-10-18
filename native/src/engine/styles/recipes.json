@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "kind": "recipe",
+  "items": [
+    {
+      "name": "punchy-promo",
+      "description": "High-energy commercial cut: punchy teal-orange colour, quick dynamic transitions, social loudness target and subtle film grain texture.",
+      "whenToUse": ["promo", "product", "high-energy", "trailer", "commercial"],
+      "avoidWhen": ["interview", "documentary", "slow"],
+      "steps": [
+        {"command": "look.apply", "args": {"look": "teal-orange", "intensity": 0.8, "itemIds": "$videoItems", "apply": true, "force": true}},
+        {"command": "transition.add", "args": {"trackId": "$mainVideoTrack", "effectId": "gl_crosswarp", "duration": 8}},
+        {"command": "mix.applyProfile", "args": {"profile": "social", "apply": true}},
+        {"command": "effect.add", "args": {"itemId": "$eachVideoItem", "effectId": "film_grain", "params": {"amount": 0.15}}}
+      ],
+      "verify": [
+        {"command": "pacing.check", "args": {"profile": "trailer"}},
+        {"command": "audio.check", "args": {}}
+      ]
+    },
+    {
+      "name": "calm-documentary",
+      "description": "Gentle observational style: warm documentary grade, soft crossfades, natural podcast dialogue levels.",
+      "whenToUse": ["documentary", "calm", "observational", "nature", "story", "human"],
+      "avoidWhen": ["music-video", "promo", "action", "high-energy"],
+      "steps": [
+        {"command": "look.apply", "args": {"look": "warm-documentary", "intensity": 0.7, "itemIds": "$videoItems", "apply": true, "force": true}},
+        {"command": "transition.add", "args": {"trackId": "$mainVideoTrack", "effectId": "crossfade", "duration": 12}},
+        {"command": "mix.applyProfile", "args": {"profile": "podcast", "apply": true}}
+      ],
+      "verify": [
+        {"command": "pacing.check", "args": {"profile": "documentary"}},
+        {"command": "audio.check", "args": {}}
+      ]
+    },
+    {
+      "name": "music-video",
+      "description": "Vibrant music style: warm golden-hour tones, fast zoom transitions, streaming-level audio and focused vignette.",
+      "whenToUse": ["music", "music-video", "performance", "high-energy", "beat-driven"],
+      "avoidWhen": ["interview", "documentary", "corporate"],
+      "steps": [
+        {"command": "look.apply", "args": {"look": "golden-hour", "intensity": 0.85, "itemIds": "$videoItems", "apply": true, "force": true}},
+        {"command": "transition.add", "args": {"trackId": "$mainVideoTrack", "effectId": "gl_simple_zoom", "duration": 6}},
+        {"command": "mix.applyProfile", "args": {"profile": "streaming", "apply": true}},
+        {"command": "effect.add", "args": {"itemId": "$eachVideoItem", "effectId": "vignette", "params": {"amount": 0.4}}}
+      ],
+      "verify": [
+        {"command": "pacing.check", "args": {"profile": "music-video"}},
+        {"command": "audio.check", "args": {}}
+      ]
+    },
+    {
+      "name": "vlog-clean",
+      "description": "Clean modern creator look: honest neutral grade, subtle crossfades, crisp clarity and clear streaming speech mix.",
+      "whenToUse": ["vlog", "lifestyle", "clean", "talking-head", "social", "creator"],
+      "avoidWhen": ["gritty", "dark", "thriller", "horror"],
+      "steps": [
+        {"command": "look.apply", "args": {"look": "neutral-clean", "intensity": 0.9, "itemIds": "$videoItems", "apply": true, "force": true}},
+        {"command": "transition.add", "args": {"trackId": "$mainVideoTrack", "effectId": "crossfade", "duration": 6}},
+        {"command": "mix.applyProfile", "args": {"profile": "streaming", "apply": true}},
+        {"command": "effect.add", "args": {"itemId": "$eachVideoItem", "effectId": "sharpen", "params": {"amount": 0.2}}}
+      ],
+      "verify": [
+        {"command": "pacing.check", "args": {"profile": "interview"}},
+        {"command": "audio.check", "args": {}}
+      ]
+    },
+    {
+      "name": "trailer",
+      "description": "Dramatic theatrical style: moody low-key cool tones, cinematic dynamics, snappy transition hits and edge vignette.",
+      "whenToUse": ["trailer", "cinematic", "teaser", "epic", "high-energy", "drama"],
+      "avoidWhen": ["interview", "vlog", "corporate", "comedy"],
+      "steps": [
+        {"command": "look.apply", "args": {"look": "low-key-cool", "intensity": 0.8, "itemIds": "$videoItems", "apply": true, "force": true}},
+        {"command": "transition.add", "args": {"trackId": "$mainVideoTrack", "effectId": "gl_crosswarp", "duration": 6}},
+        {"command": "mix.applyProfile", "args": {"profile": "cinematic", "apply": true}},
+        {"command": "effect.add", "args": {"itemId": "$eachVideoItem", "effectId": "vignette", "params": {"amount": 0.5}}}
+      ],
+      "verify": [
+        {"command": "pacing.check", "args": {"profile": "trailer"}},
+        {"command": "audio.check", "args": {}}
+      ]
+    },
+    {
+      "name": "retro-vhs",
+      "description": "Nostalgic analogue aesthetic: pastel colour grade, soft directional wipes, tracking distortion and subtle chromatic fringing.",
+      "whenToUse": ["retro", "vhs", "nostalgic", "glitch", "stylised", "vintage", "analog"],
+      "avoidWhen": ["corporate", "clean", "interview"],
+      "steps": [
+        {"command": "look.apply", "args": {"look": "pastel", "intensity": 0.75, "itemIds": "$videoItems", "apply": true, "force": true}},
+        {"command": "transition.add", "args": {"trackId": "$mainVideoTrack", "effectId": "wipe", "duration": 10}},
+        {"command": "mix.applyProfile", "args": {"profile": "streaming", "apply": true}},
+        {"command": "effect.add", "args": {"itemId": "$eachVideoItem", "effectId": "vhs", "params": {"amount": 0.35}}},
+        {"command": "effect.add", "args": {"itemId": "$eachVideoItem", "effectId": "chromatic_aberration", "params": {"amount": 0.005}}}
+      ],
+      "verify": [
+        {"command": "pacing.check", "args": {"profile": "social-short"}},
+        {"command": "audio.check", "args": {}}
+      ]
+    }
+  ]
+}

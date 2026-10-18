@@ -418,6 +418,29 @@
         {"name": "edges", "label": "Edges", "type": "enum", "options": ["clamp", "mirror"], "default": "mirror", "description": "What shows where the picture is shifted away from the border"},
         {"name": "seed", "label": "Seed", "type": "int", "min": 0, "max": 999, "default": 0, "description": "Different seeds give different shake paths"}
       ]
+    },
+    {
+      "id": "polygon_mask",
+      "name": "Polygon Mask",
+      "category": "stylize",
+      "kind": "filter",
+      "body": "bodies/polygon_mask.glsl",
+      "description": "Show the clip only inside (or outside) a polygon of up to 8 points; feathered edge.",
+      "tags": ["mask", "matte", "shape", "tracking"],
+      "params": [
+        {"name": "p0", "label": "Point 0", "type": "point", "default": [0.25, 0.25], "description": "Polygon point 0 (normalised item coords, top-left origin)"},
+        {"name": "p1", "label": "Point 1", "type": "point", "default": [0.75, 0.25], "description": "Polygon point 1"},
+        {"name": "p2", "label": "Point 2", "type": "point", "default": [0.75, 0.75], "description": "Polygon point 2"},
+        {"name": "p3", "label": "Point 3", "type": "point", "default": [0.25, 0.75], "description": "Polygon point 3"},
+        {"name": "p4", "label": "Point 4", "type": "point", "default": [0.25, 0.75], "description": "Polygon point 4 (defaults to p3)"},
+        {"name": "p5", "label": "Point 5", "type": "point", "default": [0.25, 0.75], "description": "Polygon point 5 (defaults to p3)"},
+        {"name": "p6", "label": "Point 6", "type": "point", "default": [0.25, 0.75], "description": "Polygon point 6 (defaults to p3)"},
+        {"name": "p7", "label": "Point 7", "type": "point", "default": [0.25, 0.75], "description": "Polygon point 7 (defaults to p3)"},
+        {"name": "count", "label": "Count", "type": "int", "min": 3, "max": 8, "default": 4, "description": "Number of polygon points (3..8)"},
+        {"name": "feather", "label": "Feather", "type": "float", "min": 0, "max": 0.2, "default": 0.01, "description": "Feather width in uv units"},
+        {"name": "invert", "label": "Invert", "type": "bool", "default": false, "description": "Show outside the polygon instead of inside"},
+        {"name": "opacity", "label": "Opacity", "type": "float", "min": 0, "max": 1, "default": 1, "description": "Mask opacity"}
+      ]
     }
   ]
 }

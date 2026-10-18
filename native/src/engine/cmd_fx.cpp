@@ -4,6 +4,8 @@
 // The inspector hooks in here: it lists effect.list, edits through effect.set / effect.keyframe, and reads item.fx.
 
 #include "engine/cmd_util.h"
+#include "engine/cmd_fx.h"
+#include "engine/hand_quad.h"
 #include "render/effects.h"
 
 #include <algorithm>
@@ -146,11 +148,194 @@ QJsonObject transitionJson(const TimelineDoc& doc, const FxTransition& t) {
 
 } // namespace
 
+
+Result buildEffectAddOps(CallContext& c, const QString& itemId, const QString& effectId, const QJsonObject& params, QJsonArray* ops, int index) {
+  Result err;
+  const Item* it = fxItem(c, itemId, &err);
+  if (!it) return err;
+  const FxDef* def = defOf(effectId, FxKind::Filter, &err);
+  if (!def) return err;
+  FxInstance f;
+  f.id = newId(QStringLiteral("fx"));
+  f.effectId = def->id;
+  QString why;
+  if (!render::normalizeFxParams(*def, params, &f.params, &why)) return fail(why, QStringLiteral("See effect.list."));
+  std::vector<FxInstance> stack = it->fx;
+  const qsizetype at = (index >= 0) ? std::min<qsizetype>(index, static_cast<qsizetype>(stack.size())) : static_cast<qsizetype>(stack.size());
+  stack.insert(stack.begin() + at, f);
+
+  ItemPatch patch;
+  patch.fx = std::move(stack);
+  if (ops) {
+    ops->append(QJsonObject{
+      {q("type"), q("item.update")},
+      {q("itemId"), itemId},
+      {q("patch"), sf::toJson(patch)}
+    });
+  }
+  return Result::success();
+}
+
+// mask.trackHands: drive a polygon_mask effect from the deterministic B9 hands analysis.
+// Session, mutating, one undo step: a single item.update patch of the item's `fx`.
+// Returns {pending: true, jobId} while the hands analysis is not done yet.
+Result maskTrackHands(CallContext& c, const QJsonObject& a) {
+  Result err;
+  const QString itemId = a.value(q("itemId")).toString();
+  if (itemId.isEmpty()) return invalid(q("Give itemId."));
+  const Item* it = fxItem(c, itemId, &err);
+  if (!it) return err;
+
+  const double fps = a.contains(q("fps")) ? a.value(q("fps")).toDouble(15.0) : 15.0;
+  const double minScore = a.contains(q("minScore")) ? a.value(q("minScore")).toDouble(0.6) : 0.6;
+  const bool invert = a.value(q("invert")).toBool(false);
+  const bool wait = a.value(q("wait")).toBool(true);
+  double minCutoff = 1.0, beta = 0.05;
+  if (a.contains(q("smoothing"))) {
+    const QJsonObject sm = a.value(q("smoothing")).toObject();
+    minCutoff = sm.value(q("minCutoff")).toDouble(1.0);
+    beta = sm.value(q("beta")).toDouble(0.05);
+  }
+  const QString fxIdArg = a.contains(q("fxId")) ? a.value(q("fxId")).toString() : QString();
+
+  // 1. Get the hands result. analysis.get blocks (up to timeoutMs) when wait=true, so a CLI call
+  //    can finish; enqueue=true ensures an unqueued job is scheduled.
+  QJsonObject getArgs{
+    {q("analyzer"), q("hands")},
+    {q("itemId"), itemId},
+    {q("params"), QJsonObject{{q("fps"), fps}}},
+    {q("wait"), wait},
+    {q("enqueue"), true},
+    {q("session"), c.session->id}
+  };
+  if (a.contains(q("timeoutMs"))) getArgs.insert(q("timeoutMs"), a.value(q("timeoutMs")));
+  const Result ar = c.engine->call(q("analysis.get"), getArgs);
+  if (!ar.ok) return ar;
+  const QJsonObject g = ar.value.toObject();
+  if (g.value(q("status")).toString() != q("done"))
+    return Result::success(QJsonObject{{q("pending"), true}, {q("jobId"), g.value(q("jobId"))}});
+  const QJsonArray frames = g.value(q("result")).toObject().value(q("frames")).toArray();
+
+  // 2-3. Build the per-sample quads (left thumb/index, right index/thumb, angle-sorted) and smooth.
+  std::vector<QuadSample> samples = buildHandQuads(frames, minScore);
+  smoothQuads(samples, minCutoff, beta);
+
+  // 4. Fill gaps: short gaps hold the last good quad; long gaps are flagged for opacity keyframes.
+  const std::vector<Gap> gaps = classifyGaps(samples, 0.3);
+
+  int trackedSamples = 0;
+  for (const QuadSample& s : samples)
+    if (!s.gap) ++trackedSamples;
+
+  // Convert sample seconds to item-local frames at the project fps.
+  const TimelineDoc& doc = c.session->project->doc();
+  const Frame srcIn = it->sourceInFrame.value_or(0);
+  const auto localFrame = [&](double t) { return std::max(Frame(0), toFrames(t, doc) - srcIn); };
+
+  // 5. Keyframes for p0..p3 at the retained (thinned) sample frames, linear easing; count = 4 static.
+  std::vector<FxInstance> stack = it->fx;
+  FxInstance* existing = nullptr;
+  for (FxInstance& f : stack)
+    if (f.effectId == q("polygon_mask") && (fxIdArg.isEmpty() || f.id == fxIdArg)) { existing = &f; break; }
+  QString fxId;
+  if (!existing) {
+    if (!fxIdArg.isEmpty()) return notFound(q("Effect instance %1 not found on item %2 (has no polygon_mask).").arg(fxIdArg, itemId));
+    FxInstance f;
+    f.id = newId(q("fx"));
+    f.effectId = q("polygon_mask");
+    f.params[q("count")] = 4;
+    f.params[q("invert")] = invert;
+    stack.push_back(std::move(f));
+    existing = &stack.back();
+    fxId = existing->id;
+  } else {
+    existing->params[q("count")] = 4;
+    existing->params[q("invert")] = invert;
+    existing->enabled = true;
+    fxId = existing->id;
+  }
+  for (const char* k : {"p0.x", "p0.y", "p1.x", "p1.y", "p2.x", "p2.y", "p3.x", "p3.y", "opacity"}) {
+    existing->keyframes.erase(q(k));
+  }
+
+  const std::vector<int> kept = keyframeIndices(samples);
+  const int quadKeyframes = static_cast<int>(kept.size());
+  QJsonObject keyframeCounts;
+  keyframeCounts.insert(q("p0"), quadKeyframes);
+  keyframeCounts.insert(q("p1"), quadKeyframes);
+  keyframeCounts.insert(q("p2"), quadKeyframes);
+  keyframeCounts.insert(q("p3"), quadKeyframes);
+  for (int i : kept) {
+    const QuadSample& s = samples[i];
+    const Frame fr = localFrame(s.t);
+    Keyframe kf;
+    kf.frame = fr;
+    kf.easing = Easing::Linear;
+    const QPointF* p = s.quad.data();
+    kf.value = p[0].x(); existing->keyframes[q("p0.x")].push_back(kf);
+    kf.value = p[0].y(); existing->keyframes[q("p0.y")].push_back(kf);
+    kf.value = p[1].x(); existing->keyframes[q("p1.x")].push_back(kf);
+    kf.value = p[1].y(); existing->keyframes[q("p1.y")].push_back(kf);
+    kf.value = p[2].x(); existing->keyframes[q("p2.x")].push_back(kf);
+    kf.value = p[2].y(); existing->keyframes[q("p2.y")].push_back(kf);
+    kf.value = p[3].x(); existing->keyframes[q("p3.x")].push_back(kf);
+    kf.value = p[3].y(); existing->keyframes[q("p3.y")].push_back(kf);
+  }
+
+  // Opacity keyframes: 1 on last tracked frame before long gap, 0 on next frame,
+  // hold 0 through gap, 1 on frame hands return. 0 at start if clip starts in gap.
+  const auto opKfs = buildOpacityKeyframes(samples, 1.0 / fps);
+  auto& okf = existing->keyframes[q("opacity")];
+  for (const auto& okfItem : opKfs) {
+    const Frame fr = localFrame(okfItem.t);
+    if (!okf.empty() && okf.back().frame == fr) {
+      okf.back().value = okfItem.opacity;
+    } else {
+      Keyframe kf;
+      kf.frame = fr;
+      kf.value = okfItem.opacity;
+      kf.easing = Easing::Linear;
+      okf.push_back(kf);
+    }
+  }
+  std::sort(okf.begin(), okf.end(), [](const Keyframe& a, const Keyframe& b) { return a.frame < b.frame; });
+  keyframeCounts.insert(q("opacity"), static_cast<int>(okf.size()));
+
+  QJsonArray gapArr;
+  for (const Gap& gap : gaps)
+    gapArr.append(QJsonObject{{q("startSec"), gap.startSec}, {q("endSec"), gap.endSec}});
+
+  // 6. ONE item.update patch = one undo step.
+  ItemPatch patch;
+  patch.fx = std::move(stack);
+  QJsonArray ops;
+  ops.append(QJsonObject{
+    {q("type"), q("item.update")},
+    {q("itemId"), itemId},
+    {q("patch"), sf::toJson(patch)}
+  });
+
+  QJsonObject extra{
+    {q("itemId"), itemId},
+    {q("fxId"), fxId},
+    {q("samples"), static_cast<double>(samples.size())},
+    {q("trackedSamples"), static_cast<double>(trackedSamples)},
+    {q("gaps"), gapArr},
+    {q("keyframes"), keyframeCounts},
+    {q("notes"), q("Landmarks from the deterministic B9 hands analysis; no model runs at edit time.")}
+  };
+  Result w = applyToSession(c, parseOps(ops), q("mask.trackHands"), extra);
+  if (!w.ok) return w;
+  QJsonObject o = w.value.toObject();
+  if (const Item* now = getItem(c.session->project->doc(), itemId)) o.insert(q("fx"), fxJson(now->fx));
+  return Result::success(o);
+}
+
 void registerFxCommands(Engine& e) {
   e.add(spec("effect.list", "", "editor", false,
              QStringLiteral("The GPU effect catalogue: every definition with id, name, category, kind (filter = one picture in, applied with effect.add; transition = two pictures plus progress, applied "
-                            "with transition.add), description, tags, whenToUse intents and the param schema (name, type float|int|enum|bool|vec2|point|color, min, max, default, options, animatable). "
-                            "Params are JSON: number, bool, enum name, [x, y] (vec2; point is [x, y] in 0..1 from the top-left), \"#rrggbb\" or [r, g, b, a] (color)."),
+                            "with transition.add), description, tags, whenToUse intents and the param schema (name, type float|int|enum|bool|vec2|point|color|texture, min, max, default, options, animatable). "
+                            "Params are JSON: number, bool, enum name, texture name, [x, y] (vec2; point is [x, y] in 0..1 from the top-left), \"#rrggbb\" or [r, g, b, a] (color)."),
              js::obj({{q("category"), js::str(QStringLiteral("Only this category (stylize, blur, distort, dissolve, wipe, ...)"))}, {q("kind"), js::choice({q("filter"), q("transition")})}}),
              [](CallContext&, const QJsonObject& a) {
                const QString category = a.value(q("category")).toString();
@@ -173,20 +358,18 @@ void registerFxCommands(Engine& e) {
              js::obj({{q("itemId"), js::str()}, {q("effectId"), js::str(QStringLiteral("From effect.list (kind filter)"))}, {q("params"), js::any()}, {q("index"), js::integer(QString(), 0)}},
                      {q("itemId"), q("effectId")}),
              [](CallContext& c, const QJsonObject& a) {
-               Result err;
-               const Item* it = fxItem(c, a.value(q("itemId")).toString(), &err);
-               if (!it) return err;
-               const FxDef* def = defOf(a.value(q("effectId")).toString(), FxKind::Filter, &err);
-               if (!def) return err;
-               FxInstance f;
-               f.id = newId(QStringLiteral("fx"));
-               f.effectId = def->id;
-               QString why;
-               if (!render::normalizeFxParams(*def, a.value(q("params")).toObject(), &f.params, &why)) return fail(why, QStringLiteral("See effect.list."));
-               std::vector<FxInstance> stack = it->fx;
-               const qsizetype at = a.contains(q("index")) ? std::min<qsizetype>(a.value(q("index")).toInt(), static_cast<qsizetype>(stack.size())) : static_cast<qsizetype>(stack.size());
-               stack.insert(stack.begin() + at, f);
-               return applyFx(c, *it, std::move(stack), QStringLiteral("effect.add"), {{q("fxId"), f.id}});
+               const QString itemId = a.value(q("itemId")).toString();
+               const int idx = a.contains(q("index")) ? a.value(q("index")).toInt() : -1;
+               QJsonArray ops;
+               Result r = buildEffectAddOps(c, itemId, a.value(q("effectId")).toString(), a.value(q("params")).toObject(), &ops, idx);
+               if (!r.ok) return r;
+               const QJsonArray stackArr = ops.at(0).toObject().value(q("patch")).toObject().value(q("fx")).toArray();
+               const QString fxId = (idx >= 0 && idx < stackArr.size()) ? stackArr.at(idx).toObject().value(q("id")).toString() : stackArr.last().toObject().value(q("id")).toString();
+               Result w = applyToSession(c, parseOps(ops), QStringLiteral("effect.add"), {{q("fxId"), fxId}});
+               if (!w.ok) return w;
+               QJsonObject o = w.value.toObject();
+               if (const Item* now = getItem(c.session->project->doc(), itemId)) o.insert(q("fx"), fxJson(now->fx));
+               return Result::success(o);
              }));
 
   e.add(spec("effect.set", "", "editor", true,
@@ -286,6 +469,18 @@ void registerFxCommands(Engine& e) {
                stack.insert(stack.begin() + std::min<qsizetype>(a.value(q("index")).toInt(), static_cast<qsizetype>(stack.size())), moved);
                return applyFx(c, *it, std::move(stack), QStringLiteral("effect.reorder"), {});
              }));
+
+  e.add(spec("mask.trackHands", "", "engine", true,
+             QStringLiteral("Track hands with a polygon mask: drives a `polygon_mask` filter on `itemId` (added if absent) from the deterministic B9 `hands` analysis. "
+                            "The thumb tip (4) and index fingertip (8) of both hands form a quad, so the clip shows through the frame your hands make. "
+                            "Args: `itemId` (video item), `fxId?` (existing polygon_mask, else one is added), `fps?` (analysis sample rate, default 15), "
+                            "`minScore?` (default 0.6), `smoothing?` {minCutoff: 1.0, beta: 0.05} for the One-Euro filter, `invert?` (default false), `wait?` (default true). "
+                            "Returns {itemId, fxId, samples, trackedSamples, gaps:[{startSec,endSec}], keyframes:<count per param>, notes}, or {pending:true, jobId} while the analysis runs. "
+                            "All numbers come from deterministic code, not a model. One undo step."),
+             js::obj({{q("itemId"), js::str()}, {q("fxId"), js::str()}, {q("fps"), js::number()},
+                      {q("minScore"), js::number()}, {q("smoothing"), js::any()}, {q("invert"), js::boolean()}, {q("wait"), js::boolean()}, {q("timeoutMs"), js::integer()}},
+                     {q("itemId")}),
+             maskTrackHands));
 
   // ---- transitions ----
   e.add(spec("transition.list", "", "editor", false,

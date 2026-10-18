@@ -1,0 +1,145 @@
+{
+  "id": "sd15_txt2img",
+  "name": "SD 1.5 text to image",
+  "kind": "image",
+  "description": "Generate a still image with Stable Diffusion 1.5 using a text prompt.",
+  "whenToUse": [
+    "still",
+    "background",
+    "concept"
+  ],
+  "graph": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "cfg": 8,
+        "denoise": 1,
+        "latent_image": [
+          "5",
+          0
+        ],
+        "model": [
+          "4",
+          0
+        ],
+        "negative": [
+          "7",
+          0
+        ],
+        "positive": [
+          "6",
+          0
+        ],
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "seed": 0,
+        "steps": 20
+      },
+      "_meta": {
+        "title": "KSampler"
+      }
+    },
+    "4": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "sd15.safetensors"
+      },
+      "_meta": {
+        "title": "Load Checkpoint"
+      }
+    },
+    "5": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "batch_size": 1,
+        "height": 512,
+        "width": 512
+      },
+      "_meta": {
+        "title": "Empty Latent Image"
+      }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "4",
+          1
+        ],
+        "text": "masterpiece, best quality"
+      },
+      "_meta": {
+        "title": "CLIP Text Encode (Prompt)"
+      }
+    },
+    "7": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "4",
+          1
+        ],
+        "text": "bad quality, blurry"
+      },
+      "_meta": {
+        "title": "CLIP Text Encode (Prompt)"
+      }
+    },
+    "8": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "3",
+          0
+        ],
+        "vae": [
+          "4",
+          2
+        ]
+      },
+      "_meta": {
+        "title": "VAE Decode"
+      }
+    },
+    "9": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "ComfyUI",
+        "images": [
+          "8",
+          0
+        ]
+      },
+      "_meta": {
+        "title": "Save Image"
+      }
+    }
+  },
+  "outputNode": "9",
+  "bindings": {
+    "prompt": {
+      "node": "6",
+      "input": "text"
+    },
+    "negative": {
+      "node": "7",
+      "input": "text"
+    },
+    "seed": {
+      "node": "3",
+      "input": "seed"
+    },
+    "width": {
+      "node": "5",
+      "input": "width"
+    },
+    "height": {
+      "node": "5",
+      "input": "height"
+    },
+    "steps": {
+      "node": "3",
+      "input": "steps"
+    }
+  }
+}

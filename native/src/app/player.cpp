@@ -3,6 +3,7 @@
 #include "audio/timebase.h"
 #include "core/error.h"
 #include "core/timeline_doc.h"
+#include "sys/system_profile.h"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -93,7 +94,9 @@ void Player::loadProject(TimelineDoc doc, render::AssetTable assets) {
   auto media = makeMedia();
   FrameService::Options o;
   o.gpuFrames = zeroCopy_;
-  if (softwareDecode_) o.hw = HwMode::Off;
+  const auto decisions = sys::sharedSystemService().decisions();
+  o.hw = (!decisions.hwDecode || softwareDecode_) ? HwMode::Off : HwMode::Auto;
+  o.cacheBytes = static_cast<qint64>(decisions.cacheMb) * 1024ll * 1024ll;
   media->service = std::make_unique<FrameService>(o);
   const bool few = assets.size() <= 8;
   media->provider = std::make_unique<render::FrameServiceProvider>(*media->service, std::move(assets));

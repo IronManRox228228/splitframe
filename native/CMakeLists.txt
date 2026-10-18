@@ -53,6 +53,7 @@ add_subdirectory(src/sys)
 
 # Background analysis jobs (scheduler, ONNX Runtime wrapper, hands + waveform analyzers); sf_engine links it.
 add_subdirectory(src/jobs)
+add_subdirectory(src/comfy)
 add_subdirectory(src/media)
 add_subdirectory(src/render)
 add_subdirectory(src/editor)

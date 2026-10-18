@@ -19,6 +19,7 @@ layout(std140, binding = 0) uniform U {
 
 layout(binding = 1) uniform sampler2D fxSrc;
 layout(binding = 2) uniform sampler2D fxSrc2; // filters: the layer before the first pass
+layout(binding = 3) uniform sampler2D fxTex0;
 
 #define progress (u.fxTiming.x)
 #define time (u.fxTiming.y)
@@ -29,6 +30,7 @@ layout(binding = 2) uniform sampler2D fxSrc2; // filters: the layer before the f
 
 vec4 getColor(vec2 uv) { return texture(fxSrc, vec2(uv.x, 1.0 - uv.y)); }
 vec4 getOriginal(vec2 uv) { return texture(fxSrc2, vec2(uv.x, 1.0 - uv.y)); }
+vec4 getTexture(vec2 uv) { return texture(fxTex0, vec2(uv.x, 1.0 - uv.y)); }
 
 float fxLuma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 fxUnpremul(vec4 c) { return c.a > 0.0001 ? c.rgb / c.a : c.rgb; }

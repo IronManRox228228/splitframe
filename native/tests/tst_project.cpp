@@ -235,6 +235,63 @@ private slots:
     QCOMPARE(again.paths(), r.paths()); // persisted
     QCOMPARE(again.entries().first().toMap().value(QStringLiteral("exists")).toBool(), false);
   }
+  void nestedGroupsMakeOneUndoStepAndUndoResetsDepth() {
+    Project p;
+    // Apply nested groups:
+    p.beginGroup(QStringLiteral("Outer"));
+    p.apply(ProjectRename{QStringLiteral("First")});
+    p.beginGroup(QStringLiteral("Inner"));
+    p.apply(ProjectRename{QStringLiteral("Second")});
+    p.endGroup();
+    p.endGroup();
+
+    QCOMPARE(p.name(), QStringLiteral("Second"));
+    // Undoing should undo both edits in one step
+    QVERIFY(p.undo());
+    QCOMPARE(p.name(), QStringLiteral("Untitled video"));
+    QVERIFY(!p.canUndo());
+
+    // Redo to get back
+    QVERIFY(p.redo());
+    QCOMPARE(p.name(), QStringLiteral("Second"));
+
+    // Now test undo during an open group does not corrupt depth
+    p.beginGroup(QStringLiteral("OpenGroup"));
+    p.apply(ProjectRename{QStringLiteral("Third")});
+    // Undo while group is still open
+    QVERIFY(p.undo());
+    QCOMPARE(p.groupDepth(), 0);
+
+    // Depth must be reset to 0; further edits and groups should work normally
+    p.beginGroup(QStringLiteral("NewGroup"));
+    p.apply(ProjectRename{QStringLiteral("Fourth")});
+    p.apply(ProjectRename{QStringLiteral("Fifth")});
+    p.endGroup();
+    QCOMPARE(p.name(), QStringLiteral("Fifth"));
+    QVERIFY(p.undo());
+    QCOMPARE(p.name(), QStringLiteral("Second"));
+  }
+
+  void loadFollowedByTwoEditsInSeparateUndoStepsGivesTwoUndoSteps() {
+    Project p;
+    p.beginGroup(QStringLiteral("AbandonedOuter"));
+    p.beginGroup(QStringLiteral("AbandonedInner"));
+    QCOMPARE(p.groupDepth(), 2);
+
+    ProjectBundle b;
+    b.doc.project.name = QStringLiteral("Initial");
+    p.load(b, QStringLiteral("test.sf"), false);
+    QCOMPARE(p.groupDepth(), 0);
+
+    p.apply(ProjectRename{QStringLiteral("First")});
+    p.apply(ProjectRename{QStringLiteral("Second")});
+
+    QCOMPARE(p.name(), QStringLiteral("Second"));
+    QVERIFY(p.undo());
+    QCOMPARE(p.name(), QStringLiteral("First"));
+    QVERIFY(p.undo());
+    QCOMPARE(p.name(), QStringLiteral("Initial"));
+  }
 };
 
 } // namespace tst

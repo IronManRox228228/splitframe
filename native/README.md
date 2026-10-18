@@ -69,3 +69,117 @@ Electron app's op log semantics are unchanged.
   `<AppConfigLocation>/api-token`, i.e. `%LOCALAPPDATA%/SplitFrame/SplitFrame/api-token`); foreign `Host` / `Origin` headers are rejected.
 - `splitframe.exe --mcp [project.json]` or `splitframe-cli mcp`: MCP over stdio (tools = the engine commands with `.` written `_`, resources
   `splitframe://timeline|project|assets|frame/{n}`).
+
+## Generate with ComfyUI (open weights)
+
+### What it does
+Generated shots (image, video, and audio) land directly on the timeline, where the editor's deterministic layers cut, grade, beat-sync, safety-check, and export them. Variants of a shot can be rendered as a contact sheet and picked by letter (e.g., variant `A`, `B`, `C`, etc.) in a single undo step.
+
+### Requirements
+- A local ComfyUI server (any recent version) started with:
+  ```bash
+  python main.py --listen 127.0.0.1 --port 8188
+  ```
+- Any open-weights video, image, or audio model that you already run in ComfyUI (such as LTX-Video). SplitFrame never downloads model weights.
+
+### Configuration
+Configure the integration via environment variables:
+- `SF_COMFY_URL`: ComfyUI server URL (default `http://127.0.0.1:8188`).
+- `SF_COMFY_TEMPLATES`: Directory containing user-imported workflow templates.
+- `SF_COMFY_OBJECT_INFO`: Optional path to an offline `/object_info` schema dump (used by the test suite and offline environments).
+
+### Adding your own workflow
+In ComfyUI, enable "Dev mode Options" in the settings, then click **Export (API)** to save your workflow in API format JSON. Then import the workflow into SplitFrame using `splitframe-cli call comfy.template.import` with typed parameter bindings.
+
+Worked example for an image-to-video workflow:
+```bash
+splitframe-cli call comfy.template.import '{
+  "id": "my_i2v_workflow",
+  "name": "Custom Image-to-Video",
+  "kind": "video",
+  "description": "Generate video from an initial image using open weights",
+  "whenToUse": ["b-roll", "cutaway", "transition"],
+  "path": "C:/path/to/workflow_api.json",
+  "outputNode": "12",
+  "bindings": {
+    "prompt": { "node": "6", "input": "text" },
+    "seed": { "node": "3", "input": "seed" },
+    "image": { "node": "10", "input": "image" },
+    "frames": { "node": "3", "input": "length" },
+    "fps": { "node": "12", "input": "frame_rate" }
+  }
+}'
+```
+*Note:* The generic node IDs (`"6"`, `"3"`, `"10"`, `"12"`) in this example must match the corresponding node IDs in your exported ComfyUI API JSON file.
+
+### CLI walkthrough
+All operations are available via `splitframe-cli call`:
+
+1. **Check server status:**
+   ```bash
+   splitframe-cli call comfy.status
+   ```
+2. **List available templates:**
+   ```bash
+   splitframe-cli call comfy.template.list '{"kind":"video"}'
+   ```
+3. **Generate a shot onto the timeline:**
+   ```bash
+   splitframe-cli call generate.shot '{
+     "session": "s1",
+     "templateId": "my_i2v_workflow",
+     "prompt": "wide drone sweep over morning mist in the redwoods",
+     "seed": 42,
+     "trackId": "track-v1",
+     "atFrame": 0
+   }'
+   ```
+4. **Render alternative variants (contact sheet):**
+   ```bash
+   splitframe-cli call reshoot.variants '{
+     "session": "s1",
+     "itemId": "item_1",
+     "count": 4,
+     "vary": "seed"
+   }'
+   ```
+5. **Pick a preferred variant from the contact sheet:**
+   ```bash
+   splitframe-cli call reshoot.pick '{
+     "session": "s1",
+     "itemId": "item_1",
+     "letter": "B"
+   }'
+   ```
+6. **Agent-friendly workflow graph editing with validation:**
+   ```bash
+   # Load an API-format workflow into memory (returns a graphId, e.g. "g1")
+   splitframe-cli call comfy.graph.load '{"path":"workflow_api.json"}'
+
+   # Apply typed graph operations atomically with undo tracking
+   splitframe-cli call comfy.graph.op '{
+     "graphId": "g1",
+     "ops": [
+       {"op": "set", "id": "3", "input": "steps", "value": 30},
+       {"op": "set", "id": "6", "input": "text", "value": "golden sunset over ocean cliffs"}
+     ]
+   }'
+
+   # Validate graph structure and input types against the schema
+   splitframe-cli call comfy.graph.validate '{"graphId":"g1"}'
+
+   # Enqueue execution as a background job
+   splitframe-cli call comfy.run '{"graphId":"g1","wait":true}'
+   ```
+
+### How it's built
+- **Dynamic tool schemas:** Node tool schemas are introspected directly from ComfyUI's `/object_info` endpoint.
+- **Typed graph operations with undo:** In-memory graph documents support atomic batch ops (`add`, `remove`, `set`, `connect`, `disconnect`, `clear`) with an undo stack.
+- **Deterministic validator:** A 10-error-code validator (`unknown_class`, `unknown_input`, `missing_required`, `bad_link`, `type_mismatch`, `bad_enum`, `out_of_range`, `bad_literal_type`, `cycle`, `no_output_node`) runs before any graph is queued.
+- **Content-addressable caching:** Generation requests are hashed by graph contents, seed, and input parameters to avoid redundant runs.
+- **Resource management:** Background generation jobs automatically pause during export to prioritize render and encode pipelines.
+- **Deterministic calculations:** Every timing offset, frame rate conversion, and layout coordinate is computed by deterministic C++ code, not model hallucinations.
+
+### License
+SplitFrame is licensed under [GPL-3.0-or-later](../LICENSE). Generated media files follow the licenses of whichever model weights and checkpoints the user runs in their local ComfyUI installation.
+

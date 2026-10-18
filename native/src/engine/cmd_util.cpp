@@ -1,13 +1,21 @@
 #include "engine/cmd_util.h"
+#include "media/frame_service.h"
+#include "render/colour_capture.h"
+#include "render/layer_painter.h"
+#include "render/layout.h"
+#include "render/media_provider.h"
+#include "render/offscreen.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QDir>
 #include <QImage>
+#include <QPainter>
 #include <QStandardPaths>
 
 #include <atomic>
+#include <cmath>
 
 namespace sf::engine {
 
@@ -149,6 +157,90 @@ Result imageResult(const QImage& image, const ImageOut& out, const QString& stem
     r.insert(q("base64"), QString::fromLatin1(bytes.toBase64()));
   }
   return Result::success(r);
+}
+
+
+Result renderFrames(CallContext& c, const TimelineDoc& doc, const std::vector<Frame>& frames, const FrameFn& fn) {
+  QString err;
+  render::OffscreenRenderer* off = c.engine->renderer(&err);
+  if (!off) return Result::failure(q("unavailable"), QStringLiteral("The renderer is not available: %1").arg(err));
+  off->compositor().setDelivery(std::nullopt);
+  FrameService::Options o;
+  o.cacheBytes = 128ll << 20;
+  o.workerThreads = 2;
+  o.gpuFrames = false;
+  o.hw = HwMode::Off; // software decode: the GPU is shared with other work
+  FrameService service(o);
+  render::FrameServiceProvider provider(service, assetTable(*c.session), render::FrameServiceProvider::Mode::Blocking);
+  provider.openAll();
+  for (const Frame f : frames) {
+    provider.prepare(doc, f, 0);
+    const QImage img = off->render(doc, f, provider);
+    if (img.isNull()) return Result::failure(q("unavailable"), QStringLiteral("The renderer returned no picture for frame %1.").arg(f));
+    fn(f, img.convertToFormat(QImage::Format_RGBA8888));
+  }
+  return Result::success(QJsonObject{});
+}
+
+QImage composeGrid(const std::vector<QImage>& cells, const QStringList& labels, int columns, int cellWidth) {
+  const int n = static_cast<int>(cells.size());
+  if (n <= 0) return QImage();
+
+  int cols = columns > 0 ? columns : static_cast<int>(std::ceil(std::sqrt(n)));
+  cols = std::clamp(cols, 1, 16);
+  const int rows = (n + cols - 1) / cols;
+
+  double aspect = 9.0 / 16.0;
+  for (const QImage& img : cells) {
+    if (!img.isNull() && img.width() > 0) {
+      aspect = static_cast<double>(img.height()) / static_cast<double>(img.width());
+      break;
+    }
+  }
+
+  const int cellW = std::clamp(cellWidth > 0 ? cellWidth : 480, 240, 960);
+  const int cellH = std::max(1, static_cast<int>(std::lround(cellW * aspect)));
+  const int labelBarH = 28;
+  const int cellTotalH = cellH + labelBarH;
+  const int gutter = 8;
+  const int sheetW = gutter + cols * (cellW + gutter);
+  const int sheetH = gutter + rows * (cellTotalH + gutter);
+
+  QImage sheet(sheetW, sheetH, QImage::Format_RGBA8888);
+  sheet.fill(QColor(QStringLiteral("#111111")));
+  QPainter painter(&sheet);
+  painter.setRenderHint(QPainter::Antialiasing, true);
+  painter.setRenderHint(QPainter::TextAntialiasing, true);
+  QFont font;
+  font.setPixelSize(14);
+  painter.setFont(font);
+
+  for (int i = 0; i < n; ++i) {
+    const int col = i % cols;
+    const int row = i / cols;
+    const int cellX = gutter + col * (cellW + gutter);
+    const int cellY = gutter + row * (cellTotalH + gutter);
+
+    const QImage& cellImg = cells[static_cast<size_t>(i)];
+    if (cellImg.isNull()) {
+      painter.fillRect(QRect(cellX, cellY, cellW, cellH), QColor(QStringLiteral("#555555")));
+      painter.setPen(QColor(QStringLiteral("#ff6666")));
+      painter.drawText(QRect(cellX + 8, cellY + 8, cellW - 16, cellH - 16), Qt::AlignCenter | Qt::TextWordWrap, QStringLiteral("error"));
+    } else {
+      QImage scaled = cellImg.scaled(cellW, cellH, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+      painter.drawImage(cellX, cellY, scaled);
+    }
+
+    // Draw label bar
+    painter.fillRect(QRect(cellX, cellY + cellH, cellW, labelBarH), QColor(QStringLiteral("#111111")));
+    painter.setPen(QColor(QStringLiteral("#ffffff")));
+    const QString labelText = (i < labels.size()) ? labels[i] : QString();
+    if (!labelText.isEmpty()) {
+      painter.drawText(QRect(cellX + 8, cellY + cellH, cellW - 16, labelBarH), Qt::AlignVCenter | Qt::AlignLeft, labelText);
+    }
+  }
+  painter.end();
+  return sheet;
 }
 
 } // namespace sf::engine

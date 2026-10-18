@@ -5,6 +5,7 @@
 #include "audio/audio_analysis.h"
 #include "audio/engine.h"
 #include "audio/loudness.h"
+#include "audio/music_fit.h"
 #include "audio/source.h"
 #include "audio/timebase.h"
 #include "engine/cmd_util.h"
@@ -513,37 +514,61 @@ Result duckCmd(CallContext& c, const QJsonObject& a) {
 
 // ---------------------------------------------------------------- music.structure
 
+Result analyseItemMusic(CallContext& c, const Item& item, audio::MusicStructure* outMs, double* outAvailableSec) {
+  if (!outMs) return invalid(QStringLiteral("Null output pointer."));
+  const editor::Project& p = *c.session->project;
+  const TimelineDoc& d = p.doc();
+  const double f = fps(d);
+  if (!audible(item) || !item.assetId) return invalid(QStringLiteral("Item %1 has no audio asset.").arg(item.id));
+  const Asset* asset = p.asset(*item.assetId);
+  if (!asset) return notFound(QStringLiteral("Asset not found."), QStringLiteral("Call assets.list."));
+  if (asset->kind == AssetKind::Image) return invalid(QStringLiteral("Asset %1 is an image: no audio.").arg(asset->id));
+  QString err;
+  auto dec = AudioDecoder::open(asset->path, &err);
+  if (!dec) return Result::failure(q("unavailable"), err.isEmpty() ? QStringLiteral("Can't decode %1.").arg(asset->path) : err);
+  qint64 from = static_cast<qint64>(std::llround(static_cast<double>(item.sourceInFrame.value_or(0)) / f * kRate));
+  qint64 to = std::min(dec->info().totalSamples, static_cast<qint64>(std::llround(static_cast<double>(sourceOutFrame(item)) / f * kRate)));
+  to = std::min<qint64>(to, from + static_cast<qint64>(kRate) * 600);
+  if (to <= from) return invalid(QStringLiteral("No audio to analyse."));
+  std::vector<float> buf(static_cast<size_t>(to - from) * 2);
+  dec->read(from, to - from, buf.data());
+  *outMs = audio::analyseMusic(buf.data(), to - from);
+  if (outAvailableSec) {
+    const double sourceDur = static_cast<double>(dec->info().totalSamples) / kRate;
+    const double inSec = static_cast<double>(item.sourceInFrame.value_or(0)) / f;
+    *outAvailableSec = std::max(0.0, sourceDur - inSec);
+  }
+  return Result::success();
+}
+
 Result structureCmd(CallContext& c, const QJsonObject& a) {
   const editor::Project& p = *c.session->project;
   const TimelineDoc& d = p.doc();
   const double f = fps(d);
   const Item* item = nullptr;
   const Asset* asset = nullptr;
+  audio::MusicStructure ms;
   if (a.contains(q("itemId"))) {
     item = getItem(d, a.value(q("itemId")).toString());
     if (!item) return notFound(QStringLiteral("Item %1 not found.").arg(a.value(q("itemId")).toString()), QStringLiteral("Call timeline.get."));
-    if (!audible(*item) || !item->assetId) return invalid(QStringLiteral("Item %1 has no audio asset.").arg(item->id));
+    Result r = analyseItemMusic(c, *item, &ms, nullptr);
+    if (!r.ok) return r;
     asset = p.asset(*item->assetId);
   } else if (a.contains(q("assetId"))) {
     asset = p.asset(a.value(q("assetId")).toString());
+    if (!asset) return notFound(QStringLiteral("Asset not found."), QStringLiteral("Call assets.list."));
+    if (asset->kind == AssetKind::Image) return invalid(QStringLiteral("Asset %1 is an image: no audio.").arg(asset->id));
+    QString err;
+    auto dec = AudioDecoder::open(asset->path, &err);
+    if (!dec) return Result::failure(q("unavailable"), err.isEmpty() ? QStringLiteral("Can't decode %1.").arg(asset->path) : err);
+    qint64 from = 0, to = std::min<qint64>(dec->info().totalSamples, static_cast<qint64>(kRate) * 600);
+    if (to <= from) return invalid(QStringLiteral("No audio to analyse."));
+    std::vector<float> buf(static_cast<size_t>(to - from) * 2);
+    dec->read(from, to - from, buf.data());
+    ms = audio::analyseMusic(buf.data(), to - from);
   } else {
     return invalid(QStringLiteral("Pass assetId or itemId."));
   }
-  if (!asset) return notFound(QStringLiteral("Asset not found."), QStringLiteral("Call assets.list."));
-  if (asset->kind == AssetKind::Image) return invalid(QStringLiteral("Asset %1 is an image: no audio.").arg(asset->id));
-  QString err;
-  auto dec = AudioDecoder::open(asset->path, &err);
-  if (!dec) return Result::failure(q("unavailable"), err.isEmpty() ? QStringLiteral("Can't decode %1.").arg(asset->path) : err);
-  qint64 from = 0, to = dec->info().totalSamples;
-  if (item) {
-    from = static_cast<qint64>(std::llround(static_cast<double>(item->sourceInFrame.value_or(0)) / f * kRate));
-    to = std::min(to, static_cast<qint64>(std::llround(static_cast<double>(sourceOutFrame(*item)) / f * kRate)));
-  }
-  to = std::min<qint64>(to, from + static_cast<qint64>(kRate) * 600);
-  if (to <= from) return invalid(QStringLiteral("No audio to analyse."));
-  std::vector<float> buf(static_cast<size_t>(to - from) * 2);
-  dec->read(from, to - from, buf.data());
-  const audio::MusicStructure ms = audio::analyseMusic(buf.data(), to - from);
 
   QJsonObject o{{q("assetId"), asset->id}, {q("valid"), ms.valid}, {q("note"), QString::fromStdString(ms.note)}, {q("durationSec"), fin(ms.durationSec, 1000.0)}};
   if (item) {
@@ -584,6 +609,170 @@ Result structureCmd(CallContext& c, const QJsonObject& a) {
     secs.append(QJsonObject{{q("startSec"), fin(s.startSec, 1000.0)}, {q("endSec"), fin(s.endSec, 1000.0)}, {q("startBar"), s.startBar}, {q("endBar"), s.endBar}, {q("label"), QString::fromStdString(s.label)},
                             {q("energyDb"), fin(s.energyDb)}, {q("relEnergy"), fin(s.relEnergy)}});
   o.insert(q("sections"), secs);
+  return Result::success(o);
+}
+
+// ---------------------------------------------------------------- music.fit
+
+Result fitCmd(CallContext& c, const QJsonObject& a) {
+  const editor::Project& p = *c.session->project;
+  const TimelineDoc& d = p.doc();
+  const double f = fps(d);
+
+  if (!a.contains(q("itemId"))) return invalid(QStringLiteral("Pass itemId."));
+  const QString itemId = a.value(q("itemId")).toString();
+  const Item* item = getItem(d, itemId);
+  if (!item) return notFound(QStringLiteral("Item %1 not found.").arg(itemId), QStringLiteral("Call timeline.get."));
+
+  audio::MusicStructure ms;
+  double availableSec = 0;
+  Result r = analyseItemMusic(c, *item, &ms, &availableSec);
+  if (!r.ok) return r;
+
+  Frame targetFrames = 0;
+  if (a.contains(q("targetFrames"))) {
+    targetFrames = static_cast<Frame>(a.value(q("targetFrames")).toInteger());
+  } else {
+    bool foundPicture = false;
+    Frame maxEnd = 0;
+    for (const Track& trk : d.tracks) {
+      if (trk.kind != TrackKind::Audio) {
+        for (const Item& it : d.items) {
+          if (it.trackId == trk.id) {
+            Frame end = itemEnd(it);
+            if (!foundPicture || end > maxEnd) {
+              maxEnd = end;
+              foundPicture = true;
+            }
+          }
+        }
+      }
+    }
+    if (!foundPicture) return invalid(QStringLiteral("No picture edit found. Pass targetFrames."));
+    targetFrames = maxEnd;
+  }
+  if (targetFrames <= 0) return invalid(QStringLiteral("targetFrames must be > 0."));
+
+  audio::FitMode mode = audio::FitMode::Auto;
+  const QString modeStr = a.value(q("mode")).toString(QStringLiteral("auto")).toLower();
+  if (modeStr == QLatin1String("trim")) mode = audio::FitMode::Trim;
+  else if (modeStr == QLatin1String("edit")) mode = audio::FitMode::Edit;
+  else if (modeStr == QLatin1String("loop")) mode = audio::FitMode::Loop;
+  else if (modeStr != QLatin1String("auto")) return invalid(QStringLiteral("Invalid mode '%1': expected 'auto', 'trim', 'edit' or 'loop'.").arg(modeStr));
+
+  double fadeOutSec = -1;
+  if (a.contains(q("fadeOutMs"))) {
+    fadeOutSec = a.value(q("fadeOutMs")).toDouble() / 1000.0;
+  }
+
+  const double speed = item->speed > 0 ? item->speed : 1.0;
+  const double targetSec = static_cast<double>(targetFrames) / f * speed;
+
+  audio::FitRequest req;
+  req.targetSec = targetSec;
+  req.mode = mode;
+  req.fadeOutSec = fadeOutSec;
+
+  const audio::FitPlan plan = audio::planMusicFit(ms, availableSec, req);
+  if (!plan.ok) return invalid(QString::fromStdString(plan.error));
+
+  struct TlSegment {
+    double srcStartSec = 0;
+    double srcEndSec = 0;
+    Frame startFrame = 0;
+    Frame endFrame = 0;
+  };
+  std::vector<TlSegment> tlSegs;
+  Frame cur = item->startFrame;
+  for (const auto& s : plan.segments) {
+    double durSec = s.srcEndSec - s.srcStartSec;
+    Frame durFrames = static_cast<Frame>(std::llround(durSec / speed * f));
+    TlSegment ts;
+    ts.srcStartSec = s.srcStartSec;
+    ts.srcEndSec = s.srcEndSec;
+    ts.startFrame = cur;
+    ts.endFrame = cur + durFrames;
+    tlSegs.push_back(ts);
+    cur = ts.endFrame;
+  }
+
+  const bool apply = a.value(q("apply")).toBool(false);
+  QJsonObject o;
+  o.insert(q("itemId"), item->id);
+  o.insert(q("targetFrames"), static_cast<double>(targetFrames));
+  o.insert(q("targetSec"), fin(targetSec, 1000.0));
+  o.insert(q("modeUsed"), q(plan.modeUsed == audio::FitMode::Trim ? "trim" : plan.modeUsed == audio::FitMode::Edit ? "edit" : "loop"));
+  o.insert(q("totalSec"), fin(plan.totalSec, 1000.0));
+  o.insert(q("keepsFinalHit"), plan.keepsFinalHit);
+  o.insert(q("fadeOutMs"), fin(plan.fadeOutSec * 1000.0, 10.0));
+
+  QJsonArray notesArr;
+  for (const auto& n : plan.notes) notesArr.append(QString::fromStdString(n));
+  o.insert(q("notes"), notesArr);
+
+  QJsonArray segsArr;
+  for (const auto& ts : tlSegs) {
+    segsArr.append(QJsonObject{
+      {q("srcStartSec"), fin(ts.srcStartSec, 1000.0)},
+      {q("srcEndSec"), fin(ts.srcEndSec, 1000.0)},
+      {q("startFrame"), static_cast<double>(ts.startFrame)},
+      {q("endFrame"), static_cast<double>(ts.endFrame)}
+    });
+  }
+  o.insert(q("segments"), segsArr);
+
+  if (apply) {
+    for (const Item* other : itemsOnTrack(d, item->trackId)) {
+      if (other->id == item->id) continue;
+      Frame checkStart = std::max(itemEnd(*item), item->startFrame);
+      if (other->startFrame < cur && itemEnd(*other) > checkStart) {
+        return invalid(QStringLiteral("Overlap with item %1.").arg(other->id));
+      }
+    }
+
+    QJsonArray ops;
+    const Frame seg0SrcIn = static_cast<Frame>(item->sourceInFrame.value_or(0) + std::llround(tlSegs[0].srcStartSec * f));
+    const Frame seg0Dur = tlSegs[0].endFrame - tlSegs[0].startFrame;
+    const Frame seg0FadeOut = (tlSegs.size() > 1) ? 1 : (plan.fadeOutSec > 0 ? static_cast<Frame>(std::llround(plan.fadeOutSec * f)) : 0);
+    Frame origFadeIn = 0;
+    if (const auto* ap = std::get_if<AudioProps>(&item->props)) origFadeIn = ap->fadeInFrames;
+    QJsonObject seg0Props{{q("fadeInFrames"), static_cast<double>(origFadeIn)}, {q("fadeOutFrames"), static_cast<double>(seg0FadeOut)}};
+    QJsonObject seg0Patch{{q("sourceInFrame"), static_cast<double>(seg0SrcIn)}, {q("durationFrames"), static_cast<double>(seg0Dur)}, {q("props"), seg0Props}};
+    ops.append(QJsonObject{{q("type"), q("item.update")}, {q("itemId"), item->id}, {q("patch"), seg0Patch}});
+
+    for (size_t i = 1; i < tlSegs.size(); ++i) {
+      const auto& ts = tlSegs[i];
+      const Frame srcIn = static_cast<Frame>(item->sourceInFrame.value_or(0) + std::llround(ts.srcStartSec * f));
+      const Frame dur = ts.endFrame - ts.startFrame;
+      const Frame segFadeOut = (i == tlSegs.size() - 1) ? (plan.fadeOutSec > 0 ? static_cast<Frame>(std::llround(plan.fadeOutSec * f)) : 0) : 1;
+      const QString newItmId = newId(q("itm"));
+      QJsonObject addProps{{q("fadeInFrames"), 1.0}, {q("fadeOutFrames"), static_cast<double>(segFadeOut)}};
+      QJsonObject newItemObj{
+        {q("id"), newItmId},
+        {q("trackId"), item->trackId},
+        {q("type"), q("audio")},
+        {q("startFrame"), static_cast<double>(ts.startFrame)},
+        {q("durationFrames"), static_cast<double>(dur)},
+        {q("sourceInFrame"), static_cast<double>(srcIn)},
+        {q("speed"), item->speed},
+        {q("volume"), item->volume},
+        {q("muted"), item->muted},
+        {q("props"), addProps}
+      };
+      if (item->assetId) newItemObj.insert(q("assetId"), *item->assetId);
+      ops.append(QJsonObject{{q("type"), q("item.add")}, {q("item"), newItemObj}});
+    }
+
+    Result w = applyToSession(c, parseOps(ops), q("music.fit"), {{q("itemId"), item->id}});
+    if (!w.ok) return w;
+
+    o.insert(q("applied"), true);
+    o.insert(q("created"), w.value.toObject().value(q("created")));
+    o.insert(q("undoLabel"), w.value.toObject().value(q("undoLabel")));
+  } else {
+    o.insert(q("applied"), false);
+  }
+
   return Result::success(o);
 }
 
@@ -807,6 +996,18 @@ void registerAudioCommands(Engine& e) {
                             "Times are seconds from the start of the analysed audio; with itemId also beatFrames / downbeatFrames / finalHitFrame on the timeline. "
                             "tempoConfidence is the normalised autocorrelation at the beat period (0..1); below about 0.3 treat the grid as a guess."),
              js::obj({{q("assetId"), js::str()}, {q("itemId"), js::str()}}), structureCmd));
+  e.add(spec("music.fit", "", "audio", true,
+             QStringLiteral("Fit a music item to a target length (`targetFrames`, default is the end of the picture edit / non-audio items) by cutting on the beat. "
+                            "Uses music.structure (deterministic DSP, no model). Modes: auto (default: edit when shorter, loop when longer), trim (cut at target with fade), "
+                            "edit (remove a middle chunk between section boundaries of similar energy, keeping the original beginning and ending/final hit), "
+                            "or loop (repeat a drop/main section by whole bars). fadeOutMs defaults to one bar (clamped to 500..3000 ms). "
+                            "apply=false (default) is a dry run returning the planned segments; apply=true updates the original item and adds repeating segments as ONE undo step."),
+             js::obj({{q("itemId"), js::str()}, {q("targetFrames"), js::integer(QString(), 1)},
+                      {q("mode"), js::choice({q("auto"), q("trim"), q("edit"), q("loop")})},
+                      {q("fadeOutMs"), js::number(QStringLiteral("Fade-out duration in ms"), 0, 10000)},
+                      {q("apply"), js::boolean(QStringLiteral("Apply the fit as an undoable edit (default false)"))}},
+                     {q("itemId")}),
+             fitCmd));
   e.add(spec("audio.check", "", "audio", false,
              QStringLiteral("Verify the mix against a delivery spec. Returns {pass, violations[], measured, speechMargin, limits}; each violation is {rule, frame, timeSec, measured, limit, message} (frame / timeSec null when the rule is about the whole mix). "
                             "Rules: loudness (integrated LUFS off `target` by more than `tolerance`, defaults -14 and 1), true_peak (over `truePeakCeiling`, default -1), clipping (any sample at or above 0.9999), speech_margin (a speech range sits less than "

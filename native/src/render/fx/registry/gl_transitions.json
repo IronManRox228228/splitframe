@@ -1065,6 +1065,40 @@
    ]
   },
   {
+   "id": "gl_displacement",
+   "name": "Displacement",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_displacement.glsl",
+   "description": "A crossfade in which a displacement map (an extra grayscale texture) warps both images",
+   "tags": [
+    "displace",
+    "distort",
+    "blend"
+   ],
+   "whenToUse": [
+    "displacement style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "displacementMap",
+     "label": "Displacement Map",
+     "type": "texture",
+     "default": "clouds"
+    },
+    {
+     "name": "strength",
+     "label": "Strength",
+     "type": "float",
+     "min": 0,
+     "max": 1,
+     "default": 0.5,
+     "description": "Strength of the displacement"
+    }
+   ]
+  },
+  {
    "id": "gl_dissolve",
    "name": "Dissolve",
    "category": "transition",
@@ -1910,6 +1944,31 @@
      "max": 1,
      "default": 0.1,
      "description": "Amount of blur"
+    }
+   ]
+  },
+  {
+   "id": "gl_luma",
+   "name": "Luma",
+   "category": "transition",
+   "kind": "transition",
+   "body": "bodies/gl_luma.glsl",
+   "description": "A wipe that follows the brightness of a grayscale mask (the luma texture)",
+   "tags": [
+    "wipe",
+    "luma",
+    "mask"
+   ],
+   "whenToUse": [
+    "luma style change of scene",
+    "a stylised transition from the gl-transitions collection"
+   ],
+   "params": [
+    {
+     "name": "luma",
+     "label": "Luma",
+     "type": "texture",
+     "default": "linear_lr"
     }
    ]
   },

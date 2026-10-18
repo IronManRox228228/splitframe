@@ -34,7 +34,7 @@
 namespace sf::render {
 
 enum class FxKind { Filter, Transition };
-enum class FxParamType { Float, Vec2, Color, Bool, Int, Enum, Point };
+enum class FxParamType { Float, Vec2, Color, Bool, Int, Enum, Point, Texture };
 
 constexpr int kFxMaxParams = 16;
 
@@ -44,7 +44,7 @@ struct FxParamDef {
   FxParamType type = FxParamType::Float;
   double min = 0, max = 1;         // float / int / vec2 components (clamped on set)
   QJsonValue def;                  // default, in the param's JSON form
-  QStringList options;             // enum: names in order (the shader sees the index)
+  QStringList options;             // enum / texture: names in order (the shader sees the index or procedural texture)
   QString description;
   bool animatable() const { return type == FxParamType::Float || type == FxParamType::Int || type == FxParamType::Vec2 || type == FxParamType::Color || type == FxParamType::Point; }
 };
@@ -61,6 +61,7 @@ struct FxDef {
   std::vector<FxParamDef> params; // slot = index
   QString shader;                 // resource name of the baked shader: ":/sf/render/fx/shaders/<id>.frag.qsb"
   const FxParamDef* param(const QString& name) const;
+  const FxParamDef* textureParam() const;
 };
 
 // The definitions compiled into the library (render/fx/registry/*.json), loaded on first use.

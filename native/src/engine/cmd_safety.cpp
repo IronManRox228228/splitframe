@@ -90,29 +90,7 @@ const std::array<float, 256>& srgbLut() {
   return lut;
 }
 
-using FrameFn = std::function<void(Frame, const QImage&)>;
-
-Result renderFrames(CallContext& c, const TimelineDoc& doc, const std::vector<Frame>& frames, const FrameFn& fn) {
-  QString err;
-  render::OffscreenRenderer* off = c.engine->renderer(&err);
-  if (!off) return Result::failure(q("unavailable"), QStringLiteral("The renderer is not available: %1").arg(err));
-  off->compositor().setDelivery(std::nullopt);
-  FrameService::Options o;
-  o.cacheBytes = 128ll << 20;
-  o.workerThreads = 2;
-  o.gpuFrames = false;
-  o.hw = HwMode::Off; // software decode: the GPU is shared with other work
-  FrameService service(o);
-  render::FrameServiceProvider provider(service, assetTable(*c.session), render::FrameServiceProvider::Mode::Blocking);
-  provider.openAll();
-  for (const Frame f : frames) {
-    provider.prepare(doc, f, 0);
-    const QImage img = off->render(doc, f, provider);
-    if (img.isNull()) return Result::failure(q("unavailable"), QStringLiteral("The renderer returned no picture for frame %1.").arg(f));
-    fn(f, img.convertToFormat(QImage::Format_RGBA8888));
-  }
-  return Result::success(QJsonObject{});
-}
+// renderFrames moved to cmd_util.{h,cpp}
 
 // ---------------------------------------------------------------- photosensitive
 

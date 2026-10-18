@@ -31,6 +31,16 @@
 namespace sf::engine {
 
 class Engine;
+class ComfyService;
+
+} // namespace sf::engine
+
+template <>
+struct std::default_delete<sf::engine::ComfyService> {
+  void operator()(sf::engine::ComfyService* p) const;
+};
+
+namespace sf::engine {
 
 struct Session {
   QString id;
@@ -110,12 +120,14 @@ public:
   std::map<QString, ExportRecord>& exports() { return exports_; }
   // The background analysis scheduler (created on first use with the built-in analyzers; pauses itself while an export runs).
   jobs::JobScheduler& jobs();
+  // ComfyUI server connection, schema caching, and in-memory workflow documents.
+  ComfyService& comfy();
   void emitEvent(const QString& name, const QJsonObject& data);
   qint64 eventSeq() const { return seq_; }
 
 signals:
   // Events: "ops.applied", "doc.changed", "session.opened", "session.closed", "export.progress", "export.finished",
-  // "media.imported", "media.preview", "media.proxy". Data always carries "session" where one applies.
+  // "media.imported", "media.preview", "media.proxy", "comfy.state". Data always carries "session" where one applies.
   void event(const QString& name, const QJsonObject& data, qint64 seq);
 
 private:
@@ -128,6 +140,7 @@ private:
   std::map<QString, ExportRecord> exports_;
   std::unique_ptr<render::OffscreenRenderer> renderer_;
   std::unique_ptr<jobs::JobScheduler> jobs_;
+  std::unique_ptr<ComfyService> comfy_;
   qint64 seq_ = 0;
 };
 
@@ -146,5 +159,10 @@ void registerSystemCommands(Engine& e);
 void registerExportCommands(Engine& e);
 void registerFxCommands(Engine& e);
 void registerJobsCommands(Engine& e);
+void registerComfyCommands(Engine& e);
+void registerVariationsCommands(Engine& e);
+void registerAssembleCommands(Engine& e);
+void registerRecipesCommands(Engine& e);
+void registerTitleCommands(Engine& e);
 
 } // namespace sf::engine

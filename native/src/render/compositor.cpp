@@ -2,6 +2,7 @@
 
 #include "core/timeline_doc.h"
 #include "render/effects.h"
+#include "render/fx_textures.h"
 #include "render/gpu_planes.h"
 #include "render/layer_painter.h"
 #include "render/layout.h"
@@ -289,7 +290,9 @@ struct Compositor::Impl {
   std::unique_ptr<QRhiShaderResourceBindings> fxLayoutSrb;
   std::map<QString, std::unique_ptr<QRhiGraphicsPipeline>> fxPipelines; // by effect id; null = its shader is unusable
   std::vector<std::unique_ptr<FxTarget>> fxTargets;
-  std::map<std::pair<QRhiTexture*, QRhiTexture*>, std::unique_ptr<QRhiShaderResourceBindings>> fxSrbs;  // effect passes: (input, second input)
+  using FxSrbKey = std::tuple<QRhiTexture*, QRhiTexture*, QRhiTexture*>;
+  std::map<FxSrbKey, std::unique_ptr<QRhiShaderResourceBindings>> fxSrbs;  // effect passes: (input, second input, extra texture)
+  std::unordered_map<QString, std::unique_ptr<QRhiTexture>> procTextures; // procedural textures cached on GPU
   std::map<QRhiTexture*, std::unique_ptr<QRhiShaderResourceBindings>> fxResultSrbs;                      // layer pass drawing an effect result
   quint64 fxResultUbufGen = 0;
   QMatrix4x4 fxProj; // unit quad -> a whole render target
@@ -328,6 +331,7 @@ struct Compositor::Impl {
     QRhiGraphicsPipeline* pipe = nullptr;
     int firstIdx = 0; // index of the first of def->passes uniform slots
     QJsonObject params; // resolved at this frame
+    QRhiTexture* tex = nullptr;
   };
   struct Layer {
     size_t slot;
@@ -352,6 +356,7 @@ struct Compositor::Impl {
     int compIdx = -1; // main uniform slot of the quad that draws the result
     Params comp;
     QJsonObject params;
+    QRhiTexture* tex = nullptr;
     QRhiTexture* result = nullptr;
   };
 
@@ -487,6 +492,23 @@ struct Compositor::Impl {
     fxSrbs.clear();
     fxResultSrbs.clear();
     fxTargets.clear();
+    procTextures.clear();
+  }
+
+  // Uploads (once) and returns a procedural texture as a QRhiTexture
+  QRhiTexture* proceduralTexture(const QString& name, QRhiResourceUpdateBatch* updates) {
+    auto it = procTextures.find(name);
+    if (it != procTextures.end()) return it->second.get();
+    const QImage& img = render::proceduralTexture(name);
+    if (img.isNull()) return dummy.get();
+    auto tex = std::unique_ptr<QRhiTexture>(rhi->newTexture(QRhiTexture::RGBA8, img.size()));
+    if (!tex->create()) return dummy.get();
+    QRhiTextureSubresourceUploadDescription sub(img.constBits(), static_cast<quint32>(img.sizeInBytes()));
+    sub.setSourceSize(img.size());
+    updates->uploadTexture(tex.get(), QRhiTextureUploadDescription({QRhiTextureUploadEntry(0, 0, sub)}));
+    QRhiTexture* ptr = tex.get();
+    procTextures.emplace(name, std::move(tex));
+    return ptr;
   }
 
   // Loads fx.vert and creates the effect uniform buffer; false (once and for all) when that fails
@@ -505,6 +527,7 @@ struct Compositor::Impl {
                                                                   sizeof(FxUniforms)),
         QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, dummy.get(), sampler.get()),
         QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, dummy.get(), sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(3, QRhiShaderResourceBinding::FragmentStage, dummy.get(), sampler.get()),
     });
     if (!fxLayoutSrb->create()) return false;
     fxProj = rhi->clipSpaceCorrMatrix();
@@ -561,8 +584,9 @@ struct Compositor::Impl {
     for (auto& t : fxTargets) t->busy = false;
   }
 
-  QRhiShaderResourceBindings* fxSrb(QRhiTexture* in, QRhiTexture* in2) {
-    const auto key = std::make_pair(in, in2);
+  QRhiShaderResourceBindings* fxSrb(QRhiTexture* in, QRhiTexture* in2, QRhiTexture* tex) {
+    if (!tex) tex = dummy.get();
+    const auto key = std::make_tuple(in, in2, tex);
     const auto it = fxSrbs.find(key);
     if (it != fxSrbs.end()) return it->second.get();
     std::unique_ptr<QRhiShaderResourceBindings> srb(rhi->newShaderResourceBindings());
@@ -571,6 +595,7 @@ struct Compositor::Impl {
                                                                   sizeof(FxUniforms)),
         QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::FragmentStage, in, sampler.get()),
         QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, in2, sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(3, QRhiShaderResourceBinding::FragmentStage, tex, sampler.get()),
     });
     if (!srb->create()) return nullptr;
     return fxSrbs.emplace(key, std::move(srb)).first->second.get();
@@ -589,9 +614,9 @@ struct Compositor::Impl {
     return fxResultSrbs.emplace(tex, std::move(srb)).first->second.get();
   }
 
-  // One full-target pass of an effect shader: `out` <- pipe(in, in2) with the uniforms at fxIdx
-  void recordFxPass(QRhiCommandBuffer* cb, QRhiGraphicsPipeline* pipe, FxTarget* out, QRhiTexture* in, QRhiTexture* in2, int fxIdx) {
-    QRhiShaderResourceBindings* srb = fxSrb(in, in2);
+  // One full-target pass of an effect shader: `out` <- pipe(in, in2, tex) with the uniforms at fxIdx
+  void recordFxPass(QRhiCommandBuffer* cb, QRhiGraphicsPipeline* pipe, FxTarget* out, QRhiTexture* in, QRhiTexture* in2, QRhiTexture* tex, int fxIdx) {
+    QRhiShaderResourceBindings* srb = fxSrb(in, in2, tex);
     cb->beginPass(out->rt.get(), QColor(0, 0, 0, 0), {1.0f, 0}, nullptr);
     if (srb) {
       cb->setGraphicsPipeline(pipe);
@@ -633,7 +658,7 @@ struct Compositor::Impl {
       for (int pass = 0; pass < st.def->passes; ++pass) {
         FxTarget* out = acquireTarget(l.content);
         if (!out) return cur;
-        recordFxPass(cb, st.pipe, out, cur->tex.get(), orig->tex.get(), st.firstIdx + pass);
+        recordFxPass(cb, st.pipe, out, cur->tex.get(), orig->tex.get(), st.tex, st.firstIdx + pass);
         if (cur != orig) cur->busy = false; // consumed: the next pass may draw into it
         cur = out;
         ++stats.fxPasses;
@@ -666,7 +691,7 @@ struct Compositor::Impl {
     }
     FxTarget* out = sides[0] && sides[1] ? acquireTarget(canvasSize) : nullptr;
     if (out) {
-      recordFxPass(cb, e.pipe, out, sides[0]->tex.get(), sides[1]->tex.get(), e.fxIdx);
+      recordFxPass(cb, e.pipe, out, sides[0]->tex.get(), sides[1]->tex.get(), e.tex, e.fxIdx);
       ++stats.fxPasses;
       e.result = out->tex.get();
     }
@@ -1140,6 +1165,10 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
       st.pipe = pipe;
       st.firstIdx = fxSlots;
       st.params = resolveFxParams(*def, fi.params, fi.keyframes, local);
+      if (const FxParamDef* tp = def->textureParam()) {
+        const QString texName = st.params.value(tp->name).toString(tp->def.toString());
+        st.tex = s.proceduralTexture(texName, updates);
+      }
       fxSlots += def->passes;
       l.steps.push_back(std::move(st));
     }
@@ -1164,6 +1193,10 @@ RenderStats Compositor::render(QRhiCommandBuffer* cb, const TimelineDoc& doc, Fr
     e.fxIdx = fxSlots++;
     e.compIdx = mainSlots++;
     e.params = resolveFxParams(*def, e.tr->params, {}, 0);
+    if (const FxParamDef* tp = def->textureParam()) {
+      const QString texName = e.params.value(tp->name).toString(tp->def.toString());
+      e.tex = s.proceduralTexture(texName, updates);
+    }
     anyFx = true;
   }
 

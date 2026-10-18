@@ -85,19 +85,57 @@ void Project::setColorManagement(std::optional<ColorManagement> cm) {
 }
 
 void Project::beginGroup(const QString& label, const QString& actor) {
-  history_.beginGroup(label.isEmpty() ? std::nullopt : std::optional<QString>(label), actor);
-  groupOpen_ = true;
+  if (groupDepth_ == 0) {
+    history_.beginGroup(label.isEmpty() ? std::nullopt : std::optional<QString>(label), actor);
+    groupOpen_ = true;
+    groupCheckpoints_.push_back({bundle_.doc, 0, 0});
+  } else {
+    groupCheckpoints_.push_back({bundle_.doc, history_.openGroupOpsCount(), history_.openGroupInversesCount()});
+  }
+  ++groupDepth_;
 }
 
 void Project::endGroup() {
-  if (!groupOpen_) return;
-  history_.commitGroup();
-  groupOpen_ = false;
-  emit historyChanged();
+  if (groupDepth_ <= 0) return;
+  if (!groupCheckpoints_.empty()) {
+    groupCheckpoints_.pop_back();
+  }
+  --groupDepth_;
+  if (groupDepth_ == 0) {
+    history_.commitGroup();
+    groupOpen_ = false;
+    emit historyChanged();
+  }
+}
+
+void Project::rollbackGroup() {
+  if (groupDepth_ <= 0) return;
+  if (!groupCheckpoints_.empty()) {
+    auto cp = std::move(groupCheckpoints_.back());
+    groupCheckpoints_.pop_back();
+    bundle_.doc = std::move(cp.doc);
+    --groupDepth_;
+    if (groupDepth_ == 0) {
+      history_.discardOpenGroup();
+      groupOpen_ = false;
+    } else {
+      history_.trimOpenGroup(cp.opsCount, cp.invCount);
+    }
+    changed(true);
+    emit historyChanged();
+  } else {
+    --groupDepth_;
+    if (groupDepth_ == 0) {
+      history_.discardOpenGroup();
+      groupOpen_ = false;
+    }
+  }
 }
 
 bool Project::undo() {
+  groupDepth_ = 0;
   groupOpen_ = false; // History::undo closes an open group itself
+  groupCheckpoints_.clear();
   try {
     // recorded inverses replay without lock checks: a track locked after the edit can still be undone
     const auto r = history_.undoWith([&](const UndoGroup& g) { return applyOps(bundle_.doc, g.inverses, {.enforceLocks = false}); });
@@ -183,7 +221,9 @@ bool Project::removeAsset(const QString& id) {
 // ---------- lifecycle ----------
 
 void Project::load(ProjectBundle bundle, const QString& path, bool dirty) {
-  endGroup();
+  groupDepth_ = 0;
+  groupOpen_ = false;
+  groupCheckpoints_.clear();
   bundle_ = std::move(bundle);
   saved_ = bundle_;
   forceDirty_ = dirty;

@@ -5,6 +5,7 @@
 
 #include "core/apply.h"
 #include "render/effects.h"
+#include "render/fx_textures.h"
 #include "render/offscreen.h"
 #include "render_testutil.h"
 
@@ -686,6 +687,98 @@ private slots:
     SF_VERIFY_PIXEL(img, kW / 2, kH / 2, (Rgb{128, 0, 128}), 3);
     const QRgb corner = img.pixel(1, 1);
     QVERIFY2(qRed(corner) < 20 && qBlue(corner) > 110 && qBlue(corner) < 145, qPrintable(describe(corner)));
+  }
+
+  void proceduralTexturesDeterministic() {
+    for (const QString& name : proceduralTextureNames()) {
+      const QImage a = createProceduralTexture(name);
+      const QImage b = createProceduralTexture(name);
+      QVERIFY(!a.isNull());
+      QCOMPARE(a.sizeInBytes(), b.sizeInBytes());
+      QCOMPARE(std::memcmp(a.constBits(), b.constBits(), static_cast<size_t>(a.sizeInBytes())), 0);
+    }
+  }
+
+  void textureParamBinds() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s = redThenBlue();
+    s.doc.transitions = {transition(QStringLiteral("gl_luma"), 10, QJsonObject{{Q("luma"), Q("linear_lr")}})};
+    const QImage img = render(s, 20); // frame 20 is progress 0.5
+    // The left half of the frame is mostly the to-colour (blue) and the right half mostly the from-colour (red), or the reverse.
+    // Assert the two halves differ by > 0.5 in the red channel, and state which way round you observed.
+    double leftRed = 0, rightRed = 0;
+    const int halfW = kW / 2;
+    for (int y = 0; y < kH; ++y) {
+      for (int x = 0; x < halfW; ++x) leftRed += qRed(img.pixel(x, y)) / 255.0;
+      for (int x = halfW; x < kW; ++x) rightRed += qRed(img.pixel(x, y)) / 255.0;
+    }
+    leftRed /= (halfW * kH);
+    rightRed /= (halfW * kH);
+    // Observed: left half is blue (to-colour, red ~ 0), right half is red (from-colour, red ~ 1)
+    QVERIFY2(std::abs(leftRed - rightRed) > 0.5, qPrintable(QStringLiteral("leftRed: %1, rightRed: %2").arg(leftRed).arg(rightRed)));
+  }
+
+  void polygonMaskSquare() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s;
+    s.doc = newDoc(kW, kH);
+    const QString track = addTopTrack(s.doc, QStringLiteral("trk_gfx"), TrackKind::Overlay);
+    solid(s, QStringLiteral("itm_s"), track, QStringLiteral("#ffffff"), 0, 30);
+    // centred square mask 0.25..0.75 on a white frame
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_m"), QStringLiteral("polygon_mask"),
+                            QJsonObject{{Q("p0"), QJsonArray{0.25, 0.25}}, {Q("p1"), QJsonArray{0.75, 0.25}},
+                                        {Q("p2"), QJsonArray{0.75, 0.75}}, {Q("p3"), QJsonArray{0.25, 0.75}},
+                                        {Q("count"), 4}})};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    SF_VERIFY_PIXEL(img, kW / 2, kH / 2, (Rgb{255, 255, 255}), 3); // centre: inside
+    SF_VERIFY_PIXEL(img, 1, 1, (Rgb{0, 0, 0}), 3);                  // corner: outside
+    // invert: reverse
+    s.doc.items[0].fx[0].params.insert(Q("invert"), true);
+    const QImage inv = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    SF_VERIFY_PIXEL(inv, kW / 2, kH / 2, (Rgb{0, 0, 0}), 3);        // centre: outside
+    SF_VERIFY_PIXEL(inv, 1, 1, (Rgb{255, 255, 255}), 3);            // corner: inside
+  }
+
+  void polygonMaskOrderIndependentCount() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s;
+    s.doc = newDoc(kW, kH);
+    const QString track = addTopTrack(s.doc, QStringLiteral("trk_gfx"), TrackKind::Overlay);
+    solid(s, QStringLiteral("itm_s"), track, QStringLiteral("#ffffff"), 0, 30);
+    // count = 3 gives a triangle, regardless of point order
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_m"), QStringLiteral("polygon_mask"),
+                            QJsonObject{{Q("p0"), QJsonArray{0.5, 0.25}}, {Q("p1"), QJsonArray{0.75, 0.75}},
+                                        {Q("p2"), QJsonArray{0.25, 0.75}}, {Q("count"), 3}})};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    SF_VERIFY_PIXEL(img, kW / 2, kH / 2, (Rgb{255, 255, 255}), 3); // inside triangle
+    SF_VERIFY_PIXEL(img, 1, 1, (Rgb{0, 0, 0}), 3);                  // outside corner
+  }
+
+  void polygonMaskAsymmetricY() {
+    if (!gpu_) QSKIP(qPrintable(skip_));
+    Scene s;
+    s.doc = newDoc(kW, kH);
+    const QString track = addTopTrack(s.doc, QStringLiteral("trk_gfx"), TrackKind::Overlay);
+    solid(s, QStringLiteral("itm_s"), track, QStringLiteral("#ffffff"), 0, 30);
+    // Asymmetric polygon in top 30% of screen: p0=(0,0), p1=(1,0), p2=(1,0.3), p3=(0,0.3)
+    s.doc.items[0].fx = {fx(QStringLiteral("fx_m"), QStringLiteral("polygon_mask"),
+                            QJsonObject{{Q("p0"), QJsonArray{0.0, 0.0}}, {Q("p1"), QJsonArray{1.0, 0.0}},
+                                        {Q("p2"), QJsonArray{1.0, 0.3}}, {Q("p3"), QJsonArray{0.0, 0.3}},
+                                        {Q("count"), 4}})};
+    const QImage img = render(s, 0).convertToFormat(QImage::Format_RGBA8888);
+    // Near top (y = 0.1): inside mask, white
+    SF_VERIFY_PIXEL(img, kW / 2, static_cast<int>(kH * 0.1), (Rgb{255, 255, 255}), 3);
+    // Near bottom (y = 0.8): outside mask, black
+    SF_VERIFY_PIXEL(img, kW / 2, static_cast<int>(kH * 0.8), (Rgb{0, 0, 0}), 3);
+  }
+
+  void unknownTextureRejected() {
+    const FxDef* def = FxRegistry::instance().find(QStringLiteral("gl_luma"));
+    QVERIFY(def);
+    QJsonObject clean;
+    QString why;
+    QVERIFY(!normalizeFxParams(*def, QJsonObject{{QStringLiteral("luma"), QStringLiteral("non_existent_texture")}}, &clean, &why));
+    QVERIFY2(why.contains(QStringLiteral("luma")), qPrintable(why));
   }
 };
 

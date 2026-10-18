@@ -25,6 +25,10 @@ sf_add_test(tst_frame_cache)
 sf_add_test(tst_jobs)
 target_link_libraries(tst_jobs PRIVATE sf_jobs)
 
+sf_add_test(tst_comfy)
+target_link_libraries(tst_comfy PRIVATE sf_comfy)
+target_compile_definitions(tst_comfy PRIVATE SF_COMFY_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy")
+
 # Core (project model) suites: QtCore/QtTest only, no FFmpeg. Fixtures are generated from the TS
 # packages by fixtures/gen (see its README comment) and committed.
 function(sf_add_core_test name)
@@ -167,6 +171,7 @@ sf_add_audio_test(tst_audio_render)
 sf_add_audio_test(tst_audio_dsp)
 sf_add_audio_test(tst_loudness)
 sf_add_audio_test(tst_audio_analysis)
+sf_add_audio_test(tst_music_fit)
 sf_add_audio_test(tst_mixer_schema)
 sf_add_audio_test(tst_clap_host DEFS "SF_TEST_CLAP=\"$<TARGET_FILE:sf_test_clap_gain>\"")
 add_dependencies(tst_clap_host sf_test_clap_gain)
@@ -219,10 +224,26 @@ function(sf_add_engine_test name)
     ENVIRONMENT "SF_FFMPEG_EXE=${FFMPEG_EXECUTABLE}")
 endfunction()
 
-sf_add_engine_test(tst_engine)
+sf_add_engine_test(tst_engine DEFS "SF_COMFY_FIXTURES=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy\"")
 sf_add_engine_test(tst_timeline_analysis)
 sf_add_engine_test(tst_safety)
+sf_add_engine_test(tst_assembly)
+sf_add_engine_test(tst_hand_quad)
+sf_add_engine_test(tst_comfy_run DEFS "SF_COMFY_FIXTURES=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy\"")
+
+qt_add_executable(fake_comfy fake_comfy_main.cpp)
+target_include_directories(fake_comfy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")
+target_compile_definitions(fake_comfy PRIVATE SF_COMFY_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy")
+target_link_libraries(fake_comfy PRIVATE Qt6::Core Qt6::Network Qt6::Gui sf_options)
+
+sf_add_engine_test(tst_comfy_process
+  DEFS "SF_COMFY_FIXTURES=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy\"" "FAKE_COMFY_EXE=\"$<TARGET_FILE:fake_comfy>\""
+  LIBS sf_comfy
+)
+add_dependencies(tst_comfy_process fake_comfy)
 sf_add_engine_test(tst_style_library)
+sf_add_engine_test(tst_recipes)
+sf_add_engine_test(tst_titles)
 sf_add_engine_test(tst_system_profile LIBS sf_sys)
 sf_add_engine_test(tst_api_http)
 sf_add_engine_test(tst_mcp LIBS sf_ai DEFS "SF_APP_EXE=\"$<TARGET_FILE:splitframe>\"" "SF_CLI_EXE=\"$<TARGET_FILE:splitframe-cli>\"")

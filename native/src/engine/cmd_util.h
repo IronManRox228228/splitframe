@@ -7,10 +7,13 @@
 #include "engine/engine.h"
 #include "engine/jschema.h"
 
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QStringList>
 
 #include <memory>
+#include <vector>
 
 namespace sf::sys {
 class SystemService;
@@ -77,6 +80,9 @@ struct ImageOut {
   int maxWidth = 1280, maxHeight = 1280;
 };
 Result imageResult(const QImage& image, const ImageOut& out, const QString& stem, const QJsonObject& extra = {});
+
+using FrameFn = std::function<void(Frame, const QImage&)>;
+Result renderFrames(CallContext& c, const TimelineDoc& doc, const std::vector<Frame>& frames, const FrameFn& fn);
 void addImageOutProps(QJsonObject& schema); // path, inline, maxWidth, maxHeight
 ImageOut imageOutFrom(const QJsonObject& args);
 
@@ -96,5 +102,8 @@ sys::SystemService& sharedSystemService();
 
 // The asset table (original files, proxies are never used for stills / export) for the session's project.
 render::AssetTable assetTable(const Session& s);
+
+// Compose N images and labels into a labelled grid PNG.
+QImage composeGrid(const std::vector<QImage>& cells, const QStringList& labels, int columns, int cellWidth);
 
 } // namespace sf::engine

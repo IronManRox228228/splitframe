@@ -866,4 +866,9 @@ void SystemService::pollNow() {
   if (changed) emit decisionsChanged(d);
 }
 
+SystemService& sharedSystemService() {
+  static auto* s = new SystemService; // never destroyed: its timer must not outlive the event loop
+  return *s;
+}
+
 } // namespace sf::sys

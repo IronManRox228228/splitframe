@@ -2,7 +2,9 @@
 
 #include "core/error.h"
 #include "engine/cmd_util.h"
+#include "engine/cmd_comfy.h"
 #include "jobs/builtin_analyzers.h"
+#include "comfy/comfy_generate.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -35,6 +37,11 @@ Engine::Engine(QObject* parent) : QObject(parent) {
   registerExportCommands(*this);
   registerFxCommands(*this);
   registerJobsCommands(*this);
+  registerComfyCommands(*this);
+  registerVariationsCommands(*this);
+  registerAssembleCommands(*this);
+  registerRecipesCommands(*this);
+  registerTitleCommands(*this);
 
   add(spec("engine.ping", "", "engine", false, QStringLiteral("Liveness and version: engine version, sessions, command count."), js::obj({}),
            [](CallContext& c, const QJsonObject&) {
@@ -60,7 +67,13 @@ Engine::~Engine() {
       rec.job->cancel();
     }
   exports_.clear();
+  if (jobs_) {
+    jobs_->disconnect(this);
+    jobs_->setBusyProbe({});
+  }
   jobs_.reset();
+  comfy_.reset();
+  QCoreApplication::removePostedEvents(this);
   renderer_.reset();
   sessions_.clear();
 }
@@ -245,15 +258,24 @@ jobs::JobScheduler& Engine::jobs() {
   if (!jobs_) {
     jobs_ = std::make_unique<jobs::JobScheduler>();
     jobs::registerBuiltinAnalyzers(*jobs_);
+    jobs_->registerAnalyzer(std::make_unique<comfy::ComfyGenerateAnalyzer>(
+      comfy::ServerStateProvider{
+        [this]() { return comfy_ ? comfy_->serverState() : comfy::ComfyServerState::None; },
+        [this]() { return comfy_ ? comfy_->lastExit() : QJsonObject{}; },
+        [this](int maxLines) { return comfy_ ? comfy_->recentLogs(maxLines) : QStringList{}; }
+      }
+    ));
     jobs_->setBusyProbe([this] {
       for (const auto& [id, rec] : exports_)
         if (rec.state == QLatin1String("running")) return true;
       return false;
     });
     connect(jobs_.get(), &jobs::JobScheduler::jobChanged, this, [this](const QString& id) {
+      if (!jobs_) return;
       if (const auto i = jobs_->info(id)) emitEvent(q("jobs.updated"), {{q("jobId"), id}, {q("analyzer"), i->analyzer}, {q("state"), jobs::jobStateName(i->state)}, {q("progress"), i->progress}});
     });
     connect(jobs_.get(), &jobs::JobScheduler::pauseChanged, this, [this](bool paused, const QStringList& reasons) {
+      if (!jobs_) return;
       emitEvent(q("jobs.paused"), {{q("paused"), paused}, {q("reasons"), QJsonArray::fromStringList(reasons)}});
     });
   }

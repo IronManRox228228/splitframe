@@ -18,6 +18,7 @@ layout(std140, binding = 0) uniform U {
 
 layout(binding = 1) uniform sampler2D fxSrc;  // from
 layout(binding = 2) uniform sampler2D fxSrc2; // to
+layout(binding = 3) uniform sampler2D fxTex0;
 
 #define progress (u.fxTiming.x)
 #define time (u.fxTiming.y)
@@ -26,6 +27,7 @@ layout(binding = 2) uniform sampler2D fxSrc2; // to
 
 vec4 getFromColor(vec2 uv) { return texture(fxSrc, vec2(uv.x, 1.0 - uv.y)); }
 vec4 getToColor(vec2 uv) { return texture(fxSrc2, vec2(uv.x, 1.0 - uv.y)); }
+vec4 getTexture(vec2 uv) { return texture(fxTex0, vec2(uv.x, 1.0 - uv.y)); }
 
 // ---- params ----
 #define u_transitionUpToDown (u.fxP[0].x > 0.5) // slot 0, bool

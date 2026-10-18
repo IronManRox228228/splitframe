@@ -50,10 +50,7 @@ NAMES = {
 }
 
 # transitions that cannot be ported, with the reason
-SKIP = {
-    "displacement": "needs an extra sampler2D (displacementMap); effects bind only from / to",
-    "luma": "needs an extra sampler2D (luma map); effects bind only from / to",
-}
+SKIP = {}
 
 # name fragment -> tag; the header's own `// Tags:` line is added too
 NAME_TAGS = [
@@ -255,6 +252,10 @@ def build_params(stem, uniforms, body, notes):
             for i, c in enumerate("xyzw"[:n]):
                 params.append({"name": f"{name}_{c}", "label": f"{label} {c.upper()}", "type": "float", "min": -1, "max": 2, "default": clean(d[i])})
             prelude.append(f"#define {name} {typ}({', '.join(f'{name}_{c}' for c in 'xyzw'[:n])})")
+        elif typ == "sampler2D":
+            default_tex = "clouds" if (stem == "displacement" or "displacement" in name.lower()) else "linear_lr"
+            params.append({"name": name, "label": label, "type": "texture", "default": default_tex})
+            body = re.sub(rf"\btexture2D\s*\(\s*{re.escape(name)}\s*,", "getTexture(", body)
         else:
             raise ValueError(f"unsupported uniform type {typ} ({name})")
         if desc:
@@ -316,8 +317,6 @@ def import_one(src_file):
     text = src_file.read_text(encoding="utf-8").replace("\r\n", "\n")
     header, rest = header_of(text)
     uniforms = [(m.group(1), m.group(2), m.group(3), m.group(4)) for m in UNIFORM.finditer(rest)]
-    if any(u[0] == "sampler2D" for u in uniforms):
-        raise ValueError("needs an extra sampler2D; effects bind only from / to")
     notes = annotations(text)
     rest = UNIFORM.sub("", rest)
     params, prelude, rest = build_params(stem, uniforms, rest, notes)

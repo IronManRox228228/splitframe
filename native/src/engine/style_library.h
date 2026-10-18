@@ -78,24 +78,42 @@ struct AudioPreset {
   std::vector<AudioEffectSpec> chain;
 };
 
+// One command step in a recipe: command name and its arguments (may contain placeholders).
+struct RecipeStep {
+  QString command;
+  QJsonObject args;
+};
+
+// A named recipe (engine/styles/recipes.json): an atomic sequence of engine commands executed as one undo step.
+struct Recipe {
+  QString name, description;
+  QStringList whenToUse, avoidWhen;
+  std::vector<RecipeStep> steps;
+  std::vector<RecipeStep> verify;
+};
+
 // `base` with every key present in `g` (a look's guards object, or a caller's overrides) replaced.
 LookGuards guardsFromJson(const QJsonObject& g, LookGuards base = {});
 
 const std::vector<Look>& looks();
 const std::vector<PacingProfile>& pacings();
 const std::vector<MixProfile>& mixes();
+const std::vector<Recipe>& recipes();
 const Look* findLook(const QString& name);
 const PacingProfile* findPacing(const QString& name);
 const MixProfile* findMix(const QString& name);
+const Recipe* findRecipe(const QString& name);
 const std::vector<AudioPreset>& audioPresets();
 const AudioPreset* findAudioPreset(const QString& id);
 QStringList audioPresetIds();
 QJsonObject toJson(const AudioPreset& p);
+QJsonObject toJson(const Recipe& r);
 // Problems with one preset's chain against the real effect parameter ranges (unknown type / param, out of range, bad choice).
 QStringList validateAudioPreset(const AudioPreset& p);
 QStringList lookNames();
 QStringList pacingNames();
 QStringList mixNames();
+QStringList recipeNames();
 
 QJsonObject toJson(const Look& l);
 QJsonObject toJson(const PacingProfile& p);
@@ -124,6 +142,7 @@ std::vector<Suggestion> rankByTags(const std::vector<Candidate>& candidates, con
 QJsonObject lookSchema();
 QJsonObject pacingSchema();
 QJsonObject mixSchema();
+QJsonObject recipeSchema();
 QJsonObject resourceSchema(const QString& kind);
 QJsonObject audioPresetSchema();
 QJsonObject specSchema();

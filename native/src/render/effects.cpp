@@ -2,6 +2,7 @@
 
 #include "core/timeline_doc.h"
 #include "render/color.h"
+#include "render/fx_textures.h"
 #include "render/layout.h"
 
 #include <QColor>
@@ -25,7 +26,7 @@ struct KindName {
   const char* name;
 };
 constexpr KindName kTypeNames[] = {{FxParamType::Float, "float"}, {FxParamType::Vec2, "vec2"}, {FxParamType::Color, "color"}, {FxParamType::Bool, "bool"},
-                                   {FxParamType::Int, "int"},     {FxParamType::Enum, "enum"}, {FxParamType::Point, "point"}};
+                                   {FxParamType::Int, "int"},     {FxParamType::Enum, "enum"}, {FxParamType::Point, "point"}, {FxParamType::Texture, "texture"}};
 
 QString typeName(FxParamType t) {
   for (const KindName& k : kTypeNames)
@@ -107,6 +108,7 @@ QJsonValue defaultFor(const FxParamDef& p) {
   case FxParamType::Int: return std::clamp(0.0, p.min, p.max);
   case FxParamType::Bool: return false;
   case FxParamType::Enum: return p.options.isEmpty() ? QString() : p.options.first();
+  case FxParamType::Texture: return p.options.isEmpty() ? QStringLiteral("linear_lr") : p.options.first();
   case FxParamType::Vec2: return arrayOf({0, 0});
   case FxParamType::Point: return arrayOf({0.5, 0.5});
   case FxParamType::Color: return arrayOf({1, 1, 1, 1});
@@ -139,6 +141,16 @@ bool validValue(const FxParamDef& p, const QJsonValue& v, QJsonValue* clean, QSt
       return false;
     }
     *clean = p.options.at(i);
+    return true;
+  }
+  case FxParamType::Texture: {
+    if (!v.isString()) return bad("a texture name");
+    const QString s = v.toString();
+    if (!proceduralTextureNames().contains(s)) {
+      if (why) *why = QStringLiteral("param \"%1\" expects one of: %2").arg(p.name, proceduralTextureNames().join(QStringLiteral(", ")));
+      return false;
+    }
+    *clean = s;
     return true;
   }
   case FxParamType::Vec2: {
@@ -226,6 +238,11 @@ bool loadDef(const QJsonObject& o, FxDef* def, QString* error) {
     p.options = strings(po.value(L("options")));
     p.description = po.value(L("description")).toString();
     if (p.type == FxParamType::Enum && p.options.isEmpty()) return fail(QStringLiteral("enum param \"%1\" needs options").arg(p.name));
+    if (p.type == FxParamType::Texture) {
+      for (const FxParamDef& other : def->params)
+        if (other.type == FxParamType::Texture) return fail(QStringLiteral("at most 1 texture param per effect"));
+      p.options = proceduralTextureNames();
+    }
     p.def = po.contains(L("default")) ? po.value(L("default")) : defaultFor(p);
     QJsonValue clean;
     QString why;
@@ -241,6 +258,12 @@ bool loadDef(const QJsonObject& o, FxDef* def, QString* error) {
 const FxParamDef* FxDef::param(const QString& n) const {
   for (const FxParamDef& p : params)
     if (p.name == n) return &p;
+  return nullptr;
+}
+
+const FxParamDef* FxDef::textureParam() const {
+  for (const FxParamDef& p : params)
+    if (p.type == FxParamType::Texture) return &p;
   return nullptr;
 }
 
@@ -294,7 +317,7 @@ QJsonObject fxDefJson(const FxDef& def) {
       o.insert(L("min"), p.min);
       o.insert(L("max"), p.max);
     }
-    if (p.type == FxParamType::Enum) o.insert(L("options"), QJsonArray::fromStringList(p.options));
+    if (p.type == FxParamType::Enum || p.type == FxParamType::Texture) o.insert(L("options"), QJsonArray::fromStringList(p.options));
     if (!p.description.isEmpty()) o.insert(L("description"), p.description);
     o.insert(L("animatable"), p.animatable());
     params.append(o);
@@ -442,6 +465,7 @@ void packFxParams(const FxDef& def, const QJsonObject& resolved, bool linearColo
       s[3] = static_cast<float>(c[3]);
       break;
     }
+    case FxParamType::Texture: break;
     }
   }
 }

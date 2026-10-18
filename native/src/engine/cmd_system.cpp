@@ -15,8 +15,7 @@ namespace sf::engine {
 
 // One process, one machine: the service (profile, smoke cache, overrides, live monitor) is shared by every Engine.
 sys::SystemService& sharedSystemService() {
-  static sys::SystemService* s = new sys::SystemService; // never destroyed: its timer must not outlive the event loop in a static destructor
-  return *s;
+  return sys::sharedSystemService();
 }
 
 namespace {
@@ -51,10 +50,11 @@ void compositorProbe(Engine& engine, sys::SmokeResult& r) {
 }
 
 QJsonObject wiringNote() {
-  return QJsonObject{{q("applied"), QJsonArray{}},
-                     {q("note"), q("Decisions are advice: nothing consumes them yet. exportEncoder maps to ExportSettings::hardware (export/exporter.cpp openVideoEncoder, "
-                                   "hardwareEncoderUsable); hwDecode to media FrameService HwMode; previewScale / cacheMb to the preview and FrameService options; "
-                                   "mlDevice / mlThreads to the index and agent workers.")}};
+  return QJsonObject{
+    {q("applied"), QJsonArray{q("exportEncoder"), q("hwDecode"), q("cacheMb"), q("mlThreads"), q("backgroundPriority")}},
+    {q("previewScale"), q("not wired: no preview-scale setting yet")},
+    {q("note"), q("exportEncoder is wired to export.start; hwDecode and cacheMb are wired to preview FrameService; mlThreads and backgroundPriority to jobs. previewScale: not wired: no preview-scale setting yet.")}
+  };
 }
 
 Result profileCmd(CallContext& c, const QJsonObject& a) {

@@ -51,6 +51,11 @@ opposite:
 | **Effects & keyframes** | Brightness/contrast/saturation/blur with keyframed animation; speed ramps and time remap. |
 | **Export** | Presets for TikTok/Reels/Shorts, YouTube, Square — hardware-encoded (VideoToolbox/NVENC/QSV/AMF) with a mixed, ducked audio track. Frame-accurate: output matches the preview. Plus OTIO hand-off to Resolve/Premiere/FCP. |
 
+### Generate
+Generate video, image, and audio shots into the timeline with local open-weights models (e.g. LTX) in ComfyUI.
+Deterministic layers cut, grade, beat-sync, safety-check, and export them, with contact-sheet variant picking.
+See [Generate with ComfyUI (open weights)](native/README.md#generate-with-comfyui-open-weights) for setup, workflows, and CLI usage.
+
 ## Quick start
 
 ```bash

@@ -16,12 +16,20 @@ add_library(sf_engine STATIC
   cmd_safety.cpp
   safety_analysis.h safety_analysis.cpp
   timeline_analysis.h timeline_analysis.cpp
-  cmd_style.cpp
+  cmd_style.h cmd_style.cpp
   cmd_system.cpp
   cmd_jobs.cpp
+  cmd_comfy.h cmd_comfy.cpp
+  cmd_variations.cpp
+  assembly.h assembly.cpp
+  cmd_assemble.cpp
   style_library.h style_library.cpp
+  cmd_recipes.cpp
+  cmd_titles.cpp
   cmd_export.cpp
-  cmd_fx.cpp
+  cmd_fx.h cmd_fx.cpp
+  hand_quad.h hand_quad.cpp
+  one_euro.h
   rpc.h rpc.cpp
   api_server.h api_server.cpp
   stdio.h stdio.cpp
@@ -32,9 +40,10 @@ add_library(sf_engine STATIC
 qt_add_resources(sf_engine "sf_engine_styles"
   PREFIX "/sf/style"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/styles"
-  FILES styles/looks.json styles/pacing.json styles/mix.json styles/audio_presets.json styles/safe_zones.json)
+  FILES styles/looks.json styles/pacing.json styles/mix.json styles/audio_presets.json styles/safe_zones.json styles/recipes.json styles/titles.json)
 target_include_directories(sf_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
-target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_sys sf_jobs sf_render sf_audio sf_media sf_core Qt6::Core Qt6::Gui Qt6::Network PRIVATE sf_options)
+target_link_libraries(sf_engine PUBLIC sf_editor sf_export sf_sys sf_jobs sf_comfy sf_render sf_audio sf_media sf_core sf_index Qt6::Core Qt6::Gui Qt6::Network PRIVATE sf_options)
+target_compile_definitions(sf_engine PRIVATE SF_COMFY_TEMPLATES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/comfy_templates")
 
 # Console front end: no window, no QML. FFmpeg / OpenColorIO DLLs land next to it like for the app.
 qt_add_executable(splitframe-cli cli/main.cpp)

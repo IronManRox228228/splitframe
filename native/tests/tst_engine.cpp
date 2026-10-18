@@ -1,4 +1,4 @@
-﻿// The headless engine: every command family on a fixture project, batch atomicity, undo/redo with origin,
+// The headless engine: every command family on a fixture project, batch atomicity, undo/redo with origin,
 // registry introspection and errors as values.
 
 #include "core/schema.h"
@@ -139,7 +139,7 @@ private slots:
       const QJsonObject c = v.toObject();
       QVERIFY2(!names.contains(c.value(Q("name")).toString()), "duplicate command name");
       names.insert(c.value(Q("name")).toString());
-      QVERIFY2(QStringList({Q("editor"), Q("colour"), Q("audio"), Q("engine")}).contains(c.value(Q("domain")).toString()), qPrintable(c.value(Q("name")).toString()));
+      QVERIFY2(QStringList({Q("editor"), Q("colour"), Q("audio"), Q("engine"), Q("comfy"), Q("style"), Q("generate")}).contains(c.value(Q("domain")).toString()), qPrintable(c.value(Q("name")).toString()));
       QVERIFY(!c.value(Q("description")).toString().isEmpty());
       const QJsonObject schema = c.value(Q("inputSchema")).toObject();
       QCOMPARE(schema.value(Q("type")).toString(), Q("object"));
@@ -848,6 +848,71 @@ private slots:
                              .arg(al0.value(Q("beat")).toObject().value(Q("meanOffsetMs")).toDouble(), 0, 'f', 1).arg(ap.value(Q("after")).toObject().value(Q("meanOffsetMs")).toDouble(), 0, 'f', 1);
   }
 
+  void musicFit() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{beats_}}});
+    const QString beats = assetNamed(Q("beats.wav"));
+    QVERIFY(!beats.isEmpty());
+    const QString musicItem = ok(Q("audio.add"), {{Q("assetId"), beats}, {Q("startFrame"), 0}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+
+    const QJsonObject origItem = ok(Q("item.get"), {{Q("itemId"), musicItem}});
+    const QString trackId = origItem.value(Q("trackId")).toString();
+    const int origDuration = origItem.value(Q("durationFrames")).toInt();
+    const int origSrcIn = origItem.value(Q("sourceInFrame")).toInt();
+    const int targetFrames = static_cast<int>(std::round(origDuration * 0.6));
+
+    const auto getTrackItems = [&]() {
+      QJsonArray list;
+      for (const QJsonValue& t : ok(Q("timeline.get"), {{Q("mode"), Q("detail")}}).value(Q("tracks")).toArray()) {
+        if (t.toObject().value(Q("id")).toString() == trackId) {
+          list = t.toObject().value(Q("items")).toArray();
+          break;
+        }
+      }
+      return list;
+    };
+
+    // 1. Dry run: apply=false
+    const QJsonObject dry = ok(Q("music.fit"), {{Q("itemId"), musicItem}, {Q("targetFrames"), targetFrames}, {Q("apply"), false}});
+    QVERIFY(!dry.contains(Q("__failed")));
+    QVERIFY(!dry.value(Q("applied")).toBool());
+    const QJsonArray segs = dry.value(Q("segments")).toArray();
+    QVERIFY(!segs.isEmpty());
+
+    int segSum = 0;
+    for (const QJsonValue& v : segs) {
+      const QJsonObject s = v.toObject();
+      segSum += s.value(Q("endFrame")).toInt() - s.value(Q("startFrame")).toInt();
+    }
+    QVERIFY2(std::abs(segSum - targetFrames) <= 1, qPrintable(QStringLiteral("segSum %1 vs target %2").arg(segSum).arg(targetFrames)));
+    QCOMPARE(getTrackItems().size(), 1);
+
+    // 2. Apply: apply=true
+    const QJsonObject applied = ok(Q("music.fit"), {{Q("itemId"), musicItem}, {Q("targetFrames"), targetFrames}, {Q("apply"), true}});
+    QVERIFY(!applied.contains(Q("__failed")));
+    QVERIFY(applied.value(Q("applied")).toBool());
+
+    const QJsonArray trackItems = getTrackItems();
+    QVERIFY(!trackItems.isEmpty());
+    int firstStart = trackItems.at(0).toObject().value(Q("startFrame")).toInt();
+    int lastEnd = trackItems.at(0).toObject().value(Q("startFrame")).toInt() + trackItems.at(0).toObject().value(Q("durationFrames")).toInt();
+    for (const QJsonValue& itv : trackItems) {
+      int sf = itv.toObject().value(Q("startFrame")).toInt();
+      int ef = sf + itv.toObject().value(Q("durationFrames")).toInt();
+      firstStart = std::min(firstStart, sf);
+      lastEnd = std::max(lastEnd, ef);
+    }
+    int totalLen = lastEnd - firstStart;
+    QVERIFY2(std::abs(totalLen - targetFrames) <= 1, qPrintable(QStringLiteral("totalLen %1 vs target %2").arg(totalLen).arg(targetFrames)));
+
+    // 3. Undo once: track is back to exactly 1 item with original source in/out
+    ok(Q("history.undo"));
+    const QJsonArray restored = getTrackItems();
+    QCOMPARE(restored.size(), 1);
+    const QJsonObject restoredItem = ok(Q("item.get"), {{Q("itemId"), musicItem}});
+    QCOMPARE(restoredItem.value(Q("durationFrames")).toInt(), origDuration);
+    QCOMPARE(restoredItem.value(Q("sourceInFrame")).toInt(), origSrcIn);
+  }
+
   void speechSafeCuts() {
     ok(Q("media.import"), {{Q("paths"), QJsonArray{talk_}}});
     const QString talk = assetNamed(Q("talk.mp4"));
@@ -1383,7 +1448,25 @@ private slots:
     ok(Q("export.cancel"), {{Q("jobId"), st2.value(Q("jobId")).toString()}});
     const QString s2 = ok(Q("export.status"), {{Q("jobId"), st2.value(Q("jobId")).toString()}, {Q("waitMs"), 90000}}).value(Q("state")).toString();
     QVERIFY2(s2 == Q("cancelled") || s2 == Q("done"), qPrintable(s2)); // a 50-frame job may beat the cancel
-    QCOMPARE(ok(Q("export.status")).value(Q("jobs")).toArray().size(), 2);
+
+    // policy wiring: override exportEncoder to software
+    ok(Q("system.overrides.set"), {{Q("key"), Q("exportEncoder")}, {Q("value"), Q("software")}});
+    const QJsonObject stPol = ok(Q("export.start"), {{Q("out"), dir_.filePath(Q("pol.mp4"))}, {Q("quality"), Q("draft")}, {Q("range"), QJsonArray{0, 2}}});
+    const QJsonObject encDecPol = stPol.value(Q("encoderDecision")).toObject();
+    QCOMPARE(encDecPol.value(Q("value")).toString(), Q("software"));
+    QCOMPARE(encDecPol.value(Q("source")).toString(), Q("policy"));
+    ok(Q("export.status"), {{Q("jobId"), stPol.value(Q("jobId")).toString()}, {Q("waitMs"), 90000}});
+
+    // explicit hardware/encoder arg gives source == "caller"
+    const QJsonObject stCaller = ok(Q("export.start"), {{Q("out"), dir_.filePath(Q("caller.mp4"))}, {Q("quality"), Q("draft")}, {Q("hw"), false}, {Q("range"), QJsonArray{0, 2}}});
+    const QJsonObject encDecCaller = stCaller.value(Q("encoderDecision")).toObject();
+    QCOMPARE(encDecCaller.value(Q("source")).toString(), Q("caller"));
+    ok(Q("export.status"), {{Q("jobId"), stCaller.value(Q("jobId")).toString()}, {Q("waitMs"), 90000}});
+
+    // restore the override
+    ok(Q("system.overrides.set"), {{Q("key"), Q("exportEncoder")}, {Q("value"), QJsonValue(QJsonValue::Null)}});
+
+    QCOMPARE(ok(Q("export.status")).value(Q("jobs")).toArray().size(), 4);
   }
   // ---- GPU effects and transitions: every mutation is one undo step ----
   void effectsAndTransitions() {
@@ -1496,6 +1579,7 @@ private slots:
     QCOMPARE(listed.value(Q("startFrame")).toInt(), 17); // centre: 3 frames before the cut
     QVERIFY(listed.value(Q("params")).toObject().isEmpty()); // a new effect starts from its own defaults
     QCOMPARE(raw(Q("transition.set"), {{Q("transitionId"), tr}, {Q("duration"), 999}}).error.code, Q("invalid_params"));
+    QCOMPARE(raw(Q("transition.set"), {{Q("transitionId"), tr}, {Q("effectId"), Q("gl_luma")}, {Q("params"), QJsonObject{{Q("luma"), Q("unknown_texture")}}}}).error.code, Q("invalid_params"));
     undo();
     QCOMPARE(ok(Q("transition.list")).value(Q("transitions")).toArray().at(0).toObject().value(Q("effectId")).toString(), Q("wipe"));
     redo();
@@ -1516,6 +1600,35 @@ private slots:
     // a whole track at once
     const QString track = ok(Q("item.get"), {{Q("itemId"), a}}).value(Q("trackId")).toString();
     QCOMPARE(ok(Q("transition.add"), {{Q("trackId"), track}, {Q("effectId"), Q("crossfade")}, {Q("duration"), 10}}).value(Q("transitionIds")).toArray().size(), 1);
+  }
+
+  // mask.trackHands on a clip without hands: no tracked samples, one gap covering the clip,
+  // an opacity keyframe at 0, and one undo removes the added fx.
+  void maskTrackHandsNoHands() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+    const QString video = firstAsset(Q("video"));
+    ok(Q("clip.add"), {{Q("assetId"), video}, {Q("startFrame"), 0}});
+    QString itemId;
+    for (const QJsonValue& i : items()) itemId = i.toObject().value(Q("id")).toString();
+    QVERIFY(!itemId.isEmpty());
+
+    const QJsonObject r = ok(Q("mask.trackHands"), {{Q("itemId"), itemId}, {Q("wait"), true}});
+    QCOMPARE(r.value(Q("trackedSamples")).toInt(), 0);
+    const QJsonArray gaps = r.value(Q("gaps")).toArray();
+    QCOMPARE(gaps.size(), 1);
+    QCOMPARE(gaps.at(0).toObject().value(Q("startSec")).toDouble(), 0.0);
+    QVERIFY(gaps.at(0).toObject().value(Q("endSec")).toDouble() > 0.0);
+
+    const QJsonArray fx = ok(Q("item.get"), {{Q("itemId"), itemId}}).value(Q("fx")).toArray();
+    QCOMPARE(fx.size(), 1);
+    QCOMPARE(fx.at(0).toObject().value(Q("effectId")).toString(), Q("polygon_mask"));
+    const QJsonArray kf = fx.at(0).toObject().value(Q("keyframes")).toObject().value(Q("opacity")).toArray();
+    QCOMPARE(kf.size(), 1);
+    QCOMPARE(kf.at(0).toObject().value(Q("frame")).toInt(), 0);
+    QCOMPARE(kf.at(0).toObject().value(Q("value")).toDouble(), 0.0);
+
+    QCOMPARE(ok(Q("history.undo")).value(Q("steps")).toInt(), 1);
+    QVERIFY(ok(Q("item.get"), {{Q("itemId"), itemId}}).value(Q("fx")).toArray().isEmpty());
   }
 
   // safety.check: flashes, text legibility, safe zones. Shapes and text only (no media), tiny renders (64 px wide analysis).
@@ -1612,6 +1725,254 @@ private slots:
     }
   }
 
+  void comfyCommands() {
+    const QString fixturesDir = QStringLiteral(SF_COMFY_FIXTURES);
+    const QString objectInfoPath = fixturesDir + QStringLiteral("/object_info_min.json");
+    const QString txt2imgPath = fixturesDir + QStringLiteral("/txt2img_api.json");
+    qputenv("SF_COMFY_OBJECT_INFO", objectInfoPath.toUtf8());
+
+    // comfy.nodes {search:"sampler"} returns KSampler.
+    const QJsonObject nodesRes = ok(Q("comfy.nodes"), {{Q("search"), Q("sampler")}});
+    const QJsonArray nodes = nodesRes.value(Q("nodes")).toArray();
+    QVERIFY(!nodes.isEmpty());
+    bool foundKSampler = false;
+    for (const auto& n : nodes) {
+      if (n.toObject().value(Q("classType")).toString() == Q("KSampler")) foundKSampler = true;
+    }
+    QVERIFY(foundKSampler);
+
+    // comfy.node.schema {classType:"KSampler"} has toolSchema.
+    const QJsonObject schemaRes = ok(Q("comfy.node.schema"), {{Q("classType"), Q("KSampler")}});
+    QCOMPARE(schemaRes.value(Q("classType")).toString(), Q("KSampler"));
+    QVERIFY(schemaRes.contains(Q("toolSchema")));
+    QVERIFY(schemaRes.value(Q("toolSchema")).toObject().contains(Q("properties")));
+
+    // comfy.graph.load {path: txt2img}; validate gives valid.
+    const QJsonObject loadRes = ok(Q("comfy.graph.load"), {{Q("path"), txt2imgPath}});
+    const QString gid = loadRes.value(Q("graphId")).toString();
+    QVERIFY(!gid.isEmpty());
+    QCOMPARE(loadRes.value(Q("nodeCount")).toInt(), 7);
+
+    const QJsonObject valRes = ok(Q("comfy.graph.validate"), {{Q("graphId"), gid}});
+    QVERIFY(valRes.value(Q("valid")).toBool());
+    QVERIFY(valRes.value(Q("issues")).toArray().isEmpty());
+
+    // comfy.graph.op with set 3.sampler_name "eulr" succeeds, and its issues has one bad_enum.
+    const QJsonObject opRes = ok(Q("comfy.graph.op"), {
+      {Q("graphId"), gid},
+      {Q("ops"), QJsonArray{
+        QJsonObject{{Q("op"), Q("set")}, {Q("id"), Q("3")}, {Q("input"), Q("sampler_name")}, {Q("value"), Q("eulr")}}
+      }}
+    });
+    QCOMPARE(opRes.value(Q("graphId")).toString(), gid);
+    const QJsonArray opIssues = opRes.value(Q("issues")).toArray();
+    QCOMPARE(opIssues.size(), 1);
+    QCOMPARE(opIssues.at(0).toObject().value(Q("code")).toString(), Q("bad_enum"));
+
+    // comfy.graph.undo makes it valid again.
+    const QJsonObject undoRes = ok(Q("comfy.graph.undo"), {{Q("graphId"), gid}});
+    QVERIFY(undoRes.value(Q("undone")).toBool());
+
+    const QJsonObject postUndoVal = ok(Q("comfy.graph.validate"), {{Q("graphId"), gid}});
+    QVERIFY(postUndoVal.value(Q("valid")).toBool());
+    QVERIFY(postUndoVal.value(Q("issues")).toArray().isEmpty());
+
+    // comfy.graph.op with a bad op returns an error, and the node count is unchanged.
+    const int countBefore = ok(Q("comfy.graph.get"), {{Q("graphId"), gid}}).value(Q("nodeCount")).toInt();
+    const Result badOpRes = raw(Q("comfy.graph.op"), {
+      {Q("graphId"), gid},
+      {Q("ops"), QJsonArray{
+        QJsonObject{{Q("op"), Q("connect")}, {Q("from"), Q("999")}, {Q("output"), 0}, {Q("to"), Q("3")}, {Q("input"), Q("model")}}
+      }}
+    });
+    QVERIFY(!badOpRes.ok);
+    const int countAfter = ok(Q("comfy.graph.get"), {{Q("graphId"), gid}}).value(Q("nodeCount")).toInt();
+    QCOMPARE(countAfter, countBefore);
+
+    // comfy.status never fails.
+    const Result statusRes = raw(Q("comfy.status"));
+    QVERIFY(statusRes.ok);
+    QVERIFY(statusRes.value.toObject().contains(Q("reachable")));
+  }
+
+  void variationsSheet() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+    const QString video = firstAsset(Q("video"));
+    ok(Q("clip.add"), {{Q("assetId"), video}});
+    const QJsonArray clipItems = items();
+    QVERIFY(!clipItems.isEmpty());
+    const QString clipId = clipItems.at(0).toObject().value(Q("id")).toString();
+
+    // Probe offscreen renderer availability
+    const Result probe = raw(Q("frame.render"), {{Q("frame"), 0}});
+    if (!probe.ok && probe.error.code == Q("unavailable") && probe.error.message.contains(Q("renderer"))) {
+      QSKIP("no D3D11 device for the offscreen renderer");
+    }
+
+    // 3. Capture timeline and history before variations.sheet
+    const QJsonObject tlBefore = ok(Q("timeline.get"), {{Q("mode"), Q("detail")}});
+    const QJsonObject histBefore = ok(Q("history.list"));
+
+    // Find look name from style.list or lookNames()
+    const QJsonObject styleList = ok(Q("style.list"));
+    QString lookName = QStringLiteral("teal-orange");
+    const QJsonArray looksList = styleList.value(Q("looks")).toObject().value(Q("items")).toArray();
+    if (!looksList.isEmpty()) {
+      bool foundTeal = false;
+      for (const auto& l : looksList) {
+        if (l.toObject().value(Q("name")).toString() == Q("teal-orange")) {
+          foundTeal = true;
+          break;
+        }
+      }
+      if (!foundTeal) lookName = looksList.at(0).toObject().value(Q("name")).toString();
+    }
+
+    const QString outPng = dir_.filePath(Q("test_sheet.png"));
+
+    // 2. Call variations.sheet with 3 variants: look, effect "invert", and raw ops []
+    const Result rSheet = raw(Q("variations.sheet"), {
+      {Q("itemId"), clipId},
+      {Q("path"), outPng},
+      {Q("variants"), QJsonArray{
+        QJsonObject{{Q("label"), Q("my-look")}, {Q("look"), QJsonObject{{Q("look"), lookName}, {Q("intensity"), 1.0}}}},
+        QJsonObject{{Q("label"), Q("my-invert")}, {Q("effect"), QJsonObject{{Q("effectId"), Q("invert")}}}},
+        QJsonObject{{Q("label"), Q("my-raw")}, {Q("ops"), QJsonArray{}}}
+      }}
+    });
+    QVERIFY2(rSheet.ok, qPrintable(rSheet.error.message));
+    const QJsonObject res = rSheet.value.toObject();
+
+    // Check cells has length 4 (original + 3) and letters A..D
+    const QJsonArray cells = res.value(Q("cells")).toArray();
+    QCOMPARE(cells.size(), 4);
+    QCOMPARE(cells.at(0).toObject().value(Q("letter")).toString(), Q("A"));
+    QCOMPARE(cells.at(1).toObject().value(Q("letter")).toString(), Q("B"));
+    QCOMPARE(cells.at(2).toObject().value(Q("letter")).toString(), Q("C"));
+    QCOMPARE(cells.at(3).toObject().value(Q("letter")).toString(), Q("D"));
+    QCOMPARE(cells.at(0).toObject().value(Q("label")).toString(), Q("original"));
+
+    // Check that PNG exists and its size matches width/height
+    QVERIFY(QFile::exists(outPng));
+    QImage loadedSheet(outPng);
+    QCOMPARE(loadedSheet.width(), res.value(Q("width")).toInt());
+    QCOMPARE(loadedSheet.height(), res.value(Q("height")).toInt());
+
+    // Check measurements:
+    const double origLuma = cells.at(0).toObject().value(Q("measured")).toObject().value(Q("meanLuma")).toDouble();
+    const double invLuma = cells.at(2).toObject().value(Q("measured")).toObject().value(Q("meanLuma")).toDouble();
+    const double rawLuma = cells.at(3).toObject().value(Q("measured")).toObject().value(Q("meanLuma")).toDouble();
+
+    // The invert cell's meanLuma is about 1 - original (±0.08)
+    QVERIFY2(std::fabs(invLuma - (1.0 - origLuma)) <= 0.08,
+             qPrintable(QStringLiteral("invLuma: %1 vs expected ~ %2").arg(invLuma).arg(1.0 - origLuma)));
+
+    // The raw-ops [] cell's measurement equals the original's (±0.01)
+    QVERIFY2(std::fabs(rawLuma - origLuma) <= 0.01,
+             qPrintable(QStringLiteral("rawLuma: %1 vs origLuma: %2").arg(rawLuma).arg(origLuma)));
+
+    // 3. Project history length is unchanged and timeline.get is byte-identical
+    const QJsonObject tlAfter = ok(Q("timeline.get"), {{Q("mode"), Q("detail")}});
+    const QJsonObject histAfter = ok(Q("history.list"));
+    QCOMPARE(histAfter.value(Q("total")).toInt(), histBefore.value(Q("total")).toInt());
+    QCOMPARE(QJsonDocument(tlAfter).toJson(), QJsonDocument(tlBefore).toJson());
+
+    // 4. variations.looks returns as many cells as there are looks, plus 1
+    const int lookCount = looksList.size();
+    const Result rLooks = raw(Q("variations.looks"), {{Q("itemId"), clipId}});
+    QVERIFY2(rLooks.ok, qPrintable(rLooks.error.message));
+    const QJsonArray lookCells = rLooks.value.toObject().value(Q("cells")).toArray();
+    QCOMPARE(lookCells.size(), lookCount + 1);
+
+    // 5. An invalid look name in one variant puts that variant in errors[] with a grey cell. The call itself still succeeds.
+    const Result rBad = raw(Q("variations.sheet"), {
+      {Q("itemId"), clipId},
+      {Q("variants"), QJsonArray{
+        QJsonObject{{Q("label"), Q("bad-look")}, {Q("look"), QJsonObject{{Q("look"), Q("nonexistent_look_name_12345")}}}}
+      }}
+    });
+    QVERIFY(rBad.ok);
+    const QJsonObject badRes = rBad.value.toObject();
+    const QJsonArray badErrors = badRes.value(Q("errors")).toArray();
+    QCOMPARE(badErrors.size(), 1);
+    QCOMPARE(badRes.value(Q("cells")).toArray().size(), 2); // original + bad-look
+  }
+
+  void assembleCommand() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, talk_, beats_}}});
+    const QJsonArray assets = ok(Q("assets.list")).value(Q("assets")).toArray();
+    QString storyId, talkId, beatsId;
+    for (const auto& aVal : assets) {
+      const QJsonObject aObj = aVal.toObject();
+      const QString path = aObj.value(Q("path")).toString();
+      if (path.contains(Q("story"))) storyId = aObj.value(Q("id")).toString();
+      else if (path.contains(Q("talk"))) talkId = aObj.value(Q("id")).toString();
+      else if (path.contains(Q("beats"))) beatsId = aObj.value(Q("id")).toString();
+    }
+    QVERIFY(!storyId.isEmpty());
+    QVERIFY(!talkId.isEmpty());
+    QVERIFY(!beatsId.isEmpty());
+
+    QJsonObject rMusic = ok(Q("audio.add"), {{Q("assetId"), beatsId}});
+    const QString musicItemId = rMusic.value(Q("items")).toArray().first().toObject().value(Q("id")).toString();
+    QVERIFY(!musicItemId.isEmpty());
+
+    Result rDry = raw(Q("edit.assemble"), {
+      {Q("assetIds"), QJsonArray{storyId, talkId}},
+      {Q("musicItemId"), musicItemId},
+      {Q("pacing"), Q("social-short")},
+      {Q("apply"), false}
+    });
+    QVERIFY2(rDry.ok, qPrintable(rDry.error.message));
+    const QJsonObject dryVal = rDry.value.toObject();
+    QCOMPARE(dryVal.value(Q("applied")).toBool(), false);
+    const QJsonObject plan = dryVal.value(Q("plan")).toObject();
+    const QJsonArray shots = plan.value(Q("shots")).toArray();
+    QVERIFY(!shots.isEmpty());
+    const int shotCount = shots.size();
+
+    Result rApply = raw(Q("edit.assemble"), {
+      {Q("assetIds"), QJsonArray{storyId, talkId}},
+      {Q("musicItemId"), musicItemId},
+      {Q("pacing"), Q("social-short")},
+      {Q("apply"), true}
+    });
+    QVERIFY2(rApply.ok, qPrintable(rApply.error.message));
+    const QJsonObject applyVal = rApply.value.toObject();
+    QCOMPARE(applyVal.value(Q("applied")).toBool(), true);
+    QVERIFY(applyVal.contains(Q("check")));
+
+    QJsonObject tlAfter = ok(Q("timeline.get"), {{Q("mode"), Q("summary")}});
+    int videoItemCount = 0;
+    for (const auto& tVal : tlAfter.value(Q("tracks")).toArray()) {
+      const QJsonObject tObj = tVal.toObject();
+      if (tObj.value(Q("kind")).toString() == Q("video")) {
+        videoItemCount += tObj.value(Q("items")).toArray().size();
+      }
+    }
+    QCOMPARE(videoItemCount, shotCount);
+
+    Result rUndo = raw(Q("history.undo"), {});
+    QVERIFY(rUndo.ok);
+    QJsonObject tlRestored = ok(Q("timeline.get"), {{Q("mode"), Q("summary")}});
+    int videoItemCountRestored = 0;
+    for (const auto& tVal : tlRestored.value(Q("tracks")).toArray()) {
+      const QJsonObject tObj = tVal.toObject();
+      if (tObj.value(Q("kind")).toString() == Q("video")) {
+        videoItemCountRestored += tObj.value(Q("items")).toArray().size();
+      }
+    }
+    QCOMPARE(videoItemCountRestored, 0);
+  }
+
+  void unknownTextureRejected() {
+    const QString item = ok(Q("text.add"), {{Q("text"), Q("T")}, {Q("startFrame"), 0}, {Q("durationFrames"), 20}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+    QVERIFY(!item.isEmpty());
+    ok(Q("item.update"), {{Q("itemId"), item}, {Q("patch"), QJsonObject{{Q("fx"), QJsonArray{QJsonObject{{Q("id"), Q("fx1")}, {Q("effectId"), Q("gl_luma")}}}}}}});
+    const Result r = raw(Q("effect.set"), {{Q("itemId"), item}, {Q("fxId"), Q("fx1")}, {Q("params"), QJsonObject{{Q("luma"), Q("bogus_texture_name")}}}});
+    QCOMPARE(r.error.code, Q("invalid_params"));
+    QVERIFY(r.error.message.contains(Q("bogus_texture_name")) || r.error.message.contains(Q("expects one of")));
+  }
 };
 
 QTEST_MAIN(TstEngine)
