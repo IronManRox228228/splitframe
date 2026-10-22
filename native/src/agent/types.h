@@ -58,6 +58,12 @@ inline QString modeName(AgentMode m) {
   return QStringLiteral("default");
 }
 
+// Whether a specialist turn may mutate the project (Ask holds mutations as proposals).
+enum class TurnPolicy {
+  Execute,
+  Propose
+};
+
 inline std::optional<AgentMode> parseAgentMode(const QString& s) {
   const QString l = s.trimmed().toLower();
   if (l == QStringLiteral("plan")) return AgentMode::Plan;

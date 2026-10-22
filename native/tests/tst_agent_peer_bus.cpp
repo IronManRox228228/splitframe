@@ -169,6 +169,37 @@ private slots:
     QCOMPARE(bus.teamThread().size(), static_cast<size_t>(0));
     QCOMPARE(bus.teamThreadJson().size(), 0);
   }
+
+  // ---- chain depth boundary: hop 3 is the first declined depth ----
+  void chainDepthBoundary() {
+    PeerBus bus;
+    bus.registerHandler(SpecialistKind::Audio, QStringLiteral("hop"), [](const PeerRequest&) {
+      return PeerResponse{.status = QStringLiteral("done")};
+    });
+
+    // depth 2 is still allowed (guard rejects only when depth >= kMaxChainDepth)
+    PeerRequest shallow{
+      .from = SpecialistKind::Editor,
+      .to = SpecialistKind::Audio,
+      .kind = QStringLiteral("hop"),
+      .reason = QStringLiteral("still allowed"),
+      .depth = 2
+    };
+    PeerResponse shallowResp = bus.send(shallow);
+    QCOMPARE(shallowResp.status, QStringLiteral("done"));
+
+    // depth 3 (== kMaxChainDepth) is declined instead of forwarded
+    PeerRequest deep{
+      .from = SpecialistKind::Editor,
+      .to = SpecialistKind::Audio,
+      .kind = QStringLiteral("hop"),
+      .reason = QStringLiteral("at the limit"),
+      .depth = 3
+    };
+    PeerResponse deepResp = bus.send(deep);
+    QCOMPARE(deepResp.status, QStringLiteral("declined"));
+    QVERIFY(deepResp.note.contains(QStringLiteral("max chain depth")));
+  }
 };
 
 QTEST_MAIN(TstAgentPeerBus)

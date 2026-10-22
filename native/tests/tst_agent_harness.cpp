@@ -2,6 +2,7 @@
 
 #include "agent/agent_harness.h"
 #include "engine/engine.h"
+#include "fake_llm_server.h"
 
 #include <QTest>
 
@@ -106,7 +107,8 @@ private slots:
 
   // ---- mock llm tool call execution ----
   void mockLlmToolCallExecution() {
-    // Configure mock LLM to issue a peer_request to duck music
+    // Configure mock LLM to issue a peer_request to duck music once, then answer in prose
+    // once the tool result is fed back (the bounded loop calls the model again).
     QJsonArray toolCalls{
       QJsonObject{
         {QStringLiteral("id"), QStringLiteral("call_123")},
@@ -117,9 +119,12 @@ private slots:
       }
     };
 
-    mockLlm_->setDefaultResponse(QJsonObject{
-      {QStringLiteral("content"), QStringLiteral("I requested the Audio specialist to duck the music.")},
+    mockLlm_->enqueueResponse(QJsonObject{
+      {QStringLiteral("content"), QString()},
       {QStringLiteral("tool_calls"), toolCalls}
+    });
+    mockLlm_->setDefaultResponse(QJsonObject{
+      {QStringLiteral("content"), QStringLiteral("I requested the Audio specialist to duck the music.")}
     });
 
     QJsonObject res = harness_->executeTurn(QStringLiteral("cut pauses in dialogue"));
@@ -133,6 +138,166 @@ private slots:
     QCOMPARE(log[0].from, SpecialistKind::Editor);
     QCOMPARE(log[0].to, SpecialistKind::Audio);
     QCOMPARE(log[0].kind, QStringLiteral("duck_music"));
+  }
+
+  // ---- Ask mode holds proposed mutations until agent.plan.run / agent.plan.skip ----
+  void askModeHoldsThenRun() {
+    harness_->setMode(AgentMode::Ask);
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Ready to apply whenever you approve.")}});
+    mockLlm_->enqueueResponse(QJsonObject{
+      {QStringLiteral("content"), QString()},
+      {QStringLiteral("tool_calls"), QJsonArray{QJsonObject{
+        {QStringLiteral("id"), QStringLiteral("call_hold")},
+        {QStringLiteral("function"), QJsonObject{
+          {QStringLiteral("name"), QStringLiteral("track.add")},
+          {QStringLiteral("arguments"), QStringLiteral("{\"kind\":\"video\",\"name\":\"Agent Track\"}")}
+        }}
+      }}}
+    });
+
+    QJsonObject res = harness_->executeTurn(QStringLiteral("add a track named Agent Track"));
+    QCOMPARE(res.value(QStringLiteral("status")).toString(), QStringLiteral("ok"));
+    QVERIFY(res.value(QStringLiteral("pendingApproval")).toBool());
+    const QJsonArray proposed = res.value(QStringLiteral("proposed")).toArray();
+    QCOMPARE(proposed.size(), 1);
+    QCOMPARE(proposed.at(0).toObject().value(QStringLiteral("name")).toString(), QStringLiteral("track.add"));
+
+    // Nothing applied yet: the fresh project still has its three default tracks.
+    auto trackSize = [this]() {
+      Result tl = engine_->call(QStringLiteral("timeline.get"));
+      return tl.value.toObject().value(QStringLiteral("tracks")).toArray().size();
+    };
+    QCOMPARE(trackSize(), 3);
+
+    // agent.plan.run applies the held proposals now.
+    Result run = engine_->call(QStringLiteral("agent.plan.run"));
+    QVERIFY(run.ok);
+    const QJsonArray applied = run.value.toObject().value(QStringLiteral("toolResults")).toArray();
+    QCOMPARE(applied.size(), 1);
+    QCOMPARE(applied.at(0).toObject().value(QStringLiteral("result")).toObject().value(QStringLiteral("ok")).toBool(), true);
+    QCOMPARE(trackSize(), 4);
+    bool found = false;
+    for (const auto& tVal : engine_->call(QStringLiteral("timeline.get")).value.toObject().value(QStringLiteral("tracks")).toArray()) {
+      if (tVal.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("Agent Track")) found = true;
+    }
+    QVERIFY(found);
+    QVERIFY(!harness_->hasPending());
+
+    // Running again with nothing pending fails honestly.
+    Result rerun = engine_->call(QStringLiteral("agent.plan.run"));
+    QVERIFY(!rerun.ok);
+    QCOMPARE(rerun.error.code, QStringLiteral("no_pending_plan"));
+  }
+
+  // ---- Ask mode: agent.plan.skip discards the held proposals ----
+  void askModeSkipDiscards() {
+    harness_->setMode(AgentMode::Ask);
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Proposal withheld.")}});
+    mockLlm_->enqueueResponse(QJsonObject{
+      {QStringLiteral("content"), QString()},
+      {QStringLiteral("tool_calls"), QJsonArray{QJsonObject{
+        {QStringLiteral("id"), QStringLiteral("call_skip")},
+        {QStringLiteral("function"), QJsonObject{
+          {QStringLiteral("name"), QStringLiteral("track.add")},
+          {QStringLiteral("arguments"), QStringLiteral("{\"kind\":\"video\",\"name\":\"Discard Track\"}")}
+        }}
+      }}}
+    });
+
+    QJsonObject res = harness_->executeTurn(QStringLiteral("add a track named Discard Track"));
+    QVERIFY(res.value(QStringLiteral("pendingApproval")).toBool());
+    QVERIFY(harness_->hasPending());
+
+    Result skip = engine_->call(QStringLiteral("agent.plan.skip"));
+    QVERIFY(skip.ok);
+    QVERIFY(!harness_->hasPending());
+
+    Result run = engine_->call(QStringLiteral("agent.plan.run"));
+    QVERIFY(!run.ok);
+    QCOMPARE(run.error.code, QStringLiteral("no_pending_plan"));
+
+    Result tl = engine_->call(QStringLiteral("timeline.get"));
+    QCOMPARE(tl.value.toObject().value(QStringLiteral("tracks")).toArray().size(), 3);
+  }
+
+  // ---- Plan mode: agent.plan.run executes the held plan for real ----
+  void planModeRunExecutes() {
+    harness_->setMode(AgentMode::Plan);
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Plan executed.")}});
+
+    QJsonObject planRes = harness_->executeTurn(QStringLiteral("cut the pauses and add background music"));
+    QVERIFY(planRes.value(QStringLiteral("planNeeded")).toBool());
+    QVERIFY(harness_->hasPending());
+
+    QJsonObject run = harness_->runPending();
+    QCOMPARE(run.value(QStringLiteral("ok")).toBool(), true);
+    // The plan runs as an auto turn (execute, no further planning) and reports the model response.
+    QCOMPARE(run.value(QStringLiteral("mode")).toString(), QStringLiteral("auto"));
+    QCOMPARE(run.value(QStringLiteral("response")).toString(), QStringLiteral("Plan executed."));
+    QVERIFY(!harness_->hasPending());
+  }
+
+  // ---- the whole agent loop over HTTP against an OpenAI-compatible fake server ----
+  void agentLoopOverHttp() {
+    sf::test::FakeLlmServer fake;
+    QVERIFY(fake.listen());
+    fake.start();
+    // Round 0: the model asks for a real engine command (wire name has dots replaced by "__").
+    fake.enqueueChat(QJsonObject{
+      {QStringLiteral("role"), QStringLiteral("assistant")},
+      {QStringLiteral("content"), QString()},
+      {QStringLiteral("tool_calls"), QJsonArray{QJsonObject{
+        {QStringLiteral("id"), QStringLiteral("c1")},
+        {QStringLiteral("type"), QStringLiteral("function")},
+        {QStringLiteral("function"), QJsonObject{
+          {QStringLiteral("name"), QStringLiteral("track__add")},
+          {QStringLiteral("arguments"), QStringLiteral("{\"kind\":\"video\",\"name\":\"HTTP Track\"}")}
+        }}
+      }}}
+    });
+    // Round 1: final answer, no more tool calls.
+    fake.enqueueChat(QJsonObject{
+      {QStringLiteral("role"), QStringLiteral("assistant")},
+      {QStringLiteral("content"), QStringLiteral("Added the track for you.")}
+    });
+
+    auto llm = std::make_shared<HttpLlmClient>(fake.chatUrl(), QStringLiteral("fake-model"));
+    llm->setTimeoutMs(5000);
+    QString probeErr;
+    QVERIFY2(llm->reachable(&probeErr), qPrintable(probeErr));
+
+    AgentHarness harness(engine_.get(), llm);
+    QJsonObject res = harness.executeTurn(QStringLiteral("add a track named HTTP Track"));
+
+    QCOMPARE(fake.chatHits(), 2);
+    QCOMPARE(res.value(QStringLiteral("status")).toString(), QStringLiteral("ok"));
+    QCOMPARE(res.value(QStringLiteral("response")).toString(), QStringLiteral("Added the track for you."));
+    const QJsonArray toolResults = res.value(QStringLiteral("toolResults")).toArray();
+    QCOMPARE(toolResults.size(), 1);
+    QCOMPARE(toolResults.at(0).toObject().value(QStringLiteral("result")).toObject().value(QStringLiteral("ok")).toBool(), true);
+
+    // The second POST must carry the tool result of round 0 back to the model as role:"tool".
+    const QJsonArray messages = fake.lastChatRequest().value(QStringLiteral("messages")).toArray();
+    bool sawToolMessage = false;
+    for (const auto& mVal : messages) {
+      const QJsonObject m = mVal.toObject();
+      if (m.value(QStringLiteral("role")).toString() != QStringLiteral("tool")) continue;
+      sawToolMessage = true;
+      QCOMPARE(m.value(QStringLiteral("tool_call_id")).toString(), QStringLiteral("c1"));
+      QVERIFY(m.value(QStringLiteral("content")).toString().contains(QStringLiteral("\"ok\"")));
+    }
+    QVERIFY(sawToolMessage);
+
+    // The wire tool call was mapped back to the engine command and really ran.
+    Result tl = engine_->call(QStringLiteral("timeline.get"));
+    QVERIFY(tl.ok);
+    const QJsonArray tracks = tl.value.toObject().value(QStringLiteral("tracks")).toArray();
+    QCOMPARE(tracks.size(), 4);
+    bool found = false;
+    for (const auto& tVal : tracks) {
+      if (tVal.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("HTTP Track")) found = true;
+    }
+    QVERIFY(found);
   }
 };
 

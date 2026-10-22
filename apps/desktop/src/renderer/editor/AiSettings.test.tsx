@@ -54,7 +54,13 @@ describe('AiSettings UI component (Milestone H1)', () => {
     // Verify Meterless endpoint field is rendered
     expect(html).toContain('Endpoint URL');
     expect(html).toContain('placeholder="https://api.meterless.ai/v1"');
-    expect(html).toContain('Meterless OpenAI-compatible serverless inference endpoint');
+    expect(html).toContain('Meterless OpenAI-compatible runtime endpoint');
+
+    // Routing mode input and the read-only routing table (Part A item 1)
+    expect(html).toContain('Routing mode (optional)');
+    expect(html).toContain('Routing table (read-only)');
+    expect(html).toContain('meterless-accept');
+    expect(html).toContain('commentary');
 
     // Verify model input has standard placeholder without provider-specific overrides
     expect(html).toContain('placeholder="e.g. claude-sonnet-4-5"');

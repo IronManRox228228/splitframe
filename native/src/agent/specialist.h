@@ -47,8 +47,12 @@ public:
   // Produces the specialist's scoped view of the project state.
   QJsonObject scopedViewJson(const QString& sessionId = {}) const;
 
-  // Tools available to this specialist: its domain + engine commands.
+  // Tools available to this specialist: own domain, engine, reads, generate/comfy.
   QJsonArray availableTools() const;
+
+  static constexpr int kMaxToolRounds = 8;
+
+  bool allowsCommand(const engine::CommandSpec& spec) const;
 
   // Executes an engine command with strict domain check and origin tag.
   engine::Result executeCommand(const QString& cmdName,
@@ -66,8 +70,9 @@ public:
   // Handles an incoming peer request from another specialist.
   virtual PeerResponse handlePeerRequest(const PeerRequest& req, const QString& sessionId = {});
 
-  // Executes a full user turn directed to this specialist.
-  virtual QJsonObject processTurn(const QString& userMessage, const QString& sessionId = {});
+  // Executes a full user turn directed to this specialist (bounded tool loop).
+  virtual QJsonObject processTurn(const QString& userMessage, const QString& sessionId = {},
+                                  TurnPolicy policy = TurnPolicy::Execute);
 
 private:
   SpecialistKind kind_;

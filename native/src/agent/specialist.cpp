@@ -132,13 +132,20 @@ QJsonObject Specialist::scopedViewJson(const QString& sessionId) const {
   return view;
 }
 
+bool Specialist::allowsCommand(const engine::CommandSpec& spec) const {
+  if (spec.domain == domain() || spec.domain == QStringLiteral("engine")) return true;
+  if (!spec.mutates) return true;
+  if (spec.domain == QStringLiteral("comfy")) return true;
+  if (spec.name.startsWith(QStringLiteral("generate.")) || spec.name.startsWith(QStringLiteral("comfy."))) return true;
+  return false;
+}
+
 QJsonArray Specialist::availableTools() const {
   if (!engine_) return {};
 
   QJsonArray tools;
-  // Commands in own domain + shared "engine" domain
   for (const auto& cmd : engine_->commands()) {
-    if (cmd->domain == domain() || cmd->domain == QStringLiteral("engine")) {
+    if (allowsCommand(*cmd)) {
       tools.append(QJsonObject{
         {QStringLiteral("name"), cmd->name},
         {QStringLiteral("description"), cmd->description},
@@ -182,8 +189,7 @@ engine::Result Specialist::executeCommand(const QString& cmdName,
     return engine::Result::failure(QStringLiteral("unknown_command"), QStringLiteral("Command '%1' not found").arg(cmdName));
   }
 
-  // Domain check: cannot call another specialist's domain directly
-  if (spec->domain != domain() && spec->domain != QStringLiteral("engine")) {
+  if (!allowsCommand(*spec)) {
     QString owner = (spec->domain == QStringLiteral("editor")) ? QStringLiteral("Video Editor")
                   : (spec->domain == QStringLiteral("colour")) ? QStringLiteral("Colourist")
                   : (spec->domain == QStringLiteral("audio"))  ? QStringLiteral("Audio")
@@ -231,112 +237,126 @@ PeerResponse Specialist::sendPeerRequest(SpecialistKind to,
   return bus_->send(req);
 }
 
+namespace {
+
+QString peerKindToCommand(const QString& kind) {
+  if (kind == QStringLiteral("duck_music")) return QStringLiteral("audio.duck");
+  if (kind == QStringLiteral("fit_to_beats")) return QStringLiteral("music.fit");
+  if (kind == QStringLiteral("grade_clip") || kind == QStringLiteral("set_lut")) return QStringLiteral("item.color.set");
+  if (kind == QStringLiteral("match_shots")) return QStringLiteral("colour.match");
+  if (kind == QStringLiteral("trim_item")) return QStringLiteral("item.trim");
+  if (kind == QStringLiteral("cut_timeline")) return QStringLiteral("item.split");
+  return kind;
+}
+
+QJsonObject parseToolArgs(const QJsonValue& arguments) {
+  if (arguments.isObject()) return arguments.toObject();
+  return QJsonDocument::fromJson(arguments.toString().toUtf8()).object();
+}
+
+} // namespace
+
 PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString& sessionId) {
   PeerResponse res;
   res.requestId = req.id;
 
-  // Handle standard peer requests per specialist domain
-  switch (kind_) {
-    case SpecialistKind::Audio: {
-      if (req.kind == QStringLiteral("duck_music")) {
-        // Audio specialist ducking music
-        double duckVol = req.args.value(QStringLiteral("volume")).toDouble(0.25);
-        res.status = QStringLiteral("done");
-        res.outputs = QJsonObject{{QStringLiteral("duckedVolume"), duckVol}};
-        res.note = QStringLiteral("music ducked under speech to %1").arg(duckVol);
-        return res;
-      }
-      if (req.kind == QStringLiteral("fit_to_beats")) {
-        res.status = QStringLiteral("done");
-        res.outputs = QJsonObject{{QStringLiteral("gridBpm"), 120}, {QStringLiteral("offsetMs"), 0}};
-        res.note = QStringLiteral("beat grid computed at 120 BPM");
-        return res;
-      }
-      break;
-    }
-    case SpecialistKind::Colourist: {
-      if (req.kind == QStringLiteral("grade_clip") || req.kind == QStringLiteral("set_lut")) {
-        QString itemId = req.args.value(QStringLiteral("itemId")).toString();
-        QString lut = req.args.value(QStringLiteral("lutPath")).toString();
-        if (!itemId.isEmpty()) {
-          QJsonObject patch;
-          if (!lut.isEmpty()) patch.insert(QStringLiteral("lutPath"), lut);
-          executeCommand(QStringLiteral("item.update"), QJsonObject{
-            {QStringLiteral("itemId"), itemId},
-            {QStringLiteral("patch"), patch}
-          }, sessionId);
-        }
-        res.status = QStringLiteral("done");
-        res.note = QStringLiteral("grade applied to item %1").arg(itemId);
-        return res;
-      }
-      if (req.kind == QStringLiteral("match_shots")) {
-        res.status = QStringLiteral("done");
-        res.note = QStringLiteral("shots matched to reference grade");
-        return res;
-      }
-      break;
-    }
-    case SpecialistKind::Editor: {
-      if (req.kind == QStringLiteral("trim_item") || req.kind == QStringLiteral("cut_timeline")) {
-        res.status = QStringLiteral("done");
-        res.note = QStringLiteral("timeline updated by editor");
-        return res;
-      }
-      break;
-    }
+  const QString cmdName = peerKindToCommand(req.kind);
+  const engine::CommandSpec* spec = engine_ ? engine_->find(cmdName) : nullptr;
+  if (!spec) {
+    res.status = QStringLiteral("unsupported");
+    res.note = QStringLiteral("%1 has no command for peer kind '%2'").arg(name(), req.kind);
+    return res;
   }
 
-  // Fallback
-  res.status = QStringLiteral("done");
-  res.note = QStringLiteral("%1 handled request '%2'").arg(name(), req.kind);
+  engine::Result cmdRes = executeCommand(cmdName, req.args, sessionId);
+  res.outputs = cmdRes.toJson();
+  if (cmdRes.ok) {
+    res.status = QStringLiteral("done");
+    res.note = QStringLiteral("executed %1").arg(cmdName);
+  } else if (cmdRes.error.code == QStringLiteral("unknown_command") || cmdRes.error.code == QStringLiteral("domain_forbidden")) {
+    res.status = QStringLiteral("unsupported");
+    res.note = cmdRes.error.message;
+  } else {
+    res.status = QStringLiteral("declined");
+    res.note = cmdRes.error.message;
+  }
   return res;
 }
 
-QJsonObject Specialist::processTurn(const QString& userMessage, const QString& sessionId) {
+QJsonObject Specialist::processTurn(const QString& userMessage, const QString& sessionId, TurnPolicy policy) {
   QJsonObject result;
   result.insert(QStringLiteral("specialist"), name());
 
-  // Add user message to memory
   addMessage(ChatMessage{
     .role = QStringLiteral("user"),
     .content = userMessage
   });
 
   if (!llm_) {
-    // Deterministic fallback response when no LLM client is configured
-    QString respText = QStringLiteral("[%1] Received: %2").arg(name(), userMessage);
-    addMessage(ChatMessage{
-      .role = QStringLiteral("assistant"),
-      .content = respText
-    });
-    result.insert(QStringLiteral("content"), respText);
-    result.insert(QStringLiteral("status"), QStringLiteral("ok"));
+    result.insert(QStringLiteral("content"), QString());
+    result.insert(QStringLiteral("status"), QStringLiteral("error"));
+    result.insert(QStringLiteral("error"), QStringLiteral("no_llm_client"));
     return result;
   }
 
-  // Generate scoped view and call LLM
   QJsonObject scopedView = scopedViewJson(sessionId);
   QString scopedViewStr = QString::fromUtf8(QJsonDocument(scopedView).toJson(QJsonDocument::Compact));
-
   QString enrichedPrompt = systemPrompt() + QStringLiteral("\n\nCurrent scoped state: ") + scopedViewStr;
 
-  QJsonObject llmResp = llm_->complete(enrichedPrompt, history_, availableTools(), slotId_);
+  QJsonArray allToolResults;
+  QJsonArray proposed;
+  QString respContent;
+  QString status = QStringLiteral("ok");
+  bool hitCap = false;
 
-  QString respContent = llmResp.value(QStringLiteral("content")).toString();
-  QJsonArray toolCalls = llmResp.value(QStringLiteral("tool_calls")).toArray();
+  for (int round = 0; round < kMaxToolRounds; ++round) {
+    QJsonObject llmResp = llm_->complete(enrichedPrompt, history_, availableTools(), slotId_);
+    const QJsonValue errVal = llmResp.value(QStringLiteral("error"));
+    QJsonArray toolCalls = llmResp.value(QStringLiteral("tool_calls")).toArray();
+    respContent = llmResp.value(QStringLiteral("content")).toString();
 
-  if (!toolCalls.isEmpty()) {
-    // Process tool calls
-    QJsonArray toolResults;
+    if (!errVal.isUndefined() && !errVal.isNull() && respContent.isEmpty() && toolCalls.isEmpty()) {
+      status = QStringLiteral("error");
+      result.insert(QStringLiteral("error"), errVal.isString() ? errVal.toString() : QStringLiteral("llm_error"));
+      break;
+    }
+
+    addMessage(ChatMessage{
+      .role = QStringLiteral("assistant"),
+      .content = respContent,
+      .toolCalls = toolCalls
+    });
+
+    if (toolCalls.isEmpty()) break;
+
     for (const auto& tcVal : toolCalls) {
       QJsonObject tc = tcVal.toObject();
       QString callId = tc.value(QStringLiteral("id")).toString();
       QJsonObject fn = tc.value(QStringLiteral("function")).toObject();
       QString fnName = fn.value(QStringLiteral("name")).toString();
-      QJsonObject fnArgs = QJsonDocument::fromJson(fn.value(QStringLiteral("arguments")).toString().toUtf8()).object();
+      QJsonObject fnArgs = parseToolArgs(fn.value(QStringLiteral("arguments")));
 
+      QJsonObject toolResult;
+      bool mutating = false;
       if (fnName == QStringLiteral("peer_request")) {
+        mutating = true;
+      } else if (engine_) {
+        const engine::CommandSpec* spec = engine_->find(fnName);
+        mutating = spec && spec->mutates;
+      }
+
+      if (policy == TurnPolicy::Propose && mutating) {
+        proposed.append(QJsonObject{
+          {QStringLiteral("call_id"), callId},
+          {QStringLiteral("name"), fnName},
+          {QStringLiteral("arguments"), fnArgs}
+        });
+        toolResult = QJsonObject{
+          {QStringLiteral("ok"), true},
+          {QStringLiteral("deferred"), true},
+          {QStringLiteral("reason"), QStringLiteral("ask mode: waiting for agent.plan.run")}
+        };
+      } else if (fnName == QStringLiteral("peer_request")) {
         SpecialistKind target = parseSpecialistKind(fnArgs.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
         PeerResponse pr = sendPeerRequest(
           target,
@@ -346,33 +366,39 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
           fnArgs.value(QStringLiteral("reason")).toString(),
           fnArgs.value(QStringLiteral("await")).toBool(true)
         );
-        toolResults.append(QJsonObject{
-          {QStringLiteral("call_id"), callId},
-          {QStringLiteral("name"), fnName},
-          {QStringLiteral("arguments"), fnArgs},
-          {QStringLiteral("result"), pr.toJson()}
-        });
+        toolResult = pr.toJson();
       } else {
-        engine::Result cmdRes = executeCommand(fnName, fnArgs, sessionId);
-        toolResults.append(QJsonObject{
-          {QStringLiteral("call_id"), callId},
-          {QStringLiteral("name"), fnName},
-          {QStringLiteral("arguments"), fnArgs},
-          {QStringLiteral("result"), cmdRes.toJson()}
-        });
+        toolResult = executeCommand(fnName, fnArgs, sessionId).toJson();
       }
+
+      QJsonObject row{
+        {QStringLiteral("call_id"), callId},
+        {QStringLiteral("name"), fnName},
+        {QStringLiteral("arguments"), fnArgs},
+        {QStringLiteral("result"), toolResult}
+      };
+      allToolResults.append(row);
+
+      addMessage(ChatMessage{
+        .role = QStringLiteral("tool"),
+        .content = QString::fromUtf8(QJsonDocument(toolResult).toJson(QJsonDocument::Compact)),
+        .name = fnName,
+        .toolCallId = callId
+      });
     }
-    result.insert(QStringLiteral("tool_results"), toolResults);
+
+    if (round + 1 == kMaxToolRounds) hitCap = true;
   }
 
-  addMessage(ChatMessage{
-    .role = QStringLiteral("assistant"),
-    .content = respContent,
-    .toolCalls = toolCalls
-  });
+  if (hitCap && status == QStringLiteral("ok")) {
+    status = QStringLiteral("error");
+    result.insert(QStringLiteral("error"), QStringLiteral("tool_loop_limit"));
+  }
 
+  if (!allToolResults.isEmpty()) result.insert(QStringLiteral("tool_results"), allToolResults);
+  if (!proposed.isEmpty()) result.insert(QStringLiteral("proposed"), proposed);
   result.insert(QStringLiteral("content"), respContent);
-  result.insert(QStringLiteral("status"), QStringLiteral("ok"));
+  result.insert(QStringLiteral("status"), status);
   return result;
 }
 

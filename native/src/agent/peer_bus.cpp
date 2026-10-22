@@ -39,8 +39,8 @@ PeerResponse PeerBus::send(PeerRequest req) {
     return res;
   }
 
-  // 2. Guard against chain depth explosion (> 3 hops)
-  if (req.depth > kMaxChainDepth) {
+  // 2. Guard against chain depth explosion (>= 3 hops)
+  if (req.depth >= kMaxChainDepth) {
     PeerResponse res{
       .requestId = req.id,
       .status = QStringLiteral("declined"),
@@ -125,7 +125,8 @@ PeerResponse PeerBus::send(PeerRequest req) {
     return res;
   }
 
-  // 5. Invoke handler under active stack tracking
+  // 5. Invoke handler under active stack tracking (originator + recipient)
+  activeStack_.push_back(req.from);
   activeStack_.push_back(req.to);
   PeerResponse res;
   try {
@@ -139,6 +140,7 @@ PeerResponse PeerBus::send(PeerRequest req) {
     res.status = QStringLiteral("declined");
     res.note = QStringLiteral("handler threw exception");
   }
+  activeStack_.pop_back();
   activeStack_.pop_back();
 
   // 6. Record in audit trail

@@ -5,6 +5,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
 
@@ -20,6 +21,10 @@ void MockLlmClient::setDefaultResponse(QJsonObject response) {
   defaultResponse_ = std::move(response);
 }
 
+void MockLlmClient::enqueueResponse(QJsonObject response) {
+  queued_.push_back(std::move(response));
+}
+
 QJsonObject MockLlmClient::complete(const QString& systemPrompt,
                                     const std::vector<ChatMessage>& messages,
                                     const QJsonArray& tools,
@@ -30,6 +35,12 @@ QJsonObject MockLlmClient::complete(const QString& systemPrompt,
     .tools = tools,
     .slotId = slotId
   });
+
+  if (!queued_.empty()) {
+    QJsonObject next = std::move(queued_.front());
+    queued_.erase(queued_.begin());
+    return next;
+  }
 
   QString combined;
   for (const auto& m : messages) combined += m.content + QLatin1Char(' ');
@@ -68,8 +79,32 @@ QJsonArray wireToolCalls(const QJsonArray& calls, QString (*rename)(const QStrin
 
 } // namespace
 
+bool probeHttpEndpoint(const QString& endpoint, int timeoutMs, QString* error) {
+  const QString trimmed = endpoint.trimmed();
+  if (trimmed.isEmpty() || trimmed.compare(QLatin1String("mock"), Qt::CaseInsensitive) == 0) return true;
+  const QUrl url(trimmed);
+  if (!url.isValid() || url.host().isEmpty()) {
+    if (error) *error = QStringLiteral("invalid LLM endpoint \"%1\"").arg(endpoint);
+    return false;
+  }
+  const quint16 port = static_cast<quint16>(url.port(url.scheme() == QLatin1String("https") ? 443 : 80));
+  QTcpSocket socket;
+  socket.connectToHost(url.host(), port);
+  if (!socket.waitForConnected(timeoutMs)) {
+    if (error) *error = QStringLiteral("LLM endpoint %1 is not reachable (%2)").arg(endpoint, socket.errorString());
+    socket.abort();
+    return false;
+  }
+  socket.disconnectFromHost();
+  return true;
+}
+
 HttpLlmClient::HttpLlmClient(QString endpoint, QString model)
   : endpoint_(std::move(endpoint)), model_(std::move(model)) {}
+
+bool HttpLlmClient::reachable(QString* error) const {
+  return probeHttpEndpoint(endpoint_, 2000, error);
+}
 
 QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
                                     const std::vector<ChatMessage>& messages,
@@ -113,6 +148,9 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
   QNetworkRequest netReq;
   netReq.setUrl(QUrl(endpoint_));
   netReq.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+  if (!apiKey_.isEmpty()) {
+    netReq.setRawHeader("Authorization", QStringLiteral("Bearer %1").arg(apiKey_).toUtf8());
+  }
 
   QByteArray postData = QJsonDocument(req).toJson(QJsonDocument::Compact);
   QNetworkReply* reply = manager.post(netReq, postData);

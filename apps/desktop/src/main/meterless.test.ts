@@ -216,6 +216,92 @@ describe('Meterless inference routing (Milestone H1)', () => {
     });
   });
 
+  describe('Meterless runtime contract (16-AGENT-crew Part A)', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+      vi.restoreAllMocks();
+    });
+
+    function captureFetch(body?: unknown) {
+      let headers: Record<string, string> = {};
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        headers = (init?.headers ?? {}) as Record<string, string>;
+        return { ok: true, status: 200, json: async () => body ?? {} } as unknown as Response;
+      });
+      return { headerOf: (k: string) => headers[k] };
+    }
+
+    const meterlessLlm = (body?: unknown) => {
+      captureFetch(body);
+      return createLlm({ baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'runtime-tok', model: 'meterless/auto', noThinking: false, meterless: true });
+    };
+
+    it('sends the meterless-app and meterless-scope chat headers with the token as Bearer', async () => {
+      let headers: Record<string, string> = {};
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        headers = (init?.headers ?? {}) as Record<string, string>;
+        return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+      });
+      const llm = createLlm({ baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'runtime-tok', model: 'meterless/auto', noThinking: false, meterless: true });
+      await llm.text({ system: 's', prompt: 'q' });
+      expect(headers['meterless-app']).toBe('splitframe');
+      expect(headers['meterless-scope']).toBe('user');
+      expect(headers['Authorization']).toBe('Bearer runtime-tok');
+
+      // a non-meterless config sends none of the runtime headers
+      let plainHeaders: Record<string, string> = {};
+      globalThis.fetch = vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+        plainHeaders = (init?.headers ?? {}) as Record<string, string>;
+        return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+      });
+      await createLlm({ baseUrl: 'http://127.0.0.1:1/v1', apiKey: 'k', model: 'm', noThinking: false }).text({ system: 's', prompt: 'q' });
+      expect(plainHeaders['meterless-app']).toBeUndefined();
+      expect(plainHeaders['meterless-scope']).toBeUndefined();
+    });
+
+    it('strips the think fence and reasoning fields before anything reads the answer', async () => {
+      const llm = meterlessLlm({
+        choices: [
+          {
+            message: {
+              reasoning: 'chain of thought',
+              reasoning_content: 'more thought',
+              content: '```think\nsecret plan\n```\nvisible answer',
+            },
+          },
+        ],
+      });
+      const res = await llm.text({ system: 's', prompt: 'q' });
+      expect(res.text).toBe('visible answer');
+      expect(res.text).not.toContain('secret plan');
+      expect(res.text).not.toContain('chain of thought');
+    });
+
+    it('truncates at an unclosed think fence (the reasoning runs to the end)', async () => {
+      const llm = meterlessLlm({ choices: [{ message: { content: 'prelude\n```think\nruns to the end' } }] });
+      const res = await llm.text({ system: 's', prompt: 'q' });
+      expect(res.text).toBe('prelude');
+    });
+  });
+
+  describe('Read-only routing table mirror (source of truth: native router)', () => {
+    it('matches the native router rows for the tasks the UI displays', async () => {
+      const { ROUTING_TABLE } = await import('../renderer/editor/meterlessRoutingTable.ts');
+      const byTask = new Map(ROUTING_TABLE.map((r) => [r.task, r]));
+      expect(byTask.get('commentary')).toMatchObject({ className: 'text', route: 'chat', accept: '' });
+      expect(byTask.get('screenshot')).toMatchObject({ className: 'vision', route: 'chat', accept: '' });
+      expect(byTask.get('voice')).toMatchObject({ className: 'speech', route: 'chat', accept: 'audio' });
+      expect(byTask.get('theme')).toMatchObject({ className: 'music', route: 'chat', accept: 'audio' });
+      expect(byTask.get('still')).toMatchObject({ className: 'image', route: 'chat', accept: 'image' });
+      expect(byTask.get('preview_render')).toMatchObject({ className: 'video', route: 'chat', accept: 'video' });
+      expect(byTask.get('model_3d')).toMatchObject({ className: 'mesh', route: '3d', accept: 'mesh' });
+      expect(byTask.get('repaint')).toMatchObject({ className: 'texture', route: '3d', accept: 'mesh' });
+      expect(ROUTING_TABLE.length).toBeGreaterThan(10);
+    });
+  });
+
   describe('friendlyError for Meterless connection issues', () => {
     it('formats network failure for Meterless with endpoint URL', () => {
       const err = friendlyError('TypeError: fetch failed (ECONNREFUSED)', {

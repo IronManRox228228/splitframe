@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useEditor } from '../store.ts';
 import { Dialog } from '../ui/Dialog.tsx';
 import { ModelsSection } from './ModelsSection.tsx';
+import { ROUTING_TABLE } from './meterlessRoutingTable.ts';
 
 export interface AiConfig {
   agentProvider: string;
@@ -14,6 +15,7 @@ export interface AiConfig {
   llamacppUrl: string;
   ollamaUrl: string;
   meterlessUrl?: string;
+  meterlessModel?: string;
 }
 
 export const PROVIDER_LABELS: Record<string, string> = {
@@ -55,6 +57,7 @@ export function AiSettings({ config, onSaved, onClose }: { config: AiConfig; onS
       ...(draft.agentProvider === 'ollama' && draft.ollamaUrl.trim() ? { ollamaUrl: draft.ollamaUrl.trim() } : {}),
       ...(draft.agentProvider === 'llamacpp' && draft.llamacppUrl.trim() ? { llamacppUrl: draft.llamacppUrl.trim() } : {}),
       ...(draft.agentProvider === 'meterless' && draft.meterlessUrl?.trim() ? { meterlessUrl: draft.meterlessUrl.trim() } : {}),
+      ...(draft.agentProvider === 'meterless' && draft.meterlessModel?.trim() ? { meterlessModel: draft.meterlessModel.trim() } : {}),
       ...(apiKey && draft.agentProvider === 'llamacpp' ? { llamacppKey: apiKey } : {}),
       ...(apiKey && draft.agentProvider !== 'llamacpp' && draft.agentProvider !== 'ollama' ? { agentKey: apiKey } : {}),
     });
@@ -124,18 +127,56 @@ export function AiSettings({ config, onSaved, onClose }: { config: AiConfig; onS
           </div>
         )}
         {draft.agentProvider === 'meterless' && (
-          <label className="flex flex-col gap-1.5">
-            <span className="label">Endpoint URL</span>
-            <input
-              value={draft.meterlessUrl ?? ''}
-              onChange={(e) => setDraft({ ...draft, meterlessUrl: e.target.value })}
-              placeholder="https://api.meterless.ai/v1"
-              className="input"
-            />
-            <span className="text-xs text-fg-muted">
-              Meterless OpenAI-compatible serverless inference endpoint. Default: <code className="font-mono text-fg-2">https://api.meterless.ai/v1</code>
-            </span>
-          </label>
+          <>
+            <label className="flex flex-col gap-1.5">
+              <span className="label">Endpoint URL</span>
+              <input
+                value={draft.meterlessUrl ?? ''}
+                onChange={(e) => setDraft({ ...draft, meterlessUrl: e.target.value })}
+                placeholder="https://api.meterless.ai/v1"
+                className="input"
+              />
+              <span className="text-xs text-fg-muted">
+                Meterless OpenAI-compatible runtime endpoint (v1 base). The runtime token is taken from METERLESS_RUNTIME_TOKEN, the encrypted key field below, or the runtime's own proxy-token file — it is never shown here.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="label">Routing mode (optional)</span>
+              <input
+                value={draft.meterlessModel ?? ''}
+                onChange={(e) => setDraft({ ...draft, meterlessModel: e.target.value })}
+                placeholder="e.g. meterless/auto (blank = METERLESS_MODEL, then the runtime's default)"
+                className="input"
+              />
+            </label>
+            {/* Read-only routing table: the rows are mirrored from the native router, which owns
+                the rules (see meterlessRoutingTable.ts for the boundary). */}
+            <div className="flex flex-col gap-1.5">
+              <span className="label">Routing table (read-only)</span>
+              <div className="max-h-56 overflow-y-auto border border-line rounded">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-surface">
+                    <tr className="text-left text-fg-2">
+                      <th className="py-1.5 px-2 font-medium">Task</th>
+                      <th className="py-1.5 px-2 font-medium">Class</th>
+                      <th className="py-1.5 px-2 font-medium">Route</th>
+                      <th className="py-1.5 px-2 font-medium">meterless-accept</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ROUTING_TABLE.map((row) => (
+                      <tr key={row.task} className="border-t border-line text-fg-2">
+                        <td className="py-1 px-2 font-mono">{row.task}</td>
+                        <td className="py-1 px-2 font-mono">{row.className}</td>
+                        <td className="py-1 px-2">{row.route}</td>
+                        <td className="py-1 px-2 font-mono">{row.accept || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         )}
         {draft.agentProvider === 'ollama' && (
           <label className="flex flex-col gap-1.5">

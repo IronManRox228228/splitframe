@@ -14,6 +14,12 @@ export interface LlmConfig {
   model: string;
   /** send chat_template_kwargs.enable_thinking=false (llama.cpp only) */
   noThinking: boolean;
+  /**
+   * Meterless runtime contract (16-AGENT-crew Part A): chat requests carry the
+   * meterless-app/meterless-scope headers, Bearer uses the runtime token, and ```think
+   * fences plus separate reasoning fields are stripped before anything is handed on.
+   */
+  meterless?: boolean;
 }
 
 export interface ToolCallOut {
@@ -43,9 +49,21 @@ export function jsonSchemaOf(schema: z.ZodType): Record<string, unknown> {
 }
 
 interface ChatResponse {
-  choices?: { message?: { content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] } }[];
+  choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: { function?: { name?: string; arguments?: string } }[] } }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string };
+}
+
+/**
+ * Meterless chat models may reason inside the content, fenced off with ```think blocks, or in
+ * separate reasoning/reasoning_content fields. Neither ever belongs to the answer: fences come
+ * off (an unclosed fence truncates the rest), and the separate fields are dropped entirely.
+ */
+function stripThink(content: string): string {
+  let out = content.replace(/```think[\s\S]*?```/g, '');
+  const open = out.indexOf('```think');
+  if (open >= 0) out = out.slice(0, open);
+  return out.replace(/^\s+|\s+$/g, '');
 }
 
 export function createLlm(cfg: LlmConfig): Llm {
@@ -54,12 +72,26 @@ export function createLlm(cfg: LlmConfig): Llm {
   async function chat(body: Record<string, unknown>, signal?: AbortSignal): Promise<ChatResponse> {
     const res = await fetch(`${base}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey || 'none'}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.apiKey || 'none'}`,
+        ...(cfg.meterless ? { 'meterless-app': 'splitframe', 'meterless-scope': 'user' } : {}),
+      },
       body: JSON.stringify({ model: cfg.model || 'default', temperature: 0.2, ...(cfg.noThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}), ...body }),
       ...(signal ? { signal } : {}),
     });
     const json = (await res.json().catch(() => ({}))) as ChatResponse;
     if (!res.ok) throw new Error(json.error?.message ?? `model server answered ${res.status}`);
+    if (cfg.meterless) {
+      // The runtime applies the reasoning strip at the transport itself (the contract puts the
+      // cleanup here, not at each use site).
+      for (const choice of json.choices ?? []) {
+        if (!choice.message) continue;
+        delete choice.message.reasoning;
+        delete choice.message.reasoning_content;
+        if (typeof choice.message.content === 'string') choice.message.content = stripThink(choice.message.content);
+      }
+    }
     return json;
   }
   const usageOf = (r: ChatResponse): LlmUsage => ({ inputTokens: r.usage?.prompt_tokens, outputTokens: r.usage?.completion_tokens });

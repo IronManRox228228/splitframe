@@ -22,10 +22,17 @@ using namespace sf::engine;
 namespace {
 QString Q(const char* s) { return QString::fromLatin1(s); }
 
-// A model that answers every request with one marker.add call.
+// A model that calls marker.add once, then answers in prose once the tool result comes back:
+// the bounded agent loop feeds each result back as a role:"tool" message, so the second call
+// must not ask for another marker. The stop trigger prefixes the tool-result JSON `{"ok":true...`,
+// which only appears after marker.add ran (it sorts before "add a marker" in the trigger map).
 const char* kMarkerScript =
-    "{\"content\":\"Dropped a marker at frame 15.\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"marker.add\","
-    "\"arguments\":\"{\\\"frame\\\":15,\\\"label\\\":\\\"wire\\\"}\"}}]}";
+    "{\"default\":{\"content\":\"All done.\"},\"scripted\":["
+    "{\"trigger\":\"\\\"ok\\\":true\",\"response\":{\"content\":\"Dropped a marker at frame 15.\"}},"
+    "{\"trigger\":\"add a marker\",\"response\":{\"content\":\"\","
+    "\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"marker.add\","
+    "\"arguments\":\"{\\\"frame\\\":15,\\\"label\\\":\\\"wire\\\"}\"}}]}}"
+    "]}";
 
 const QString kDeadEndpoint = QStringLiteral("http://127.0.0.1:1/v1/chat/completions"); // nothing listens on port 1: refused at once
 } // namespace

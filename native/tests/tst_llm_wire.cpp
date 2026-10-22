@@ -65,6 +65,25 @@ private slots:
     QCOMPARE(msg.value(QStringLiteral("tool_calls")).toArray().at(0).toObject().value(QStringLiteral("function")).toObject().value(QStringLiteral("name")).toString(),
              QStringLiteral("item.split"));
   }
+
+  // ---- provider-aware reachability probe (guardAgentTurn uses it before agent.turn) ----
+  void probeEndpoint() {
+    // empty URL and "mock" are always reachable (offline backends)
+    QVERIFY(probeHttpEndpoint(QString(), 300));
+    QVERIFY(probeHttpEndpoint(QStringLiteral("mock"), 300));
+
+    // a real server's TCP port answers
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    QVERIFY(probeHttpEndpoint(QStringLiteral("http://127.0.0.1:%1/v1/chat/completions").arg(server.serverPort()), 1000));
+
+    // a closed port fails with a message naming the endpoint
+    QString err;
+    const bool reachable = probeHttpEndpoint(QStringLiteral("http://127.0.0.1:1/v1/chat/completions"), 500, &err);
+    QVERIFY(!reachable);
+    QVERIFY(!err.isEmpty());
+    QVERIFY(err.contains(QStringLiteral("127.0.0.1")));
+  }
 };
 
 QTEST_GUILESS_MAIN(TstLlmWire)

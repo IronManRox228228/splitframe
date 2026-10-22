@@ -19,8 +19,8 @@ AgentHarness::AgentHarness(engine::Engine* engine,
   // Set default peer handlers on bus to delegate to recipient specialists
   for (auto& [kind, sp] : specialists_) {
     Specialist* ptr = sp.get();
-    bus_->setDefaultHandler(kind, [ptr](const PeerRequest& req) {
-      return ptr->handlePeerRequest(req);
+    bus_->setDefaultHandler(kind, [ptr, this](const PeerRequest& req) {
+      return ptr->handlePeerRequest(req, lastSessionId_);
     });
   }
 }
@@ -37,7 +37,82 @@ Specialist* AgentHarness::specialist(SpecialistKind kind) const {
   return it != specialists_.end() ? it->second.get() : nullptr;
 }
 
+QJsonArray AgentHarness::applyProposed(Specialist* sp, const QJsonArray& proposed, const QString& sessionId) {
+  QJsonArray results;
+  if (!sp) return results;
+  for (const auto& v : proposed) {
+    const QJsonObject p = v.toObject();
+    const QString fnName = p.value(QStringLiteral("name")).toString();
+    const QJsonObject fnArgs = p.value(QStringLiteral("arguments")).toObject();
+    QJsonObject toolResult;
+    if (fnName == QStringLiteral("peer_request")) {
+      SpecialistKind target = parseSpecialistKind(fnArgs.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
+      PeerResponse pr = sp->sendPeerRequest(
+        target,
+        fnArgs.value(QStringLiteral("kind")).toString(),
+        fnArgs.value(QStringLiteral("args")).toObject(),
+        fnArgs.value(QStringLiteral("constraints")).toObject(),
+        fnArgs.value(QStringLiteral("reason")).toString(),
+        fnArgs.value(QStringLiteral("await")).toBool(true)
+      );
+      toolResult = pr.toJson();
+    } else {
+      toolResult = sp->executeCommand(fnName, fnArgs, sessionId).toJson();
+    }
+    results.append(QJsonObject{
+      {QStringLiteral("call_id"), p.value(QStringLiteral("call_id"))},
+      {QStringLiteral("name"), fnName},
+      {QStringLiteral("arguments"), fnArgs},
+      {QStringLiteral("result"), toolResult}
+    });
+  }
+  return results;
+}
+
+QJsonObject AgentHarness::skipPending() {
+  pending_ = {};
+  return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("skipped"), true}};
+}
+
+QJsonObject AgentHarness::runPending(const QString& sessionId) {
+  QJsonObject out;
+  out.insert(QStringLiteral("ok"), true);
+  if (pending_.kind == PendingKind::None) {
+    out.insert(QStringLiteral("ok"), false);
+    out.insert(QStringLiteral("error"), QStringLiteral("no_pending_plan"));
+    return out;
+  }
+
+  const QString sess = !sessionId.isEmpty() ? sessionId : pending_.sessionId;
+  lastSessionId_ = sess;
+
+  if (pending_.kind == PendingKind::Ask) {
+    Specialist* sp = specialist(pending_.specialist);
+    QJsonObject groupArgs;
+    if (!sess.isEmpty()) groupArgs.insert(QStringLiteral("session"), sess);
+    groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(pending_.message));
+    if (engine_) engine_->call(QStringLiteral("session.group.begin"), groupArgs);
+    QJsonArray toolResults = applyProposed(sp, pending_.proposed, sess);
+    if (engine_) engine_->call(QStringLiteral("session.group.end"), groupArgs);
+    pending_ = {};
+    out.insert(QStringLiteral("applied"), true);
+    out.insert(QStringLiteral("toolResults"), toolResults);
+    out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+    emit turnCompleted(out);
+    return out;
+  }
+
+  const QString message = pending_.message;
+  pending_ = {};
+  const AgentMode saved = mode_;
+  mode_ = AgentMode::Auto;
+  out = executeTurn(message, sess);
+  mode_ = saved;
+  return out;
+}
+
 QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString& sessionId) {
+  lastSessionId_ = sessionId;
   RouteResult route = router_->route(userMessage);
 
   Specialist* primary = specialist(route.primary);
@@ -50,9 +125,11 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
 
   // 1. Question handling: pure inquiry, no mutations or undo groups
   if (route.isQuestion) {
-    QJsonObject res = primary->processTurn(userMessage, sessionId);
+    QJsonObject res = primary->processTurn(userMessage, sessionId, TurnPolicy::Execute);
     out.insert(QStringLiteral("response"), res.value(QStringLiteral("content")));
     out.insert(QStringLiteral("toolResults"), res.value(QStringLiteral("tool_results")));
+    out.insert(QStringLiteral("status"), res.value(QStringLiteral("status")));
+    if (res.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), res.value(QStringLiteral("error")));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
     emit turnCompleted(out);
     return out;
@@ -60,6 +137,12 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
 
   // 2. Plan mode or Default mode on compound jobs: generate plan card without mutating
   if (mode_ == AgentMode::Plan || (mode_ == AgentMode::Default && route.needsPlan)) {
+    pending_ = PendingTurn{
+      .kind = PendingKind::Plan,
+      .message = userMessage,
+      .sessionId = sessionId,
+      .specialist = route.primary
+    };
     out.insert(QStringLiteral("planNeeded"), true);
     QJsonArray steps;
     for (const QString& intent : route.intents) {
@@ -75,13 +158,35 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
       {QStringLiteral("goal"), userMessage},
       {QStringLiteral("steps"), steps}
     });
-    out.insert(QStringLiteral("response"), QStringLiteral("Plan created. Review and click Run to execute."));
+    out.insert(QStringLiteral("response"), QStringLiteral("Plan created. Call agent.plan.run to execute."));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
     emit turnCompleted(out);
     return out;
   }
 
-  // 3. Execution: wrap in undo group
+  // 3. Ask mode: LLM may propose mutations but they are held until agent.plan.run
+  if (mode_ == AgentMode::Ask) {
+    QJsonObject turnRes = primary->processTurn(userMessage, sessionId, TurnPolicy::Propose);
+    pending_ = PendingTurn{
+      .kind = PendingKind::Ask,
+      .message = userMessage,
+      .sessionId = sessionId,
+      .specialist = primary->kind(),
+      .proposed = turnRes.value(QStringLiteral("proposed")).toArray()
+    };
+    out.insert(QStringLiteral("pendingApproval"), true);
+    out.insert(QStringLiteral("proposed"), pending_.proposed);
+    out.insert(QStringLiteral("response"), turnRes.value(QStringLiteral("content")).toString().isEmpty()
+                 ? QStringLiteral("Proposed %1 change(s). Call agent.plan.run to apply, or agent.plan.skip to discard.").arg(pending_.proposed.size())
+                 : turnRes.value(QStringLiteral("content")));
+    out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
+    out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
+    out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+    emit turnCompleted(out);
+    return out;
+  }
+
+  // 4. Execution: wrap in undo group
   QJsonObject groupArgs;
   if (!sessionId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessionId);
   groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(userMessage));
@@ -90,7 +195,7 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
     engine_->call(QStringLiteral("session.group.begin"), groupArgs);
   }
 
-  QJsonObject turnRes = primary->processTurn(userMessage, sessionId);
+  QJsonObject turnRes = primary->processTurn(userMessage, sessionId, TurnPolicy::Execute);
 
   if (engine_) {
     engine_->call(QStringLiteral("session.group.end"), groupArgs);
@@ -98,6 +203,8 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
 
   out.insert(QStringLiteral("response"), turnRes.value(QStringLiteral("content")));
   out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
+  out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
+  if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
   out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
 
   emit turnCompleted(out);
@@ -168,6 +275,37 @@ void AgentHarness::registerCommands(engine::Engine& engine) {
       }
       setMode(*m);
       return engine::Result::success(QJsonObject{{QStringLiteral("mode"), modeName(mode_)}});
+    }
+  });
+
+  engine.add(engine::CommandSpec{
+    .name = QStringLiteral("agent.plan.run"),
+    .alias = QStringLiteral("runAgentPlan"),
+    .description = QStringLiteral("Execute the last held plan or Ask-mode proposals."),
+    .domain = QStringLiteral("engine"),
+    .mutates = true,
+    .needsSession = false,
+    .inputSchema = QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}},
+    .handler = [this](engine::CallContext& c, const QJsonObject&) {
+      QString sessId = c.session ? c.session->id : QString();
+      QJsonObject res = runPending(sessId);
+      if (!res.value(QStringLiteral("ok")).toBool()) {
+        return engine::Result::failure(res.value(QStringLiteral("error")).toString(), QStringLiteral("No pending plan or Ask proposals to run."));
+      }
+      return engine::Result::success(res);
+    }
+  });
+
+  engine.add(engine::CommandSpec{
+    .name = QStringLiteral("agent.plan.skip"),
+    .alias = QStringLiteral("skipAgentPlan"),
+    .description = QStringLiteral("Discard the last held plan or Ask-mode proposals."),
+    .domain = QStringLiteral("engine"),
+    .mutates = false,
+    .needsSession = false,
+    .inputSchema = QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}},
+    .handler = [this](engine::CallContext&, const QJsonObject&) {
+      return engine::Result::success(skipPending());
     }
   });
 

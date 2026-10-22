@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { getSettings, getSecret, getAgentKey } from '../../settings.ts';
 import type { ChatSink } from '../chat.ts';
 import { appBackend } from './backend.ts';
@@ -16,6 +18,28 @@ export async function harnessSupported(): Promise<boolean> {
   return SUPPORTED.has(s.ai?.agentProvider ?? 'anthropic');
 }
 
+/**
+ * Meterless runtime token (Part A item 2): METERLESS_RUNTIME_TOKEN env wins, then the key
+ * saved encrypted from AI settings, then the runtime's own proxy-token file. The token is
+ * only ever sent as the Bearer value — never displayed, logged or persisted elsewhere.
+ */
+async function meterlessRuntimeToken(): Promise<string> {
+  const fromEnv = process.env.METERLESS_RUNTIME_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+  const fromStore = (await getAgentKey('meterless')) ?? '';
+  if (fromStore.trim()) return fromStore.trim();
+  try {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const fromRuntime = (await readFile(join(localAppData, 'ai.meterless.runtime', 'proxy-token'), 'utf8')).trim();
+      if (fromRuntime) return fromRuntime;
+    }
+  } catch {
+    // no runtime token on disk: only a failure once the caller needs one
+  }
+  return '';
+}
+
 async function llmFor(role: 'planner' | 'executor'): Promise<Llm> {
   const s = await getSettings();
   const ai = s.ai ?? {};
@@ -29,10 +53,17 @@ async function llmFor(role: 'planner' | 'executor'): Promise<Llm> {
   if (provider === 'ollama') return createLlm({ baseUrl: trim(ai.ollamaUrl ?? 'http://127.0.0.1:11434'), apiKey: 'ollama', model: model || 'qwen2.5:7b', noThinking: false });
   if (provider === 'openai') return createLlm({ baseUrl: 'https://api.openai.com', apiKey: (await getAgentKey('openai')) ?? '', model: model || 'gpt-4o-mini', noThinking: false });
   if (provider === 'meterless') {
-    const raw = trim(ai.meterlessUrl ?? 'https://api.meterless.ai/v1');
-    const baseUrl = raw.endsWith('/v1') ? raw.slice(0, -3) : raw;
-    const key = (await getAgentKey('meterless')) ?? '';
-    return createLlm({ baseUrl, apiKey: key || 'none', model: model || 'qwen-2.5-coder-32b', noThinking: false });
+    // No invented endpoints (Part A item 2): an unset endpoint means unconfigured, and it
+    // fails loudly here instead of silently talking to api.meterless.ai.
+    const raw = ai.meterlessUrl?.trim() || process.env.METERLESS_BASE_URL?.trim() || '';
+    if (!raw) throw new Error('Meterless is selected but no endpoint is configured; set it in AI settings or METERLESS_BASE_URL.');
+    const baseUrl = trim(raw).replace(/\/v1$/, '');
+    const token = await meterlessRuntimeToken();
+    if (!token) throw new Error('Meterless needs the runtime token: set METERLESS_RUNTIME_TOKEN or save it in AI settings.');
+    // Routing mode (Part A item 4): the saved routing mode, then METERLESS_MODEL (a single
+    // routing mode covers all lanes here); 'default' is only the runtime's own alias.
+    const routingMode = ai.meterlessModel?.trim() || process.env.METERLESS_MODEL?.trim() || model;
+    return createLlm({ baseUrl, apiKey: token, model: routingMode || 'default', noThinking: false, meterless: true });
   }
   throw new Error(`The v1 harness does not support the ${provider} provider; switch to the classic harness in settings.`);
 }

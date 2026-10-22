@@ -36,6 +36,13 @@ export interface AiSettings {
   llamacppUrl?: string;
   /** Meterless serverless base URL (OpenAI-compatible) */
   meterlessUrl?: string;
+  /**
+   * Meterless routing mode, e.g. `meterless/text.fast` or `meterless/auto` (Part A item 1):
+   * the backing model id the whole routing mode sends before per-task pins exist in this
+   * harness. The runtime token never lives here — METERLESS_RUNTIME_TOKEN, the encrypted
+   * meterless key slot, or the runtime's proxy-token file only.
+   */
+  meterlessModel?: string;
   anthropicKeyEnc?: string;
   openaiKeyEnc?: string;
 }

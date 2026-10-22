@@ -425,13 +425,15 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       vlmModel: vlm.model,
       ollamaUrl: vlm.ollamaUrl,
       llamacppUrl: settings.ai?.llamacppUrl ?? 'http://127.0.0.1:8080',
-      meterlessUrl: settings.ai?.meterlessUrl ?? 'https://api.meterless.ai/v1',
+      // no invented Meterless default: empty means the runtime is not configured (Part A item 2)
+      meterlessUrl: settings.ai?.meterlessUrl ?? '',
+      meterlessModel: settings.ai?.meterlessModel ?? '',
       asrModel: settings.asr?.model ?? 'base.en',
     };
   });
   ipcMain.handle(
     'ai:setConfig',
-    (_e, patch: { agentProvider?: string; agentModel?: string; harness?: string; plannerModel?: string; executorModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; meterlessUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
+    (_e, patch: { agentProvider?: string; agentModel?: string; harness?: string; plannerModel?: string; executorModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; meterlessUrl?: string; meterlessModel?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
       const parsed = z.object({
         agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'llamacpp', 'meterless']).optional(),
         agentModel: z.string().max(120).optional(),
@@ -443,6 +445,7 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
         ollamaUrl: z.string().url().optional(),
         llamacppUrl: z.string().url().optional(),
         meterlessUrl: z.string().url().optional(),
+        meterlessModel: z.string().max(120).optional(),
         agentKey: z.string().max(400).optional(),
         llamacppKey: z.string().max(400).optional(),
         anthropicKey: z.string().max(400).optional(),
