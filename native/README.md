@@ -29,8 +29,8 @@ hosts the local model server.
 | `src/media` | FFmpeg: probe, decode (hardware where available), frame cache, audio decode. | core, FFmpeg |
 | `src/render` | Compositor on QRhi (D3D11 today): one timeline frame to a texture, zero-copy D3D11VA video. Used by preview and export. | core, media |
 | `src/audio` | Mixer, effects, meters, output device. | core, media |
-| `src/export` | Render + encode (NVENC/AMF/QSV/software) to file. | render, audio |
-| `src/agent` | Harness v1 port: router, facade tools, plans, verifier, modes. llama-server over HTTP. | core |
+| `src/export` | Render + encode to file (NVENC when available, else software; QSV/AMF requests map to that same path). | render, audio |
+| `src/agent` | LLM agents: router, specialists, peer bus, harness over any OpenAI-compatible local LLM server (`SF_LLM_*` seam, e.g. llama-server). Chat/Plan modes; Ask mode and plans are not implemented yet. | core, editor, engine |
 | `src/editor` | Editing logic without Qt Quick: `Project` (document, undo history, selection, save/open/autosave/recovery), `MediaPool`, timeline models, `TimelineController` (drag/trim/split/delete as ops), `Inspector`. | core, media |
 | `src/engine` | Headless engine (`sf_engine`): one typed command surface over open projects, local JSON-RPC API (HTTP + SSE + stdio), MCP server, `splitframe-cli`. | editor, export, render, audio |
 | `src/app` | Qt Quick UI: window, QML panels, painted `TimelineView`, `Editor` facade, `Player`. | everything |

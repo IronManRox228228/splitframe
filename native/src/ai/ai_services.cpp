@@ -1,7 +1,6 @@
 #include "ai/ai_services.h"
 
 #include "agent/llm_config.h"
-#include "agent/meterless_router.h"
 #include "copilot/copilot_commands.h"
 #include "index/index_commands.h"
 
@@ -19,12 +18,7 @@ QString q(const char* s) { return QString::fromLatin1(s); }
 } // namespace
 
 AiServices::AiServices(engine::Engine& engine, const AiOptions& options, QObject* parent) : QObject(parent), engine_(engine), options_(options) {
-  llm_ = std::make_shared<agent::RecordingLlmClient>(
-    agent::makeLlmClient(options_.llm, &configError_, &meterless_));
-  // The fallback event becomes the one-line agent-panel notice (Part A item 5).
-  if (const auto fb = std::dynamic_pointer_cast<agent::FallbackLlmClient>(llm_->inner())) {
-    fb->setNoticeSink([this](const QString& note) { emit providerNotice(note); });
-  }
+  llm_ = std::make_shared<agent::RecordingLlmClient>(agent::makeLlmClient(options_.llm, &configError_));
   harness_ = std::make_unique<agent::AgentHarness>(&engine_, llm_);
   index_.setLlmClient(llm_);
 
@@ -50,61 +44,27 @@ void AiServices::setLlmClient(std::shared_ptr<agent::LlmClient> client) {
 }
 
 void AiServices::registerProviderCommands() {
-  // agent.provider.status (Part A item 3): provider, base URL, discovery-based reachability,
-  // models and the three lanes. "Reachable" requires a successful discovery call (item 9).
+  // agent.provider.status: provider, base URL and model, discovery-based reachability. "Reachable"
+  // requires a successful reachability check on the client (never a bare TCP /healthz-style pass).
   engine_.add(engine::CommandSpec{
     .name = QStringLiteral("agent.provider.status"),
     .alias = QStringLiteral("agentProviderStatus"),
-    .description = QStringLiteral("Report the active model provider: base URL, discovery outcome, models and lanes."),
+    .description = QStringLiteral("Report the active model provider: base URL, reachability and model."),
     .domain = QStringLiteral("engine"),
     .mutates = false,
     .needsSession = false,
     .inputSchema = QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}},
     .handler = [this](engine::CallContext&, const QJsonObject&) {
-      if (meterless_) return engine::Result::success(meterless_->statusJson());
-      // Local provider: lanes mirror the single local model; reachability is a live probe.
+      // The local OpenAI-compatible provider: reachability is a live client probe.
       QString why;
       const bool reachable = llm_ ? llm_->inner()->reachable(&why) : false;
       QJsonObject out{
         {QStringLiteral("provider"), QStringLiteral("local")},
         {QStringLiteral("endpoint"), options_.llm.endpoint},
         {QStringLiteral("model"), options_.llm.model},
-        {QStringLiteral("reachable"), reachable},
-        {QStringLiteral("lanes"), QJsonObject{
-          {QStringLiteral("fast"), options_.llm.model},
-          {QStringLiteral("deep"), options_.llm.model},
-          {QStringLiteral("judge"), options_.llm.model}}}};
+        {QStringLiteral("reachable"), reachable}};
       if (!why.isEmpty()) out.insert(QStringLiteral("error"), why);
       return engine::Result::success(out);
-    }
-  });
-
-  // agent.provider.route (meterless-power-prompt.md): planRoute(task, attachments) as a command.
-  engine_.add(engine::CommandSpec{
-    .name = QStringLiteral("agent.provider.route"),
-    .alias = QStringLiteral("agentProviderRoute"),
-    .description = QStringLiteral("Plan the Meterless route for a task (class, disposition, accept header, 3d routing)."),
-    .domain = QStringLiteral("engine"),
-    .mutates = false,
-    .needsSession = false,
-    .inputSchema = QJsonObject{
-      {QStringLiteral("type"), QStringLiteral("object")},
-      {QStringLiteral("properties"), QJsonObject{
-        {QStringLiteral("task"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
-        {QStringLiteral("attachments"), QJsonObject{{QStringLiteral("type"), QStringLiteral("array")}, {QStringLiteral("items"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}}}
-      }},
-      {QStringLiteral("required"), QJsonArray{QStringLiteral("task")}}
-    },
-    .handler = [](engine::CallContext&, const QJsonObject& a) {
-      sf::meterless_router::Attachments attachments;
-      for (const QJsonValue& v : a.value(QStringLiteral("attachments")).toArray())
-        attachments << v.toString();
-      const QJsonObject planned = sf::meterless_router::planRoute(
-        a.value(QStringLiteral("task")).toString(), attachments);
-      if (planned.contains(QStringLiteral("error")))
-        return engine::Result::failure(planned.value(QStringLiteral("error")).toString(),
-                                       QStringLiteral("no Meterless route for this task"));
-      return engine::Result::success(planned);
     }
   });
 }

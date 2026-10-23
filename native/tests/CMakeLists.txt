@@ -135,8 +135,6 @@ endfunction()
 sf_add_app_test(tst_timeline_view ENV "QT_QPA_PLATFORM=offscreen")
 sf_add_app_test(tst_pages ENV "QT_QPA_PLATFORM=offscreen")
 sf_add_app_test(tst_ai_gui ENV "QT_QPA_PLATFORM=offscreen")
-# re-enable when the copilot UI lands (hackathon H4-H6): tst_copilot_ui.cpp uses Editor members that do not exist yet
-# sf_add_app_test(tst_copilot_ui ENV "QT_QPA_PLATFORM=offscreen")
 
 sf_add_editor_test(tst_ui_smoke)
 add_dependencies(tst_ui_smoke splitframe)
@@ -279,8 +277,6 @@ sf_add_agent_test(tst_agent_peer_bus)
 sf_add_agent_test(tst_agent_specialists)
 # fake_llm_server.h holds a Q_OBJECT class: list it as a source so AUTOMOC mocs it.
 sf_add_agent_test(tst_agent_harness SOURCES fake_llm_server.h)
-sf_add_agent_test(tst_meterless SOURCES fake_llm_server.h)
-sf_add_agent_test(tst_meterless_router)
 sf_add_agent_test(tst_llm_wire)
 
 # Footage understanding and indexing tests (M6)
@@ -312,7 +308,6 @@ sf_add_index_test(tst_index_audio)
 sf_add_index_test(tst_index_ocr)
 sf_add_index_test(tst_index_commands)
 sf_add_index_test(tst_index_manager)
-sf_add_index_test(tst_zetaris)
 
 # Copilot in-editor tests (M7)
 function(sf_add_copilot_test name)

@@ -514,7 +514,11 @@ Result duckCmd(CallContext& c, const QJsonObject& a) {
 
 // ---------------------------------------------------------------- music.structure
 
-Result analyseItemMusic(CallContext& c, const Item& item, audio::MusicStructure* outMs, double* outAvailableSec) {
+// Item-scoped analysis (default) covers exactly the item's source range; fullAsset covers the
+// whole file (music.fit plans over the asset: loop/trim produce segments the item's current
+// trim does not consume, and slicing at the clip out-point loses beats beyond it).
+Result analyseItemMusic(CallContext& c, const Item& item, audio::MusicStructure* outMs, double* outAvailableSec,
+                        bool fullAsset = false) {
   if (!outMs) return invalid(QStringLiteral("Null output pointer."));
   const editor::Project& p = *c.session->project;
   const TimelineDoc& d = p.doc();
@@ -526,17 +530,22 @@ Result analyseItemMusic(CallContext& c, const Item& item, audio::MusicStructure*
   QString err;
   auto dec = AudioDecoder::open(asset->path, &err);
   if (!dec) return Result::failure(q("unavailable"), err.isEmpty() ? QStringLiteral("Can't decode %1.").arg(asset->path) : err);
-  qint64 from = static_cast<qint64>(std::llround(static_cast<double>(item.sourceInFrame.value_or(0)) / f * kRate));
-  qint64 to = std::min(dec->info().totalSamples, static_cast<qint64>(std::llround(static_cast<double>(sourceOutFrame(item)) / f * kRate)));
-  to = std::min<qint64>(to, from + static_cast<qint64>(kRate) * 600);
+  qint64 from = fullAsset ? 0 : static_cast<qint64>(std::llround(static_cast<double>(item.sourceInFrame.value_or(0)) / f * kRate));
+  qint64 to = fullAsset ? dec->info().totalSamples
+                        : std::min(dec->info().totalSamples, static_cast<qint64>(std::llround(static_cast<double>(sourceOutFrame(item)) / f * kRate)));
+  to = std::min<qint64>(to, from + static_cast<qint64>(kRate) * 600); // analysis cap: 10 minutes of audio
   if (to <= from) return invalid(QStringLiteral("No audio to analyse."));
   std::vector<float> buf(static_cast<size_t>(to - from) * 2);
   dec->read(from, to - from, buf.data());
   *outMs = audio::analyseMusic(buf.data(), to - from);
   if (outAvailableSec) {
     const double sourceDur = static_cast<double>(dec->info().totalSamples) / kRate;
-    const double inSec = static_cast<double>(item.sourceInFrame.value_or(0)) / f;
-    *outAvailableSec = std::max(0.0, sourceDur - inSec);
+    if (fullAsset) {
+      *outAvailableSec = sourceDur;
+    } else {
+      const double inSec = static_cast<double>(item.sourceInFrame.value_or(0)) / f;
+      *outAvailableSec = std::max(0.0, sourceDur - inSec);
+    }
   }
   return Result::success();
 }
@@ -626,7 +635,8 @@ Result fitCmd(CallContext& c, const QJsonObject& a) {
 
   audio::MusicStructure ms;
   double availableSec = 0;
-  Result r = analyseItemMusic(c, *item, &ms, &availableSec);
+  // music.fit plans on the full asset (see analyseItemMusic fullAsset)
+  Result r = analyseItemMusic(c, *item, &ms, &availableSec, true);
   if (!r.ok) return r;
 
   Frame targetFrames = 0;
@@ -649,7 +659,9 @@ Result fitCmd(CallContext& c, const QJsonObject& a) {
       }
     }
     if (!foundPicture) return invalid(QStringLiteral("No picture edit found. Pass targetFrames."));
-    targetFrames = maxEnd;
+    // A duration to cover, not an absolute timeline end: a music item starting after 0 would
+    // otherwise demand more music than the picture edit actually needs.
+    targetFrames = maxEnd - item->startFrame;
   }
   if (targetFrames <= 0) return invalid(QStringLiteral("targetFrames must be > 0."));
 

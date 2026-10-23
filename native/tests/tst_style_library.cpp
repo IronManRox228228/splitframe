@@ -33,8 +33,10 @@ tl::ShotStats statsOf(const std::vector<Frame>& lengths, double fps = 30.0) {
 
 bool sameGrade(const PrimaryGrade& a, const PrimaryGrade& b) {
   const auto near = [](double x, double y) { return std::fabs(x - y) < 1e-12; };
-  return near(a.exposure, b.exposure) && near(a.temperature, b.temperature) && near(a.tint, b.tint) && near(a.contrast, b.contrast) && near(a.saturation, b.saturation) && near(a.liftMaster, b.liftMaster) &&
-         near(a.lift.r, b.lift.r) && near(a.lift.g, b.lift.g) && near(a.lift.b, b.lift.b) && near(a.gammaMaster, b.gammaMaster) && near(a.gain.r, b.gain.r) && near(a.gain.b, b.gain.b);
+  return near(a.exposure, b.exposure) && near(a.temperature, b.temperature) && near(a.tint, b.tint) && near(a.contrast, b.contrast) && near(a.pivot, b.pivot) && near(a.saturation, b.saturation) &&
+         near(a.liftMaster, b.liftMaster) && near(a.lift.r, b.lift.r) && near(a.lift.g, b.lift.g) && near(a.lift.b, b.lift.b) && near(a.gammaMaster, b.gammaMaster) && near(a.gamma.r, b.gamma.r) &&
+         near(a.gamma.g, b.gamma.g) && near(a.gamma.b, b.gamma.b) && near(a.gainMaster, b.gainMaster) && near(a.gain.r, b.gain.r) && near(a.gain.g, b.gain.g) && near(a.gain.b, b.gain.b) &&
+         near(a.offset.r, b.offset.r) && near(a.offset.g, b.offset.g) && near(a.offset.b, b.offset.b);
 }
 
 QStringList rules(const std::vector<PacingViolation>& v) {

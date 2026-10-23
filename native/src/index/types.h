@@ -78,6 +78,10 @@ struct VlmTag {
   QString summary;              // e.g. "Wide shot of software engineer typing at laptop terminal"
   QString shotType;             // "wide", "medium", "close-up"
   QString subject;              // e.g. "laptop", "person", "presentation"
+  // Runtime-only provenance for the FTS row (search hits report the real time/frame);
+  // not part of the serialized tag JSON.
+  qint64 frame = 0;
+  double timeSec = 0.0;
 
   QJsonObject toJson() const;
   static VlmTag fromJson(const QJsonObject& obj);

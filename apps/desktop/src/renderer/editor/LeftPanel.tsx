@@ -58,13 +58,12 @@ export function LeftPanel() {
   );
 }
 
-type Filter = 'all' | 'video' | 'audio' | 'image' | 'federated';
+type Filter = 'all' | 'video' | 'audio' | 'image';
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'video', label: 'Video' },
   { id: 'audio', label: 'Audio' },
   { id: 'image', label: 'Images' },
-  { id: 'federated', label: 'Federated' },
 ];
 
 function MediaPanel() {
@@ -76,27 +75,6 @@ function MediaPanel() {
   const [pendingRemove, setPendingRemove] = useState<{ id: string; name: string; uses: number } | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [federatedResults, setFederatedResults] = useState<unknown[]>([]);
-  const [federatedLoading, setFederatedLoading] = useState(false);
-  const [importingId, setImportingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (filter !== 'federated') return;
-    setFederatedLoading(true);
-    const timer = setTimeout(() => {
-      void window.cutboard
-        ?.zetarisQuery({ naturalLanguage: query })
-        .then((res) => {
-          setFederatedResults(Array.isArray(res) ? res : []);
-          setFederatedLoading(false);
-        })
-        .catch(() => {
-          setFederatedResults([]);
-          setFederatedLoading(false);
-        });
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [filter, query]);
 
   const q = query.trim().toLowerCase();
   const filtered = assets.filter((a) => (filter === 'all' || a.kind === filter) && a.originalName.toLowerCase().includes(q));
@@ -115,7 +93,7 @@ function MediaPanel() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={filter === 'federated' ? 'Search Zetaris catalog (e.g. drone, sunset)' : 'Search by file name'}
+          placeholder="Search by file name"
           aria-label="Search media"
           className="bg-transparent outline-none text-sm text-fg placeholder:text-fg-faint w-full"
         />
@@ -129,54 +107,7 @@ function MediaPanel() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto -mr-2 pr-2">
-        {filter === 'federated' ? (
-          federatedLoading ? (
-            <div className="text-center pt-10 text-xs text-fg-muted">Searching federated catalog…</div>
-          ) : federatedResults.length === 0 ? (
-            <div className="text-center pt-10 text-xs text-fg-muted">
-              {query.trim() ? `No federated clips matching '${query.trim()}'` : 'Enter keywords to search federated storage pools.'}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2.5 content-start">
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {federatedResults.map((item: any) => (
-                <div key={item.id} className="glass rounded-xl p-2.5 flex flex-col gap-2 border border-line">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-fg/10 text-fg-2 uppercase">
-                      {item.storageType ?? 'local'}
-                    </span>
-                    <span className="text-[10px] text-fg-muted">{Math.round((item.durationMs ?? 0) / 1000)}s</span>
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-fg truncate" title={item.name}>{item.name}</p>
-                    <p className="text-[10px] text-fg-muted line-clamp-2 mt-0.5" title={item.description}>{item.description}</p>
-                  </div>
-                  <button
-                    className="btn-secondary btn-sm mt-auto w-full text-xs"
-                    disabled={importingId === item.id}
-                    onClick={() => {
-                      setImportingId(item.id);
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      void window.cutboard?.zetarisImport(item).then((res: any) => {
-                        setImportingId(null);
-                        if (res?.ok) {
-                          useEditor.getState().showToast(`Imported ${item.name}`, { kind: 'success' });
-                        } else {
-                          useEditor.getState().showToast(`Failed to import ${item.name}`, { kind: 'error' });
-                        }
-                      }).catch(() => {
-                        setImportingId(null);
-                        useEditor.getState().showToast(`Failed to import ${item.name}`, { kind: 'error' });
-                      });
-                    }}
-                  >
-                    {importingId === item.id ? 'Importing…' : 'Import'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )
-        ) : assets.length === 0 ? (
+        {assets.length === 0 ? (
           <div className="flex flex-col items-center text-center gap-3 pt-10 text-fg-muted">
             <Icon name="media" size={28} />
             <p className="text-fg text-sm font-medium">No media yet</p>

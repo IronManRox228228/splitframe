@@ -280,6 +280,9 @@ void FrameService::runAsset(const std::shared_ptr<Asset>& a) {
       if (!a->waiters.empty()) {
         kind = Kind::Waiter;
         index = std::min(a->waiters.front().index, count - 1);
+        // a negative waiter index can never be decoded: clamp into the normal decode flow so
+        // the waiter queue drains instead of wedging on a get() that never resolves
+        if (index < 0) index = 0;
       } else if (a->target) {
         kind = Kind::Target;
         index = std::clamp<qint64>(*a->target, 0, count - 1);

@@ -77,7 +77,10 @@ std::optional<Suggestion> SuggestionEngine::detectPauseAfterSplit(const Timeline
         const qint64 pauseMs = static_cast<qint64>(pauseSec * 1000);
         if (pauseMs >= minPauseMs) {
           const Frame pauseFrames = static_cast<Frame>(pauseSec * fps);
-          if (pauseFrames >= item->durationFrames) continue;
+          // item.trim takes TIMELINE frames (core/apply.cpp computeTrim): the pause is
+          // pauseFrames of source, which is pauseFrames/speed timeline frames of head cut.
+          const qint64 cutFrames = std::llround(static_cast<double>(pauseFrames) / (item->speed > 0 ? item->speed : 1.0));
+          if (cutFrames <= 0 || cutFrames >= item->durationFrames) continue;
 
           Suggestion s;
           s.id = QStringLiteral("sug-pause-%1").arg(itemId);
@@ -91,12 +94,12 @@ std::optional<Suggestion> SuggestionEngine::detectPauseAfterSplit(const Timeline
           s.durationMs = pauseMs;
           s.confidence = 0.95f;
 
-          // Trim head of item by pauseFrames with ripple
+          // Trim head of item by cutFrames with ripple; the frame is a timeline frame.
           s.ops.append(QJsonObject{
             {QStringLiteral("type"), QStringLiteral("item.trim")},
             {QStringLiteral("itemId"), item->id},
             {QStringLiteral("edge"), QStringLiteral("in")},
-            {QStringLiteral("frame"), static_cast<qint64>(inFrame + pauseFrames)},
+            {QStringLiteral("frame"), item->startFrame + cutFrames},
             {QStringLiteral("ripple"), true}
           });
           return s;
@@ -135,11 +138,13 @@ std::optional<Suggestion> SuggestionEngine::detectLcutAudioExtension(const Timel
   s.durationMs = leadMs;
   s.confidence = 0.90f;
 
+  // item.trim takes a TIMELINE frame: the extension is leadFrames of timeline tail
+  // (the extra source playback consumes follows from the item's speed inside core).
   s.ops.append(QJsonObject{
     {QStringLiteral("type"), QStringLiteral("item.trim")},
     {QStringLiteral("itemId"), item->id},
     {QStringLiteral("edge"), QStringLiteral("out")},
-    {QStringLiteral("frame"), static_cast<qint64>(item->sourceInFrame.value_or(0) + (item->durationFrames + leadFrames) * item->speed)},
+    {QStringLiteral("frame"), item->startFrame + item->durationFrames + leadFrames},
     {QStringLiteral("ripple"), false}
   });
 
@@ -190,15 +195,13 @@ std::optional<Suggestion> SuggestionEngine::detectBeatAlignment(const TimelineDo
     s.durationMs = static_cast<qint64>(minDiff);
     s.confidence = 0.92f;
 
-    const Frame newSourceFrame = inEdge
-        ? item->sourceInFrame.value_or(0) + static_cast<Frame>((beatFrame - item->startFrame) * item->speed)
-        : item->sourceInFrame.value_or(0) + static_cast<Frame>((beatFrame - item->startFrame) * item->speed);
-
+    // item.trim takes a TIMELINE frame on both edges (core/apply.cpp): snap the cut to the
+    // beat frame directly; core itself converts the in-edge delta into source frames via speed.
     s.ops.append(QJsonObject{
       {QStringLiteral("type"), QStringLiteral("item.trim")},
       {QStringLiteral("itemId"), item->id},
       {QStringLiteral("edge"), inEdge ? QStringLiteral("in") : QStringLiteral("out")},
-      {QStringLiteral("frame"), static_cast<qint64>(newSourceFrame)},
+      {QStringLiteral("frame"), static_cast<qint64>(beatFrame)},
       {QStringLiteral("ripple"), false}
     });
 

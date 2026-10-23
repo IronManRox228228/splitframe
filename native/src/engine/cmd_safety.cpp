@@ -394,7 +394,7 @@ std::optional<Rect> normalisedBounds(const TimelineDoc& doc, const editor::Proje
     const Asset* as = proj.asset(*it.assetId);
     if (!as || as->width <= 0 || as->height <= 0) return std::nullopt;
     const render::Placement pl = render::placeMedia(it, std::max(it.startFrame, rs), QSizeF(as->width, as->height), QSize(static_cast<int>(cw), static_cast<int>(ch)));
-    const double w = pl.size.width() * pl.scaleX, h = pl.size.height() * pl.scaleY;
+    const double w = pl.size.width() * std::abs(pl.scaleX), h = pl.size.height() * std::abs(pl.scaleY);
     return Rect{(pl.center.x() - w / 2) / cw, (pl.center.y() - h / 2) / ch, w / cw, h / ch};
   }
   for (Frame f : samplesOf(it, rs, re, 3)) {

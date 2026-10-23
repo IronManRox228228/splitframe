@@ -15,8 +15,9 @@
 
 namespace sf::agent {
 
-// Meterless lanes (Part A item 4): Fast = planning/tool-calling turns, Deep = generation-prompt and
-// storyboard writing, Judge = peer review. Each lane resolves to its own model on the provider.
+// LLM lanes are a product-level routing idea: Fast = planning/tool-calling turns, Deep =
+// generation-prompt and storyboard writing, Judge = peer review. The agent mesh (Part C) picks
+// a lane per call by purpose; with one OpenAI-compatible provider all lanes share its model.
 enum class Lane { Fast, Deep, Judge };
 
 inline QString laneName(Lane lane) {
@@ -38,17 +39,6 @@ public:
                                const std::vector<ChatMessage>& messages,
                                const QJsonArray& tools = {},
                                int slotId = -1) = 0;
-
-  // The lane-aware path (Part A item 4). Default: lanes make no difference outside Meterless, so this
-  // forwards to the plain completion. Meterless overrides it to pick the lane's configured model.
-  virtual QJsonObject complete(const QString& systemPrompt,
-                               const std::vector<ChatMessage>& messages,
-                               const QJsonArray& tools,
-                               int slotId,
-                               Lane lane) {
-    Q_UNUSED(lane);
-    return complete(systemPrompt, messages, tools, slotId);
-  }
 
   // Reachability of this client (TCP to its endpoint, or always true for mock/offline).
   virtual bool reachable(QString* error = nullptr) const {
@@ -80,16 +70,8 @@ public:
                        const QJsonArray& tools = {},
                        int slotId = -1) override;
 
-  // Lane-aware path (Part A item 4): the mock records the lane so tests can assert lane selection.
-  QJsonObject complete(const QString& systemPrompt,
-                       const std::vector<ChatMessage>& messages,
-                       const QJsonArray& tools,
-                       int slotId,
-                       Lane lane) override {
-    laneOverride_ = lane;
-    return complete(systemPrompt, messages, tools, slotId);
-  }
-
+  // Records the lane the caller asked for so tests can assert lane selection (agent mesh).
+  void setLane(Lane lane) { laneOverride_ = lane; }
   Lane lastLane() const { return laneOverride_; }
 
   const std::vector<CallRecord>& calls() const { return calls_; }
@@ -119,7 +101,7 @@ public:
 
   void setTimeoutMs(int ms) { timeoutMs_ = ms; }
   const QString& endpoint() const { return endpoint_; }
-  // Optional Bearer auth for local servers that enforce a key (Part A item 5: the MODEL_API_KEY alias).
+  // Optional Bearer auth for local servers that enforce a key (SF_LLM_API_KEY).
   void setApiKey(QString key) { apiKey_ = std::move(key); }
   const QString& apiKey() const { return apiKey_; }
   bool reachable(QString* error = nullptr) const override;

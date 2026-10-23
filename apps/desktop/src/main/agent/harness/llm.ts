@@ -14,12 +14,6 @@ export interface LlmConfig {
   model: string;
   /** send chat_template_kwargs.enable_thinking=false (llama.cpp only) */
   noThinking: boolean;
-  /**
-   * Meterless runtime contract (16-AGENT-crew Part A): chat requests carry the
-   * meterless-app/meterless-scope headers, Bearer uses the runtime token, and ```think
-   * fences plus separate reasoning fields are stripped before anything is handed on.
-   */
-  meterless?: boolean;
 }
 
 export interface ToolCallOut {
@@ -55,9 +49,10 @@ interface ChatResponse {
 }
 
 /**
- * Meterless chat models may reason inside the content, fenced off with ```think blocks, or in
- * separate reasoning/reasoning_content fields. Neither ever belongs to the answer: fences come
- * off (an unclosed fence truncates the rest), and the separate fields are dropped entirely.
+ * Some reasoning models answer inside the content, fenced off with ```think blocks, or put
+ * their reasoning in separate reasoning/reasoning_content fields. Neither belongs to the
+ * answer: fences come off (an unclosed fence truncates the rest) and the fields are dropped,
+ * before anything is handed on.
  */
 function stripThink(content: string): string {
   let out = content.replace(/```think[\s\S]*?```/g, '');
@@ -75,22 +70,18 @@ export function createLlm(cfg: LlmConfig): Llm {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${cfg.apiKey || 'none'}`,
-        ...(cfg.meterless ? { 'meterless-app': 'splitframe', 'meterless-scope': 'user' } : {}),
       },
       body: JSON.stringify({ model: cfg.model || 'default', temperature: 0.2, ...(cfg.noThinking ? { chat_template_kwargs: { enable_thinking: false } } : {}), ...body }),
       ...(signal ? { signal } : {}),
     });
     const json = (await res.json().catch(() => ({}))) as ChatResponse;
     if (!res.ok) throw new Error(json.error?.message ?? `model server answered ${res.status}`);
-    if (cfg.meterless) {
-      // The runtime applies the reasoning strip at the transport itself (the contract puts the
-      // cleanup here, not at each use site).
-      for (const choice of json.choices ?? []) {
-        if (!choice.message) continue;
-        delete choice.message.reasoning;
-        delete choice.message.reasoning_content;
-        if (typeof choice.message.content === 'string') choice.message.content = stripThink(choice.message.content);
-      }
+    // The reasoning strip applies at the transport itself (not at each use site).
+    for (const choice of json.choices ?? []) {
+      if (!choice.message) continue;
+      delete choice.message.reasoning;
+      delete choice.message.reasoning_content;
+      if (typeof choice.message.content === 'string') choice.message.content = stripThink(choice.message.content);
     }
     return json;
   }

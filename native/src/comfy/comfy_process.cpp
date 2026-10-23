@@ -540,14 +540,13 @@ ComfyProcess::StartResult ComfyProcess::start(const QString& home, const QString
 
   assignJobObject();
 
-  // Poll for ready state
+  // Poll for ready state. NO processEvents: this can run from the engine thread while the
+  // service object is being constructed/assigned — pumping the caller's event loop would
+  // deliver engine events mid-bringup (the old re-entrancy that cloned the service).
   const int waitLimit = (timeoutMs > 0) ? timeoutMs : readyTimeoutMs_;
   const qint64 deadline = QDateTime::currentMSecsSinceEpoch() + waitLimit;
 
   while (state() == ComfyServerState::Starting && QDateTime::currentMSecsSinceEpoch() < deadline) {
-    QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-    if (state() != ComfyServerState::Starting) break;
-
     QString pErr;
     Client testClient(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(chosenPort)));
     auto stats = testClient.systemStats(&pErr, 300);
@@ -555,17 +554,12 @@ ComfyProcess::StartResult ComfyProcess::start(const QString& home, const QString
       setState(ComfyServerState::Ready);
       break;
     }
-
-    const qint64 nextPoll = std::min(deadline, QDateTime::currentMSecsSinceEpoch() + 500);
-    while (state() == ComfyServerState::Starting && QDateTime::currentMSecsSinceEpoch() < nextPoll) {
-      QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
+    if (state() != ComfyServerState::Starting) break; // stop()/crash raced the poll
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
   }
 
   if (state() == ComfyServerState::Starting) {
     // Timed out waiting for ready
-    exitHandled_ = true;
     startTimeoutKill_ = true;
     if (restartTimer_) {
       restartTimer_->stop();
@@ -727,6 +721,10 @@ void ComfyProcess::appendLogLine(const QString& line) {
 
 void ComfyProcess::handleExit(int exitCode, QProcess::ExitStatus exitStatus) {
   if (exitHandled_) return;
+  if (startTimeoutKill_) { // our own start-timeout kill is not a crash: no bookkeeping, no restart
+    exitHandled_ = true;
+    return;
+  }
 
   ComfyServerState curState;
   {

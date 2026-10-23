@@ -42,10 +42,6 @@ public:
   copilot::BranchManager* branchManager() { return &branches_; }
   const agent::LlmConfig& llmConfig() const { return options_.llm; }
 
-signals:
-  // The one line the agent panel shows when a Meterless call was retried on the local provider.
-  void providerNotice(const QString& note);
-
 public:
   // Replaces the model (tests, later a smarter client). The harness and the footage index use it from then on.
   void setLlmClient(std::shared_ptr<agent::LlmClient> client);
@@ -65,7 +61,6 @@ private:
   AiOptions options_;
   QString configError_;
   std::shared_ptr<agent::RecordingLlmClient> llm_;
-  std::shared_ptr<agent::MeterlessClient> meterless_; // present when Meterless is the provider
   std::unique_ptr<agent::AgentHarness> harness_;
   index::IndexManager index_;
   copilot::LintEngine lint_;

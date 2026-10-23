@@ -5,8 +5,6 @@ add_library(sf_agent STATIC
   router.h router.cpp
   llm_client.h llm_client.cpp
   llm_config.h llm_config.cpp
-  meterless_client.h meterless_client.cpp
-  meterless_router.h meterless_router.cpp
   specialist.h specialist.cpp
   agent_harness.h agent_harness.cpp
 )

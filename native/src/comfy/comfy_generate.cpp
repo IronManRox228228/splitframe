@@ -11,6 +11,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+
+#include <QRegularExpression>
 #include <QSet>
 #include <QUrl>
 
@@ -115,15 +117,19 @@ jobs::AnalyzerResult ComfyGenerateAnalyzer::run(jobs::JobContext& ctx) {
     ctx.report(std::min(0.95, elapsedSec / totalSec));
 
     QString netErr;
-    HistoryResult hist = client.history(qres.promptId, &netErr, 1000);
+    // 5 s probes / 6 consecutive failures instead of the old 1 s x 3: a busy server that
+    // simply stalls briefly must not abort a live generate as "unreachable".
+    HistoryResult hist = client.history(qres.promptId, &netErr, 5000);
     if (!netErr.isEmpty()) {
-      consecutiveNetErrors++;
-      if (consecutiveNetErrors >= 3) {
+      ++consecutiveNetErrors;
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      if (consecutiveNetErrors >= 6) {
         return jobs::AnalyzerResult::failure(QStringLiteral("comfy_unreachable: %1").arg(netErr));
       }
     } else {
       consecutiveNetErrors = 0;
       if (!hist.finished) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500)); // do not hammer /history in a tight loop
         QString qErr;
         QSet<QString> queued = client.queue(&qErr, 1000);
         if (qErr.isEmpty() && !queued.contains(qres.promptId)) {
@@ -156,7 +162,13 @@ jobs::AnalyzerResult ComfyGenerateAnalyzer::run(jobs::JobContext& ctx) {
         safeName.remove(QLatin1Char('\\'));
         safeName.remove(QLatin1Char(':'));
         if (safeName.isEmpty()) safeName = QStringLiteral("output.bin");
-        const QString destFile = outDir.filePath(QStringLiteral("%1_%2").arg(qres.promptId, safeName));
+        // promptId echoes back from the server: strip anything that is not a filename-safe
+        // id before it becomes a path component (sidecars keep the true id)
+        QString promptIdSafe = qres.promptId;
+        static const QRegularExpression badIdChars(QStringLiteral("[^A-Za-z0-9-]"));
+        promptIdSafe.replace(badIdChars, QStringLiteral("_"));
+        if (promptIdSafe.isEmpty()) promptIdSafe = QStringLiteral("prompt");
+        const QString destFile = outDir.filePath(QStringLiteral("%1_%2").arg(promptIdSafe, safeName));
         QString dlErr;
         if (!client.download(out, destFile, &dlErr)) {
           return jobs::AnalyzerResult::failure(QStringLiteral("Failed to download %1: %2").arg(out.filename, dlErr));

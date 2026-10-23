@@ -77,12 +77,18 @@ inline std::optional<AgentMode> parseAgentMode(const QString& s) {
 struct ChatMessage {
   QString role;          // "system", "user", "assistant", "tool"
   QString content;
+  QJsonArray contentParts;  // optional multimodal content array ("text" + "image_url" parts); wins over `content`
   QString name;          // optional: sender name or tool name
   QJsonArray toolCalls;  // optional tool calls in assistant responses
   QString toolCallId;    // for role == "tool"
 
   QJsonObject toJson() const {
-    QJsonObject o{{QStringLiteral("role"), role}, {QStringLiteral("content"), content}};
+    QJsonObject o{{QStringLiteral("role"), role}};
+    if (contentParts.isEmpty()) {
+      o.insert(QStringLiteral("content"), content);
+    } else {
+      o.insert(QStringLiteral("content"), contentParts);
+    }
     if (!name.isEmpty()) o.insert(QStringLiteral("name"), name);
     if (!toolCalls.isEmpty()) o.insert(QStringLiteral("tool_calls"), toolCalls);
     if (!toolCallId.isEmpty()) o.insert(QStringLiteral("tool_call_id"), toolCallId);
@@ -92,7 +98,17 @@ struct ChatMessage {
   static ChatMessage fromJson(const QJsonObject& o) {
     ChatMessage m;
     m.role = o.value(QStringLiteral("role")).toString();
-    m.content = o.value(QStringLiteral("content")).toString();
+    const QJsonValue c = o.value(QStringLiteral("content"));
+    if (c.isArray()) {
+      m.contentParts = c.toArray();
+      // plain-text mirror of the text parts, for history/debug printing
+      for (const auto& part : m.contentParts) {
+        const QString t = part.toObject().value(QStringLiteral("text")).toString();
+        if (!t.isEmpty()) m.content += (m.content.isEmpty() ? QString() : QStringLiteral("\n")) + t;
+      }
+    } else {
+      m.content = c.toString();
+    }
     m.name = o.value(QStringLiteral("name")).toString();
     m.toolCalls = o.value(QStringLiteral("tool_calls")).toArray();
     m.toolCallId = o.value(QStringLiteral("tool_call_id")).toString();

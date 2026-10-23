@@ -8,7 +8,6 @@ add_library(sf_index STATIC
   vlm_descriptor.h vlm_descriptor.cpp
   index_manager.h index_manager.cpp
   index_commands.h index_commands.cpp
-  zetaris_provider.h zetaris_provider.cpp
 )
 
 target_include_directories(sf_index PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")

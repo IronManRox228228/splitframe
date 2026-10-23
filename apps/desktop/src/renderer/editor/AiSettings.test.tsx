@@ -15,7 +15,7 @@ vi.mock('./ModelsSection.tsx', () => ({
   ModelsSection: () => <div data-testid="models-section">Models</div>,
 }));
 
-describe('AiSettings UI component (Milestone H1)', () => {
+describe('AiSettings UI component', () => {
   const baseConfig: AiConfig = {
     agentProvider: 'anthropic',
     agentModel: 'claude-3-5-haiku-latest',
@@ -23,53 +23,36 @@ describe('AiSettings UI component (Milestone H1)', () => {
     vlmProvider: 'none',
     llamacppUrl: 'http://127.0.0.1:8080',
     ollamaUrl: 'http://127.0.0.1:11434',
-    meterlessUrl: 'https://api.meterless.ai/v1',
   };
 
-  it('includes Meterless in the provider dropdown list', () => {
+  it('lists the vendor-neutral providers in the dropdown', () => {
     const html = renderToStaticMarkup(
       <AiSettings config={baseConfig} onSaved={vi.fn()} onClose={vi.fn()} />
     );
 
-    expect(html).toContain('value="meterless">Meterless (serverless)</option>');
     expect(html).toContain('value="anthropic"');
     expect(html).toContain('Anthropic (cloud)</option>');
     expect(html).toContain('value="openai">OpenAI (cloud)</option>');
     expect(html).toContain('value="google">Google (cloud)</option>');
     expect(html).toContain('value="ollama">Ollama (local)</option>');
     expect(html).toContain('value="llamacpp">llama.cpp server (local)</option>');
+    // the sponsor provider is gone in every form
+    expect(html).not.toContain('meterless');
+    expect(html).not.toContain('Meterless');
+    expect(html).not.toContain('zetaris');
+    expect(html).not.toContain('Zetaris');
   });
 
-  it('renders Meterless endpoint URL and model placeholder when meterless is selected', () => {
-    const meterlessConfig: AiConfig = {
-      ...baseConfig,
-      agentProvider: 'meterless',
-      agentModel: '',
-    };
-
+  it('shows the API key field and model placeholder for cloud providers', () => {
     const html = renderToStaticMarkup(
-      <AiSettings config={meterlessConfig} onSaved={vi.fn()} onClose={vi.fn()} />
+      <AiSettings config={baseConfig} onSaved={vi.fn()} onClose={vi.fn()} />
     );
 
-    // Verify Meterless endpoint field is rendered
-    expect(html).toContain('Endpoint URL');
-    expect(html).toContain('placeholder="https://api.meterless.ai/v1"');
-    expect(html).toContain('Meterless OpenAI-compatible runtime endpoint');
-
-    // Routing mode input and the read-only routing table (Part A item 1)
-    expect(html).toContain('Routing mode (optional)');
-    expect(html).toContain('Routing table (read-only)');
-    expect(html).toContain('meterless-accept');
-    expect(html).toContain('commentary');
-
-    // Verify model input has standard placeholder without provider-specific overrides
     expect(html).toContain('placeholder="e.g. claude-sonnet-4-5"');
-
-    // Verify API key field is shown with encrypted storage label
     expect(html).toContain('API key (stored encrypted)');
   });
 
-  it('does not render Meterless endpoint URL when another provider is selected', () => {
+  it('renders the Ollama server URL field when ollama is selected', () => {
     const ollamaConfig: AiConfig = {
       ...baseConfig,
       agentProvider: 'ollama',
@@ -79,18 +62,13 @@ describe('AiSettings UI component (Milestone H1)', () => {
       <AiSettings config={ollamaConfig} onSaved={vi.fn()} onClose={vi.fn()} />
     );
 
-    expect(html).not.toContain('placeholder="https://api.meterless.ai/v1"');
+    expect(html).toContain('Server URL');
     expect(html).toContain('placeholder="http://127.0.0.1:11434"');
   });
 
   it('preserves existing UI styling classes and structure', () => {
-    const meterlessConfig: AiConfig = {
-      ...baseConfig,
-      agentProvider: 'meterless',
-    };
-
     const html = renderToStaticMarkup(
-      <AiSettings config={meterlessConfig} onSaved={vi.fn()} onClose={vi.fn()} />
+      <AiSettings config={baseConfig} onSaved={vi.fn()} onClose={vi.fn()} />
     );
 
     // Assert Tailwind classes match the app theme
@@ -100,18 +78,7 @@ describe('AiSettings UI component (Milestone H1)', () => {
     expect(html).toContain('class="btn-ghost"');
   });
 
-  describe('Federated Catalog (Zetaris) section', () => {
-    it('renders Zetaris catalog header and controls', () => {
-      const html = renderToStaticMarkup(
-        <AiSettings config={baseConfig} onSaved={vi.fn()} onClose={vi.fn()} />
-      );
-
-      expect(html).toContain('Federated Catalog (Zetaris)');
-      expect(html).toContain('Federation Endpoint');
-      expect(html).toContain('Catalog Name');
-      expect(html).toContain('placeholder="zts_live_…"');
-      expect(html).toContain('value="https://api.zetaris.com/v1/federation/query"');
-      expect(html).toContain('value="production_media_catalog"');
-    });
+  it('labels only the neutral providers', () => {
+    expect(Object.keys(PROVIDER_LABELS)).toEqual(['anthropic', 'openai', 'google', 'ollama', 'llamacpp']);
   });
 });

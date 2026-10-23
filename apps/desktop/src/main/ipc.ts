@@ -21,7 +21,6 @@ import { listModels, downloadModel, deleteModel, cancelModelDownload, onModelPro
 import { searchWords, groupWordHits, searchScenes, isVectorSearchEnabled } from './analysis/search.ts';
 import { groupHasAllTerms } from './analysis/search-query.ts';
 import { getVlmConfig, setVlmConfig } from './analysis/vlm.ts';
-import { getZetarisConfig, setZetarisConfig, defaultZetarisClient, importFederatedAssetToProject } from './analysis/zetaris.ts';
 import { sendChatMessage, abortChat, runStoredPlanTurn, DEFAULT_HARNESS } from './agent/chat.ts';
 import { getProjectMode, setProjectMode } from './agent/mode-store.ts';
 import { AGENT_MODES } from './agent/harness/modes.ts';
@@ -425,17 +424,14 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       vlmModel: vlm.model,
       ollamaUrl: vlm.ollamaUrl,
       llamacppUrl: settings.ai?.llamacppUrl ?? 'http://127.0.0.1:8080',
-      // no invented Meterless default: empty means the runtime is not configured (Part A item 2)
-      meterlessUrl: settings.ai?.meterlessUrl ?? '',
-      meterlessModel: settings.ai?.meterlessModel ?? '',
       asrModel: settings.asr?.model ?? 'base.en',
     };
   });
   ipcMain.handle(
     'ai:setConfig',
-    (_e, patch: { agentProvider?: string; agentModel?: string; harness?: string; plannerModel?: string; executorModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; meterlessUrl?: string; meterlessModel?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
+    (_e, patch: { agentProvider?: string; agentModel?: string; harness?: string; plannerModel?: string; executorModel?: string; vlmProvider?: string; vlmModel?: string; ollamaUrl?: string; llamacppUrl?: string; llamacppKey?: string; agentKey?: string; anthropicKey?: string; openaiKey?: string }) => {
       const parsed = z.object({
-        agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'llamacpp', 'meterless']).optional(),
+        agentProvider: z.enum(['anthropic', 'openai', 'google', 'openrouter', 'ollama', 'llamacpp']).optional(),
         agentModel: z.string().max(120).optional(),
         harness: z.enum(['v1', 'classic']).optional(),
         plannerModel: z.string().max(120).optional(),
@@ -444,8 +440,6 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
         vlmModel: z.string().max(120).optional(),
         ollamaUrl: z.string().url().optional(),
         llamacppUrl: z.string().url().optional(),
-        meterlessUrl: z.string().url().optional(),
-        meterlessModel: z.string().max(120).optional(),
         agentKey: z.string().max(400).optional(),
         llamacppKey: z.string().max(400).optional(),
         anthropicKey: z.string().max(400).optional(),
@@ -455,59 +449,6 @@ export function registerIpc(broadcast: (channel: string, payload: unknown) => vo
       return setVlmConfig(parsed as never).then(() => true);
     },
   );
-
-  // ---------- federated media catalog (Zetaris Milestone H2) ----------
-  ipcMain.handle('zetaris:getConfig', async () => {
-    return getZetarisConfig();
-  });
-
-  ipcMain.handle('zetaris:setConfig', async (_e, patch: unknown) => {
-    const parsed = z
-      .object({
-        enabled: z.boolean().optional(),
-        endpoint: z.string().url().optional(),
-        catalogName: z.string().min(1).max(120).optional(),
-        apiKey: z.string().max(400).optional(),
-      })
-      .parse(patch);
-    await setZetarisConfig(parsed);
-    return true;
-  });
-
-  ipcMain.handle('zetaris:query', async (_e, input: unknown) => {
-    const parsed = z
-      .object({
-        naturalLanguage: z.string().max(500).optional(),
-        filterTags: z.array(z.string().max(50)).max(50).optional(),
-        storageFilter: z.array(z.enum(['local', 'studio_nas', 'cloud_s3', 'cloud_gcs', 'unknown'])).optional(),
-        minWidth: z.number().int().min(0).max(7680).optional(),
-        minHeight: z.number().int().min(0).max(4320).optional(),
-        limit: z.number().int().min(1).max(200).optional(),
-      })
-      .parse(input ?? {});
-    return defaultZetarisClient.query(parsed);
-  });
-
-  ipcMain.handle('zetaris:import', async (_e, assetInput: unknown) => {
-    const parsed = z
-      .object({
-        id: z.string().min(1).max(120),
-        uri: z.string().min(1).max(2048),
-        name: z.string().min(1).max(256),
-        storageType: z.enum(['local', 'studio_nas', 'cloud_s3', 'cloud_gcs', 'unknown']),
-        description: z.string().max(4000).optional().default(''),
-        tags: z.array(z.string().max(50)).max(50).optional().default([]),
-        transcriptSnippet: z.string().max(4000).optional(),
-        durationMs: z.number().nonnegative().optional().default(0),
-        width: z.number().int().nonnegative().optional().default(1920),
-        height: z.number().int().nonnegative().optional().default(1080),
-        fps: z.number().positive().optional(),
-        relevanceScore: z.number().optional(),
-        fileSizeBytes: z.number().nonnegative().optional(),
-      })
-      .parse(assetInput);
-    return importFederatedAssetToProject(parsed);
-  });
 
   // hidden export window channels
   registerExportWindowIpc();

@@ -396,8 +396,12 @@ private slots:
       svc.closeAsset(a);
       blocker.join();
       // `svc` is destroyed with b still working
+      // the service survived a close while busy: b still decodes, and a's frames are gone
+      QVERIFY(!svc.cached(a, 99));
+      const VideoFramePtr f = svc.frameBlocking(b, 42);
+      QVERIFY(f);
+      QCOMPARE(f->index, 42);
     }
-    QVERIFY(true);
   }
 
   // GPU frames pin decoder surfaces: the cache keeps only a few per asset and demotes or drops the rest

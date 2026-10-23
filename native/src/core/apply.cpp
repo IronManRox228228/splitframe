@@ -34,6 +34,14 @@ void rescaleFps(TimelineDoc& d, std::int64_t fps) {
     if (it.sourceInFrame) it.sourceInFrame = f(*it.sourceInFrame);
     for (auto& [prop, kfs] : it.keyframes)
       for (Keyframe& k : kfs) k.frame = f(k.frame);
+    // fx and mask animation carry their own keyframe maps; they rescale with the same rule
+    for (FxInstance& fx : it.fx)
+      for (auto& [prop, kfs] : fx.keyframes)
+        for (Keyframe& k : kfs) k.frame = f(k.frame);
+    for (Mask& mask : it.masks)
+      if (mask.keyframes)
+        for (auto& [prop, kfs] : *mask.keyframes)
+          for (Keyframe& k : kfs) k.frame = f(k.frame);
     for (TimeRemapPoint& p : it.timeRemap) {
       p.frame = f(p.frame);
       p.sourceFrame = f(p.sourceFrame);
@@ -291,6 +299,13 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemUpdate& o) {
   const Item& item = requireItem(doc, o.itemId);
   const ItemPatch& patch = o.patch;
 
+  // A patch can only move an existing source offset, never create one on a sourceless item:
+  // with the whole-replace parent semantics (item fields do patch per key) the inverse of
+  // such an update could not restore the absence.
+  if (patch.sourceInFrame && !item.sourceInFrame)
+    throw OpError(QStringLiteral("Item %1 has no sourceInFrame to patch.").arg(item.id),
+                  QStringLiteral("Only items created against an asset carry a source offset."));
+
   if (patch.trackId && *patch.trackId != item.trackId) {
     const Track& track = requireTrack(doc, *patch.trackId);
     if (!trackAllowsItem(track.kind, item.type()))
@@ -411,11 +426,10 @@ struct Trim {
 // Shared trim logic. Plain trim keeps the opposite edge fixed; ripple trim anchors the item's
 // start (for `in`) and slides downstream items by the delta so the timeline length changes by
 // exactly the trim amount. Clamping is done in doubles like the TS, which also has +/-Infinity.
+// Lock enforcement lives in assertTracksUnlocked (forward ops, enforceLocks on); undo/redo
+// intentionally replays without it, so there is no lock check here.
 Trim computeTrim(const TimelineDoc& doc, const ItemTrim& o) {
   const Item& item = requireItem(doc, o.itemId);
-  const Track& track = requireTrack(doc, item.trackId);
-  if (track.locked)
-    throw OpError(QStringLiteral("Track \"%1\" is locked.").arg(track.name), QStringLiteral("Unlock the track first."));
   Trim t{};
   t.oldStart = item.startFrame;
   t.oldEnd = itemEnd(item);
@@ -496,6 +510,9 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemSplit& o) {
     throw OpError(QStringLiteral("Split frame %1 is outside item %2 (%3–%4).").arg(num(o.atFrame), item.id, num(item.startFrame), num(itemEnd(item))),
                   QStringLiteral("Pick a frame strictly inside the item."));
   const Frame splitLocal = o.atFrame - item.startFrame;
+  if (getItem(doc, o.newItemId))
+    throw OpError(QStringLiteral("Item id \"%1\" is already in use.").arg(o.newItemId),
+                  QStringLiteral("Pass a fresh newItemId for the split's right half."));
   Item a = item;
   a.durationFrames = splitLocal;
   Item b = item;
@@ -518,8 +535,10 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ItemSplit& o) {
     std::erase_if(pa.words, [&](const TranscriptWord& w) { return !(w.startMs < cutMs); });
     std::erase_if(pb.words, [&](const TranscriptWord& w) { return !(w.endMs > cutMs); });
     for (TranscriptWord& w : pb.words) {
-      w.startMs -= cutMs;
-      w.endMs -= cutMs;
+      // A word can straddle the cut (kept because endMs > cutMs) while startMs sits below it:
+      // clamp to 0 instead of writing a negative time the schema rejects on load.
+      w.startMs = std::max<Ms>(0, w.startMs - cutMs);
+      w.endMs = std::max<Ms>(0, w.endMs - cutMs);
     }
   }
   // split keyframe lists at the cut
@@ -661,6 +680,10 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const MaskRemove& o) {
 // ---------- markers ----------
 
 Inverse run(TimelineDoc& next, const TimelineDoc&, const MarkerAdd& o) {
+  // Duplicate marker ids would make remove/update ambiguous and break history inverses.
+  if (std::find_if(next.markers.begin(), next.markers.end(), [&](const Marker& m) { return m.id == o.marker.id; }) != next.markers.end())
+    throw OpError(QStringLiteral("Marker id \"%1\" already exists.").arg(o.marker.id),
+                  QStringLiteral("Pass a fresh marker id."));
   next.markers.push_back(o.marker);
   return {MarkerRemove{o.marker.id}};
 }

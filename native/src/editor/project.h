@@ -56,8 +56,9 @@ public:
   const QString& lastActor() const { return lastActor_; }
   const History& history() const { return history_; }
 
-  // Everything applied between begin and end is one undo step (a slider drag). Nesting is not
-  // supported; begin while open closes the previous group.
+  // Everything applied between begin and end is one undo step (a slider drag). begin while open nests: each
+  // open level keeps its own checkpoint (rollbackGroup undoes to it, trimming the open history), and only the
+  // outermost endGroup commits the whole thing to the history.
   void beginGroup(const QString& label = {}, const QString& actor = QStringLiteral("user"));
   void endGroup();
   void rollbackGroup();
@@ -75,8 +76,12 @@ public:
   // project dirty. nullopt clears it.
   void setColorManagement(std::optional<ColorManagement> cm);
 
-  // Native-only timeline branches:
-  void setBranches(std::vector<BranchRecord> branches) { bundle_.branches = std::move(branches); }
+  // Native-only timeline branches: replacement marks the project dirty (branches are bundle
+  // state, so branch create/delete show up for autosave/save); not an undoable timeline op.
+  void setBranches(std::vector<BranchRecord> branches) {
+    bundle_.branches = std::move(branches);
+    changed(false);
+  }
 
   // ---- selection ----
   const QStringList& selection() const { return selection_; }

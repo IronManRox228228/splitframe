@@ -97,7 +97,21 @@ JobScheduler::~JobScheduler() {
   }
   cv_.notify_all();
   doneCv_.notify_all();
-  for (std::thread& t : workers_) t.join();
+  // bounded join: analyzers poll ctx.cancelled() between frames, so workers normally exit
+  // within a frame of shutdown. A worker stuck inside one native ONNX/FFmpeg call cannot be
+  // interrupted — give it a grace window, then detach so process exit never hangs on it.
+  {
+    std::unique_lock<std::mutex> lk(mu_);
+    const bool allExited = doneCv_.wait_for(lk, std::chrono::seconds(5), [&] {
+      return exitedWorkers_ == static_cast<int>(workers_.size());
+    });
+    if (!allExited) {
+      for (std::thread& t : workers_) t.detach();
+    }
+  }
+  for (std::thread& t : workers_) {
+    if (t.joinable()) t.join();
+  }
 }
 
 void JobScheduler::setCacheDir(const QString& dir) {
@@ -480,7 +494,11 @@ void JobScheduler::workerLoop() {
     {
       std::unique_lock<std::mutex> lk(mu_);
       cv_.wait(lk, [&] { return stopping_ || (!pausedLocked() && pickLocked() != nullptr); });
-      if (stopping_) return;
+      if (stopping_) {
+        ++exitedWorkers_; // the dtor joins bounded; every exited worker shortens the grace window
+        doneCv_.notify_all();
+        return;
+      }
       job = pickLocked();
       job->info.state = JobState::Running;
       job->info.startedMs = nowMs();

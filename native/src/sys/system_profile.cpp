@@ -758,6 +758,11 @@ QString SystemService::dataDir() {
 }
 
 const SystemProfile& SystemService::profile() {
+  std::lock_guard<std::mutex> lk(m_);
+  return profileLocked();
+}
+
+const SystemProfile& SystemService::profileLocked() {
   if (!haveProfile_) {
     profile_ = querySystem();
     haveProfile_ = true;
@@ -768,12 +773,14 @@ const SystemProfile& SystemService::profile() {
 }
 
 LiveState SystemService::live(int maxAgeMs) {
-  const SystemProfile& p = profile();
+  std::lock_guard<std::mutex> lk(m_);
+  const SystemProfile& p = profileLocked();
   if (nowMs() - liveAtMs_ > maxAgeMs) {
+    // inside the lock: two concurrent DXGI enumerations returned corrupt adapter data
     live_ = queryLive(p.gpu() ? p.gpu()->luid : 0);
     liveAtMs_ = nowMs();
   }
-  return live_;
+  return live_; // by value: safe publication without the caller holding the lock
 }
 
 SmokeResult SystemService::smoke(bool force, const SmokeOptions& options) {

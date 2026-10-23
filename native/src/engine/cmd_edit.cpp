@@ -187,7 +187,9 @@ Result addCaptions(CallContext& c, const QJsonObject& a) {
       for (const TranscriptWord& w : tr->words) {
         const double s = static_cast<double>(w.startMs) / 1000.0, e = static_cast<double>(w.endMs) / 1000.0;
         if (s < srcStart || s >= srcEnd) continue;
-        words.push_back({w.w, t0 + (s - srcStart) * speed, t0 + (std::min(e, srcEnd) - srcStart) * speed});
+        // source -> timeline: the item consumes (s - srcStart) source seconds which take
+        // (s - srcStart) / speed timeline seconds to play (speed >= 1 plays faster).
+        words.push_back({w.w, t0 + (s - srcStart) / speed, t0 + (std::min(e, srcEnd) - srcStart) / speed});
       }
     }
   } else {

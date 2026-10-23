@@ -22,8 +22,10 @@
 #include <QJsonObject>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
+#include <QSet>
 #include "engine/cmd_comfy.h"
 #include <QStandardPaths>
+#include <QTimer>
 
 namespace sf::engine {
 
@@ -55,7 +57,10 @@ ComfyService::ComfyService(Engine* engine) {
   });
 
   if (process->autoStart() && process->modeString() == QLatin1String("managed")) {
-    process->start();
+    // deferred, NOT from the ctor: the engine assigns comfy_ only after this returns, so a
+    // synchronous start (which waits for the server) would let a re-entrant Engine::comfy()
+    // construct a second service/child process. State changes flow through stateChanged.
+    QTimer::singleShot(0, process.get(), [process = process.get()] { process->start(); });
   }
 }
 
@@ -163,6 +168,11 @@ struct TemplateInfo {
   QJsonObject graph;
   QString outputNode;
   QJsonObject bindings;
+  // schema v2 (v1 templates leave these parsed-but-derived): what the graph produces and what it
+  // needs from the ComfyUI install, so generate.* can report readiness before queueing anything.
+  QString outputKind;    // derived "video" | "image" | "audio"
+  QJsonObject required;  // { nodes: [class_type...], models: [{folder, file}...] }; key stays "requires" in template JSON
+  bool needsUserModel = false;
   QString source;
   QString filePath;
 };
@@ -171,8 +181,99 @@ const QStringList kAllowedBindings = {
   QStringLiteral("prompt"), QStringLiteral("negative"), QStringLiteral("seed"),
   QStringLiteral("width"), QStringLiteral("height"), QStringLiteral("frames"),
   QStringLiteral("fps"), QStringLiteral("steps"), QStringLiteral("cfg"),
-  QStringLiteral("image"), QStringLiteral("strength"), QStringLiteral("duration")
+  QStringLiteral("image"), QStringLiteral("strength"), QStringLiteral("duration"),
+  // v2 media bindings
+  QStringLiteral("text"), QStringLiteral("voiceRef"), QStringLiteral("durationSec"),
+  QStringLiteral("bpm"), QStringLiteral("lyrics"), QStringLiteral("tags"), QStringLiteral("audio")
 };
+
+// Media kinds for templates: image/video were there from v1, speech/music are v2.
+const QStringList kTemplateKinds = {
+  QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("speech"), QStringLiteral("music")
+};
+
+// What a template's kind produces on disk, for the landing path: videos and images are files,
+// speech and music audio templates deliver audio.
+QString deriveOutputKind(const QString& kind) {
+  if (kind == QLatin1String("video")) return QStringLiteral("video");
+  if (kind == QLatin1String("image")) return QStringLiteral("image");
+  if (kind == QLatin1String("speech") || kind == QLatin1String("music")) return QStringLiteral("audio");
+  return {};
+}
+
+// ---- generate readiness: what generate.* consults before queueing a template ----
+
+struct TemplateReadiness {
+  bool ok = false;
+  QStringList missingNodes;  // class_type strings this ComfyUI does not serve
+  QJsonArray missingModels;  // {folder, file} entries no combo input offers
+  QString reason;
+};
+
+// Checks one template against the cached /object_info: every node class the graph uses and every
+// model the template requires must exist server-side. Models are offered as combo options on loader
+// inputs; a file that appears in no combo anywhere is missing from this install.
+TemplateReadiness checkTemplateReadiness(ComfyService& svc, const TemplateInfo& t) {
+  TemplateReadiness r;
+  if (!svc.schema) {
+    r.reason = QStringLiteral("ComfyUI schema is not loaded (no reachable server or object_info file)");
+    return r;
+  }
+
+  // every distinct class_type the graph uses plus the ones requires.nodes demands
+  QStringList classes;
+  {
+    QSet<QString> seen;
+    for (auto it = t.graph.begin(); it != t.graph.end(); ++it) {
+      const QString ct = it.value().toObject().value(q("class_type")).toString();
+      if (!ct.isEmpty() && !seen.contains(ct)) {
+        seen.insert(ct);
+        classes << ct;
+      }
+    }
+    for (const QJsonValue& n : t.required.value(q("nodes")).toArray()) {
+      const QString ct = n.toString();
+      if (!ct.isEmpty() && !seen.contains(ct)) {
+        seen.insert(ct);
+        classes << ct;
+      }
+    }
+  }
+  classes.sort();
+  for (const QString& ct : classes) {
+    if (!svc.schema->find(ct)) r.missingNodes << ct;
+  }
+
+  // model files: compare against every combo option in the schema
+  QSet<QString> comboFiles;
+  for (const QString& cls : svc.schema->classTypes()) {
+    const comfy::NodeSchema* ns = svc.schema->find(cls);
+    if (!ns) continue;
+    for (const comfy::InputSpec& in : ns->inputs) {
+      if (in.kind != comfy::InputKind::Combo) continue;
+      for (const QString& o : in.options) comboFiles.insert(o);
+    }
+  }
+  for (const QJsonValue& m : t.required.value(q("models")).toArray()) {
+    const QJsonObject mo = m.toObject();
+    const QString folder = mo.value(q("folder")).toString();
+    const QString file = mo.value(q("file")).toString();
+    if (!file.isEmpty() && !comboFiles.contains(file)) {
+      r.missingModels.append(QJsonObject{{q("folder"), folder}, {q("file"), file}});
+    }
+  }
+
+  if (!r.missingNodes.isEmpty()) {
+    r.reason = QStringLiteral("Node(s) not in ComfyUI: %1").arg(r.missingNodes.join(QStringLiteral(", ")));
+  }
+  for (const QJsonValue& m : r.missingModels) {
+    if (!r.reason.isEmpty()) r.reason += QStringLiteral("; ");
+    r.reason += QStringLiteral("Model file '%1' not installed in folder '%2'")
+                    .arg(m.toObject().value(q("file")).toString(), m.toObject().value(q("folder")).toString());
+  }
+  if (r.reason.isEmpty()) r.ok = true;
+  return r;
+}
 
 QString userTemplatesDir() {
   const QString env = qEnvironmentVariable("SF_COMFY_TEMPLATES");
@@ -202,9 +303,14 @@ std::optional<TemplateInfo> parseTemplateJson(const QByteArray& data, const QStr
   ti.graph = o.value(q("graph")).toObject();
   ti.outputNode = o.value(q("outputNode")).toString();
   ti.bindings = o.value(q("bindings")).toObject();
+  // v2 keys; a v1 template has none of them, so outputKind falls back to the kind's product
+  ti.outputKind = o.value(q("outputKind")).toString();
+  ti.required = o.value(q("requires")).toObject();
+  ti.needsUserModel = o.value(q("needsUserModel")).toBool();
   ti.source = source;
   ti.filePath = filePath;
   if (ti.id.isEmpty() || ti.graph.isEmpty()) return std::nullopt;
+  if (ti.outputKind.isEmpty()) ti.outputKind = deriveOutputKind(ti.kind);
   return ti;
 }
 
@@ -316,7 +422,11 @@ Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, cons
       doc.tracks.push_back(newTrk);
     }
 
+    // With `atFrame`, the anchor applies to the first file only: each further file of the
+    // batch advances past the previous one (calcTrackEnd sees the item just added) instead
+    // of piling every file onto the same frame.
     Frame start = atFrameArg ? *atFrameArg : calcTrackEnd(doc, targetTrackId);
+    if (atFrameArg) atFrameArg = std::nullopt;
     Frame dur = 1;
     if (type == ItemType::Image) {
       dur = jsRound(3.0 * fps);
@@ -453,7 +563,7 @@ Result reshootVariantsCmd(CallContext& c, const QJsonObject& a) {
     const QString letter = QString(QChar(letterChar));
     QString label;
     if (!editUsed.isEmpty()) {
-      label = QStringLiteral("%1 seed %2 Â· %3").arg(letter).arg(varSeed).arg(editUsed);
+      label = QStringLiteral("%1 seed %2 · %3").arg(letter).arg(varSeed).arg(editUsed);
     } else {
       label = QStringLiteral("%1 seed %2").arg(letter).arg(varSeed);
     }
@@ -470,6 +580,16 @@ Result reshootVariantsCmd(CallContext& c, const QJsonObject& a) {
       {q("jobId"), jobId}
     };
     variantsArr.append(varObj);
+  }
+
+  // Nothing completed yet (wait:false): do NOT overwrite the stored reshoot for this item —
+  // reshoot.pick reads it and would see an empty variant list forever.
+  if (variantsArr.isEmpty()) {
+    return Result::success(QJsonObject{
+      {q("sheetPath"), QString()},
+      {q("variants"), QJsonArray{}},
+      {q("pending"), pendingJobIds}
+    });
   }
 
   QString sheetPath;
@@ -1034,7 +1154,7 @@ void registerComfyCommands(Engine& e) {
 
   e.add(spec("comfy.template.list", "", "comfy", false,
              QStringLiteral("List available ComfyUI workflow templates (built-in and user-imported). Templates are loaded deterministically from disk."),
-             js::obj({{q("kind"), js::str(QStringLiteral("Filter templates by kind ('image', 'video', 'audio')"))}}),
+             js::obj({{q("kind"), js::str(QStringLiteral("Filter templates by kind ('image', 'video', 'speech', 'music')"))}}),
              [](CallContext&, const QJsonObject& a) {
                auto allTemplates = loadAllTemplates();
                const QString kindFilter = a.value(q("kind")).toString();
@@ -1052,10 +1172,46 @@ void registerComfyCommands(Engine& e) {
                    {q("description"), t.description},
                    {q("whenToUse"), t.whenToUse},
                    {q("bindings"), bNames},
-                   {q("source"), t.source}
+                   {q("source"), t.source},
+                   {q("outputNode"), t.outputNode},
+                   {q("outputKind"), t.outputKind},
+                   {q("requires"), t.required},
+                   {q("needsUserModel"), t.needsUserModel}
                  });
                }
                return Result::success(QJsonObject{{q("templates"), tArr}});
+             },
+             false));
+
+  e.add(spec("comfy.ready", "", "comfy", false,
+             QStringLiteral("Report which generation templates can run on the configured ComfyUI: per template, the missing node classes and model files, from the cached /object_info."),
+             js::obj({{q("templateId"), js::str(QStringLiteral("Check a single template instead of every one"))},
+                      {q("objectInfoPath"), js::str(QStringLiteral("Path to an object_info.json to use instead of the live server"))},
+                      {q("refresh"), js::boolean(QStringLiteral("Re-fetch the schema even when a copy is cached (default false)"))}}),
+             [](CallContext& c, const QJsonObject& a) {
+               ComfyService& svc = c.engine->comfy();
+               ensureSchema(svc, a); // best effort: without a schema every row reports why it cannot check
+               auto allTemplates = loadAllTemplates();
+               const QString one = a.value(q("templateId")).toString();
+               if (!one.isEmpty() && !allTemplates.contains(one)) {
+                 return notFound(QStringLiteral("Template '%1' not found").arg(one),
+                                 QStringLiteral("Call comfy.template.list to see imported templates."));
+               }
+               QJsonArray rows;
+               for (const auto& [tid, t] : allTemplates) {
+                 if (!one.isEmpty() && tid != one) continue;
+                 const TemplateReadiness r = checkTemplateReadiness(svc, t);
+                 rows.append(QJsonObject{
+                   {q("id"), t.id},
+                   {q("kind"), t.kind},
+                   {q("ok"), r.ok},
+                   {q("missingNodes"), QJsonArray::fromStringList(r.missingNodes)},
+                   {q("missingModels"), r.missingModels},
+                   {q("reason"), r.reason}
+                 });
+               }
+               if (!one.isEmpty()) return Result::success(rows.at(0).toObject());
+               return Result::success(QJsonObject{{q("templates"), rows}});
              },
              false));
 
@@ -1063,13 +1219,16 @@ void registerComfyCommands(Engine& e) {
              QStringLiteral("Import a ComfyUI API workflow graph as a template with typed bindings. Validates that referenced nodes and inputs exist."),
              js::obj({{q("id"), js::str(QStringLiteral("Template identifier"))},
                       {q("name"), js::str(QStringLiteral("Human-readable template name"))},
-                      {q("kind"), js::str(QStringLiteral("Output kind: 'image', 'video', or 'audio'"))},
+                      {q("kind"), js::str(QStringLiteral("Media kind: 'image', 'video', 'speech', or 'music'"))},
                       {q("outputNode"), js::str(QStringLiteral("ID of node producing the final output"))},
                       {q("bindings"), js::any(QStringLiteral("Map of parameter names to {node, input}"))},
                       {q("path"), js::str(QStringLiteral("Path to ComfyUI API JSON file"))},
                       {q("graph"), js::any(QStringLiteral("Inlined ComfyUI API JSON graph"))},
                       {q("description"), js::str(QStringLiteral("Template description"))},
-                      {q("whenToUse"), js::array(js::str(), QStringLiteral("Keywords for when to use this template"))}},
+                      {q("whenToUse"), js::array(js::str(), QStringLiteral("Keywords for when to use this template"))},
+                      {q("outputKind"), js::str(QStringLiteral("File kind this workflow produces: 'video', 'image', or 'audio'; derived from kind when omitted"))},
+                      {q("requires"), js::any(QStringLiteral("Optional {nodes: [class_type...], models: [{folder, file}...]} the ComfyUI install must have"))},
+                      {q("needsUserModel"), js::boolean(QStringLiteral("True when the template's model files are placeholders the user must have (default false)"))}},
                      {q("id"), q("name"), q("kind"), q("outputNode"), q("bindings")}),
              [](CallContext&, const QJsonObject& a) {
                const QString id = a.value(q("id")).toString();
@@ -1080,8 +1239,33 @@ void registerComfyCommands(Engine& e) {
                }
                const QString name = a.value(q("name")).toString();
                const QString kind = a.value(q("kind")).toString();
+               if (!kTemplateKinds.contains(kind)) {
+                 return invalid(QStringLiteral("Invalid kind '%1': must be one of image, video, speech, music").arg(kind));
+               }
                const QString outputNode = a.value(q("outputNode")).toString();
                const QJsonObject bindings = a.value(q("bindings")).toObject();
+               QString outputKind = a.value(q("outputKind")).toString();
+               if (!outputKind.isEmpty() && outputKind != QLatin1String("video")
+                   && outputKind != QLatin1String("image") && outputKind != QLatin1String("audio")) {
+                 return invalid(QStringLiteral("Invalid outputKind '%1': must be video, image, or audio").arg(outputKind));
+               }
+               if (outputKind.isEmpty()) outputKind = deriveOutputKind(kind);
+               const QJsonObject required = a.value(q("requires")).toObject();
+               const QJsonArray reqNodes = required.value(q("nodes")).toArray();
+               for (const QJsonValue& n : reqNodes) {
+                 if (!n.isString()) {
+                   return invalid(QStringLiteral("requires.nodes must be an array of node class_type strings"));
+                 }
+               }
+               const QJsonArray reqModels = required.value(q("models")).toArray();
+               for (const QJsonValue& m : reqModels) {
+                 if (!m.isObject()
+                     || !m.toObject().value(q("folder")).isString()
+                     || !m.toObject().value(q("file")).isString()) {
+                   return invalid(QStringLiteral("requires.models must be an array of {folder, file} objects"));
+                 }
+               }
+               const bool needsUserModel = a.value(q("needsUserModel")).toBool();
                QJsonObject apiGraph;
 
                if (a.contains(q("graph"))) {
@@ -1138,7 +1322,10 @@ void registerComfyCommands(Engine& e) {
                  {q("whenToUse"), a.value(q("whenToUse")).toArray()},
                  {q("graph"), apiGraph},
                  {q("outputNode"), outputNode},
-                 {q("bindings"), bindings}
+                 {q("bindings"), bindings},
+                 {q("outputKind"), outputKind},
+                 {q("requires"), required},
+                 {q("needsUserModel"), needsUserModel}
                };
 
                QFile outF(outPath);
@@ -1345,6 +1532,7 @@ void registerComfyCommands(Engine& e) {
                       {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
                      {q("templateId"), q("prompt")}),
              [](CallContext& c, const QJsonObject& a) {
+               ComfyService& svc = c.engine->comfy();
                const QString templateId = a.value(q("templateId")).toString();
                if (templateId.isEmpty()) return invalid(QStringLiteral("Argument 'templateId' is required"));
                const QString prompt = a.value(q("prompt")).toString();
@@ -1389,6 +1577,19 @@ void registerComfyCommands(Engine& e) {
                });
                if (!rTmpl.ok) return rTmpl;
                const QString graphId = rTmpl.value.toObject().value(q("graphId")).toString();
+
+               // Readiness gate: fail before queueing when this install lacks the node classes or
+               // model files the template needs, so callers get a repairable not_ready result
+               // instead of a wedged ComfyUI job.
+               auto allT = loadAllTemplates();
+               auto itT = allT.find(templateId);
+               if (itT != allT.end()) {
+                 const TemplateReadiness ready = checkTemplateReadiness(svc, itT->second);
+                 if (!ready.ok) {
+                   return Result::failure(q("not_ready"), ready.reason,
+                                          QStringLiteral("Call comfy.ready for the missing nodes/models of '%1'.").arg(templateId));
+                 }
+               }
 
                const bool wait = a.value(q("wait")).toBool(true);
                const int timeoutMs = a.value(q("timeoutMs")).toInt(900000);

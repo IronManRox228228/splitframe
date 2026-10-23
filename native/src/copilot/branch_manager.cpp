@@ -154,16 +154,27 @@ BranchDiff BranchManager::diffBranches(const QString& nameA, const QString& name
   const QString trimmedA = nameA.trimmed();
   const QString trimmedB = nameB.trimmed();
 
-  if (project_ && trimmedA == activeBranch_) docA = project_->doc();
-  else {
-    auto itA = branches_.find(trimmedA);
-    if (itA != branches_.end()) docA = itA->second.doc;
-  }
+  const auto resolve = [&](const QString& trimmed, TimelineDoc& out) -> bool {
+    if (project_ && trimmed == activeBranch_) {
+      out = project_->doc();
+      return true;
+    }
+    const auto it = branches_.find(trimmed);
+    if (it != branches_.end()) {
+      out = it->second.doc;
+      return true;
+    }
+    return false;
+  };
 
-  if (project_ && trimmedB == activeBranch_) docB = project_->doc();
-  else {
-    auto itB = branches_.find(trimmedB);
-    if (itB != branches_.end()) docB = itB->second.doc;
+  // An unknown name is an error, not an empty diff against a phantom branch.
+  if (!resolve(trimmedA, docA)) {
+    diff.error = QStringLiteral("Unknown branch '%1'").arg(nameA);
+    return diff;
+  }
+  if (!resolve(trimmedB, docB)) {
+    diff.error = QStringLiteral("Unknown branch '%1'").arg(nameB);
+    return diff;
   }
 
   const auto calcDurMs = [](const TimelineDoc& d) -> qint64 {
@@ -226,50 +237,74 @@ bool BranchManager::mergeBranch(const QString& sourceBranch, const QString&) {
   const TimelineDoc& srcDoc = it->second.doc;
   const TimelineDoc currDoc = project_->doc();
 
+  bool merged = true;
+
   project_->beginGroup(QStringLiteral("Merge branch %1").arg(src));
 
-  // Determine items to add, remove, and update
-  std::map<QString, Item> currItems, srcItems;
-  for (const auto& item : currDoc.items) currItems[item.id] = item;
-  for (const auto& item : srcDoc.items) srcItems[item.id] = item;
-
-  std::vector<QString> toRemove;
-  for (const auto& [id, _] : currItems) {
-    if (srcItems.find(id) == srcItems.end()) toRemove.push_back(id);
+  // 1. Tracks first: a track that exists only in the source branch is created before the
+  //    items land on it (an ItemAdd there would otherwise fail silently and the merge would
+  //    still report success while the active branch is NOT equal to the source).
+  std::set<QString> currentTracks;
+  for (const auto& t : currDoc.tracks) currentTracks.insert(t.id);
+  for (const auto& t : srcDoc.tracks) {
+    if (currentTracks.count(t.id)) continue;
+    // Track order itself is the doc.tracks vector; appended tracks land at the bottom.
+    merged &= project_->apply(Op(TrackAdd{
+      .trackId = t.id, .kind = t.kind, .name = t.name,
+      .locked = t.locked, .muted = t.muted, .hidden = t.hidden}));
   }
-  if (!toRemove.empty()) {
-    project_->apply(Op(ItemRemove{.itemIds = toRemove, .ripple = false}));
-  }
 
-  for (const auto& [id, item] : srcItems) {
-    auto curIt = currItems.find(id);
-    if (curIt == currItems.end()) {
-      project_->apply(Op(ItemAdd{.item = item, .propsOmitted = false}));
-    } else {
+  if (merged) {
+    // 2. Make the active branch equal to the source: remove active-only items, add
+    //    source-only items, update mirrored ones. Every apply result counts; the first
+    //    failure rolls the whole merge back.
+    std::map<QString, Item> currItems, srcItems;
+    for (const auto& item : project_->doc().items) currItems[item.id] = item;
+    for (const auto& item : srcDoc.items) srcItems[item.id] = item;
+
+    std::vector<QString> toRemove;
+    for (const auto& [id, _] : currItems) {
+      if (srcItems.find(id) == srcItems.end()) toRemove.push_back(id);
+    }
+    if (!toRemove.empty()) {
+      merged &= project_->apply(Op(ItemRemove{.itemIds = toRemove, .ripple = false}));
+    }
+
+    for (const auto& [id, item] : srcItems) {
+      if (!merged) break;
+      auto curIt = currItems.find(id);
+      if (curIt == currItems.end()) {
+        merged &= project_->apply(Op(ItemAdd{.item = item, .propsOmitted = false}));
+        continue;
+      }
       const auto& cur = curIt->second;
       if (cur.startFrame != item.startFrame || cur.durationFrames != item.durationFrames ||
           cur.trackId != item.trackId || cur.sourceInFrame != item.sourceInFrame ||
-          std::abs(cur.volume - item.volume) > 0.001) {
+          std::abs(cur.volume - item.volume) > 0.001 || std::abs(cur.speed - item.speed) > 0.001) {
         ItemPatch patch;
         patch.trackId = item.trackId;
         patch.startFrame = item.startFrame;
         patch.durationFrames = item.durationFrames;
         patch.sourceInFrame = item.sourceInFrame;
         patch.volume = item.volume;
-        project_->apply(Op(ItemUpdate{.itemId = id, .patch = patch}));
+        patch.speed = item.speed;
+        merged &= project_->apply(Op(ItemUpdate{.itemId = id, .patch = patch}));
       }
     }
   }
 
+  if (!merged) {
+    // One failed step leaves the timeline half-merged: discard it entirely first, THEN undo.
+    project_->rollbackGroup();
+    return false;
+  }
   project_->endGroup();
 
   saveCurrentStateToActiveBranch();
 
-  if (project_) {
-    std::vector<BranchRecord> list;
-    for (const auto& [_, b] : branches_) list.push_back(b);
-    project_->setBranches(std::move(list));
-  }
+  std::vector<BranchRecord> list;
+  for (const auto& [_, b] : branches_) list.push_back(b);
+  project_->setBranches(std::move(list));
 
   emit branchMerged(src, activeBranch_);
   return true;

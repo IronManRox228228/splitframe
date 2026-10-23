@@ -98,6 +98,7 @@ private slots:
     audio.durationFrames = 60;
     audio.volume = 0.9;
     AudioProps ap;
+    ap.fadeInFrames = 3;
     ap.fadeOutFrames = 0; // abrupt
     audio.props = ap;
     doc.items.push_back(audio);
@@ -105,10 +106,18 @@ private slots:
     ReviewOptions opts;
     opts.applySafeFixes = true;
 
+    // The engine only collects the fix ops; the command layer applies them for real and
+    // autoFixApplied turns true only after a successful application.
     const auto res = engine.reviewTimeline(doc, {}, nullptr, opts);
-    QVERIFY(res.autoFixApplied);
+    QVERIFY(!res.autoFixApplied);
     QVERIFY(!res.autoFixOps.isEmpty());
     QCOMPARE(res.autoFixOps[0].value(QStringLiteral("type")).toString(), QStringLiteral("item.update"));
+    // item.update replaces props wholesale: the collected op must carry the full props so the
+    // existing fadeInFrames (3 in the setup) survives the autofix.
+    const QJsonObject patch = res.autoFixOps[0].value(QStringLiteral("patch")).toObject();
+    const QJsonObject props = patch.value(QStringLiteral("props")).toObject();
+    QCOMPARE(props.value(QStringLiteral("fadeInFrames")).toInt(), 3);
+    QCOMPARE(props.value(QStringLiteral("fadeOutFrames")).toInt(), 2);
   }
 };
 

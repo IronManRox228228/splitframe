@@ -32,10 +32,6 @@ export interface ToolContext {
   /** Reference-style analysis (computed + cached on demand). */
   analyzeReference(assetId: string): Promise<unknown>;
   getReferenceProfile(assetId: string): Promise<unknown>;
-  /** Federated media catalog search via Zetaris. */
-  searchFederatedMedia?(query: { naturalLanguage?: string; filterTags?: string[]; storageFilter?: string[]; minWidth?: number; minHeight?: number; limit?: number }): Promise<unknown[]>;
-  /** Ingest or reference a federated asset into the project. */
-  importFederatedAsset?(asset: unknown): Promise<{ assetId: string; ok: boolean; error?: string }>;
   /** Who is calling (builtin-agent | mcp:<client>). */
   actor: Actor;
 }

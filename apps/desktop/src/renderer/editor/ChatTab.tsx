@@ -60,9 +60,6 @@ export function friendlyError(raw: string, config: AiConfig | null): { message: 
     if (provider === 'ollama') {
       return { message: `Can't reach Ollama at ${url || 'http://127.0.0.1:11434'}. Is it running?`, connection: true };
     }
-    if (provider === 'meterless') {
-      return { message: `Can't reach Meterless at ${config?.meterlessUrl || 'https://api.meterless.ai/v1'}. Check your internet connection and try again.`, connection: true };
-    }
     return { message: `Can't reach ${PROVIDER_LABELS[provider] ?? 'the AI provider'}. Check your internet connection and try again.`, connection: true };
   }
   if (/401|403|invalid.*api.?key|incorrect api key|unauthori[sz]ed/i.test(raw)) {

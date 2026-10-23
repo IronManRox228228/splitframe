@@ -1,5 +1,7 @@
 #pragma once
 
+#include <mutex>
+
 // What this machine is and what it can spare right now, and the resource decisions drawn from it.
 //
 //   querySystem()    static hardware (GPU adapters through DXGI, CPU topology, RAM, power) plus a first live sample
@@ -224,6 +226,10 @@ signals:
 private:
   void loadOverrides();
   void saveOverrides() const;
+  const SystemProfile& profileLocked(); // one-shot hardware query, m_ held by the caller
+
+  mutable std::mutex m_; // shared with subsystems via sharedSystemService(): serialize the one-shot
+                         // profile query and the DXGI live-state enumeration across threads
   SystemProfile profile_;
   bool haveProfile_ = false;
   std::optional<SmokeResult> smoke_;

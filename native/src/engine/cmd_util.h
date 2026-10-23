@@ -30,12 +30,13 @@ inline Result notFound(const QString& what, const QString& hint = {}) {
 
 // A command with its schema. Registers `session`/`origin` on the schema (see Engine::add).
 inline CommandSpec spec(const char* name, const char* alias, const char* domain, bool mutates, const QString& description, QJsonObject schema,
-                        Handler handler, bool needsSession = true) {
+                        Handler handler, bool needsSession = true, bool undoable = true) {
   CommandSpec s;
   s.name = q(name);
   s.alias = q(alias);
   s.domain = q(domain);
   s.mutates = mutates;
+  s.undoable = undoable;
   s.needsSession = needsSession;
   s.description = description;
   s.inputSchema = std::move(schema);

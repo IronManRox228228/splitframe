@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QTimer>
 
 namespace sf::engine {
@@ -30,6 +31,38 @@ QJsonObject planJson(const xport::ExportPlan& p) {
                      {q("bits"), p.bits}, {q("hdr"), p.hdr}, {q("warnings"), QJsonArray::fromStringList(p.warnings)}};
 }
 
+// Filename-safe transform: path separators and Windows-illegal characters would either break
+// the export directory (preset) or escape it (project name = user text from project.rename).
+QString filenameSafe(QString part) {
+  static const QRegularExpression re{QStringLiteral("[<>:\"/\\\\|?*\\x00-\\x1F]")};
+  part.replace(re, QStringLiteral(" "));
+  part = part.trimmed();
+  while (part.startsWith(QLatin1Char('.'))) part.remove(0, 1);
+  while (part.endsWith(QLatin1Char('.'))) part.chop(1);
+  if (part.size() > 80) part.truncate(80);
+  return part;
+}
+
+// Extension for the auto-named output: what the plan will actually resolve (export/plan
+// resolves Container::Auto from the file's own extension), not a hardcoded wav/mp4 —
+// e.g. prores + Auto must not claim .mp4 (rejected: "prores does not belong in an mp4").
+QString exportExtensionFor(const xport::ExportSettings& s) {
+  switch (s.container) {
+    case xport::Container::Wav: return QStringLiteral("wav");
+    case xport::Container::Mp4: return QStringLiteral("mp4");
+    case xport::Container::Mov: return QStringLiteral("mov");
+    case xport::Container::Mkv: return QStringLiteral("mkv");
+    case xport::Container::Auto: break;
+  }
+  if (s.video == xport::VideoCodec::None) {
+    const bool pcm = s.audio == xport::AudioCodec::Pcm16 || s.audio == xport::AudioCodec::Pcm24 ||
+                     s.audio == xport::AudioCodec::Pcm32f;
+    return pcm ? QStringLiteral("wav") : QStringLiteral("mp4"); // AAC audio rides in mp4
+  }
+  // ProRes / DNxHR do not belong in an mp4; mov is the ProRes convention.
+  return s.video == xport::VideoCodec::ProRes || s.video == xport::VideoCodec::DnxHr ? QStringLiteral("mov") : QStringLiteral("mp4");
+}
+
 Result exportStart(CallContext& c, const QJsonObject& a) {
   Engine& eng = *c.engine;
   Session& s = *c.session;
@@ -39,17 +72,27 @@ Result exportStart(CallContext& c, const QJsonObject& a) {
   opts.remove(q("origin"));
   bool autoOut = false;
   if (!opts.contains(q("out"))) {
-    const QString dir = s.project->path().isEmpty() ? QDir::temp().filePath(QStringLiteral("splitframe-exports")) : QFileInfo(s.project->path()).absolutePath();
-    QDir().mkpath(dir);
-    const QString preset = opts.value(q("preset")).toString();
-    const bool audioOnly = opts.value(q("audioOnly")).toBool();
-    opts.insert(q("out"), QDir(dir).filePath(QStringLiteral("%1%2.%3").arg(doc.project.name, preset.isEmpty() ? QString() : QStringLiteral("-") + preset, audioOnly ? QStringLiteral("wav") : QStringLiteral("mp4"))));
+    // auto runs replace their own previous output; decided before the parse so the settings
+    // carry it (the auto path itself is assigned below, once the container is known)
     opts.insert(q("overwrite"), true);
     autoOut = true;
   }
   xport::ExportSettings settings;
   QString err;
   if (!xport::exportSettingsFromJson(opts, doc, &settings, &err)) return invalid(err);
+
+  if (autoOut) {
+    // parsed first: the auto filename takes its extension from the settings the caller
+    // actually produced (container / audioOnly codec) instead of a hardcoded wav/mp4
+    const QString dir = s.project->path().isEmpty() ? QDir::temp().filePath(QStringLiteral("splitframe-exports")) : QFileInfo(s.project->path()).absolutePath();
+    QDir().mkpath(dir);
+    QString base = filenameSafe(doc.project.name);
+    if (base.isEmpty()) base = QStringLiteral("export");
+    const QString presetPart = filenameSafe(opts.value(q("preset")).toString());
+    settings.outputPath = QDir(dir).filePath(QStringLiteral("%1%2.%3")
+                                                 .arg(base, presetPart.isEmpty() ? QString() : QStringLiteral("-") + presetPart,
+                                                      exportExtensionFor(settings)));
+  }
 
   const bool hasCallerChoice = opts.contains(q("hw")) || opts.contains(q("hardware")) || opts.contains(q("encoder")) || opts.contains(q("exportEncoder"));
   QJsonObject encoderDecision;
@@ -76,9 +119,14 @@ Result exportStart(CallContext& c, const QJsonObject& a) {
     }
 
     const QString lowerVal = callerVal.toLower();
-    if (lowerVal == QLatin1String("nvenc") || lowerVal == QLatin1String("auto") ||
-        lowerVal == QLatin1String("qsv") || lowerVal == QLatin1String("amf")) {
+    QString callerNote;
+    if (lowerVal == QLatin1String("nvenc") || lowerVal == QLatin1String("auto")) {
       settings.hardware = xport::Hardware::Auto;
+    } else if (lowerVal == QLatin1String("qsv") || lowerVal == QLatin1String("amf")) {
+      // honest reporting: the caller asked for qsv/amf and silently getting Auto would claim a
+      // different encoder ran; the policy path adds the same note
+      settings.hardware = xport::Hardware::Off;
+      callerNote = QStringLiteral("amf/qsv export not implemented yet; using software");
     } else if (lowerVal == QLatin1String("software") || lowerVal == QLatin1String("off")) {
       settings.hardware = xport::Hardware::Off;
     }
@@ -88,6 +136,9 @@ Result exportStart(CallContext& c, const QJsonObject& a) {
       {q("reason"), QStringLiteral("explicit caller choice")},
       {q("source"), QStringLiteral("caller")}
     };
+    if (!callerNote.isEmpty()) {
+      encoderDecision.insert(q("note"), callerNote);
+    }
   } else {
     const auto decisions = sharedSystemService().decisions();
     const QString polVal = decisions.exportEncoder;

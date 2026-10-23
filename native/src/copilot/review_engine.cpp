@@ -29,9 +29,8 @@ ReviewResult ReviewEngine::reviewTimeline(const TimelineDoc& doc,
     }
   }
 
-  if (options.applySafeFixes && !res.autoFixOps.isEmpty()) {
-    res.autoFixApplied = true;
-  }
+  // autoFixOps are only collected here: the command layer owns the project, applies them in
+  // one undo group (see copilot.review.run), and only a real application sets autoFixApplied.
 
   // Calculate quality score
   double penalty = (errorCount * 0.35) + (warningCount * 0.10);

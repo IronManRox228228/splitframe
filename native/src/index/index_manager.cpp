@@ -2,9 +2,11 @@
 
 #include "media/probe.h"
 
+#include <QEventLoop>
 #include <QMetaObject>
 #include <QRunnable>
 #include <QThread>
+#include <algorithm>
 #include <cmath>
 
 namespace sf::index {
@@ -15,6 +17,8 @@ IndexManager::IndexManager(QObject* parent)
 }
 
 IndexManager::~IndexManager() {
+  // Workers never block on this thread any more (non-blocking marshalling below), so draining
+  // the pool cannot deadlock here. Queued catalog writes that never ran die with this object.
   threadPool_.waitForDone();
   closeCatalog();
 }
@@ -37,6 +41,33 @@ void IndexManager::setLlmClient(std::shared_ptr<agent::LlmClient> llm) {
 bool IndexManager::analyzeAssetSync(const QString& assetId,
                                     const QString& filePath,
                                     const AnalysisOptions& opts) {
+  if (QThread::currentThread() == this->thread()) {
+    // Run the analysis on the pool while the owner thread's event loop keeps pumping: a sync
+    // analysis (FFmpeg + OCR + LLM) no longer freezes command/API processing. The completion
+    // lambda lands behind the catalog-write lambdas on the same queue, so this returns only
+    // after the writes flushed.
+    bool ok = false;
+    bool done = false;
+    QEventLoop loop;
+    threadPool_.start([this, &ok, &done, &loop, assetId, filePath, opts] {
+      ok = analyzeAssetImpl(assetId, filePath, opts);
+      QMetaObject::invokeMethod(this, [&] {
+        done = true;
+        loop.quit();
+      }, Qt::QueuedConnection);
+    });
+    while (!done) {
+      loop.exec();
+    }
+    return ok;
+  }
+  // Worker/other thread: run in place (catalog writes land on the owner thread asynchronously).
+  return analyzeAssetImpl(assetId, filePath, opts);
+}
+
+bool IndexManager::analyzeAssetImpl(const QString& assetId,
+                                    const QString& filePath,
+                                    const AnalysisOptions& opts) {
   {
     QMutexLocker lock(&mutex_);
     activeAssets_.insert(assetId);
@@ -55,12 +86,14 @@ bool IndexManager::analyzeAssetSync(const QString& assetId,
     return false;
   }
 
-  // Helper to ensure catalog updates execute on the IndexManager's owner thread
+  // Helper: ensure catalog updates execute on the IndexManager's owner thread. Non-blocking:
+  // a worker must never park on this thread (the dtor drains the pool — a blocking marshal
+  // here would wait for an event loop that is itself waiting for the pool: deadlock).
   auto runOnOwnerThread = [this](auto&& func) {
     if (QThread::currentThread() == this->thread()) {
       func();
     } else {
-      QMetaObject::invokeMethod(this, func, Qt::BlockingQueuedConnection);
+      QMetaObject::invokeMethod(this, func, Qt::QueuedConnection);
     }
   };
 
@@ -71,10 +104,11 @@ bool IndexManager::analyzeAssetSync(const QString& assetId,
     ? info->frameCount
     : static_cast<qint64>(std::round((info->durationMs / 1000.0) * info->fps));
 
-  runOnOwnerThread([&]() {
-    catalog_.insertAsset(assetId, filePath, info->width, info->height,
-                         fpsNum, fpsDen, totalFrames,
-                         info->audioSampleRate, info->audioChannels);
+  // Queued writes execute long after a phase's stack frame may be gone, so every
+  // call-site lambda must capture by value — never [&] over block-scoped locals.
+  runOnOwnerThread([this, assetId, filePath, w = info->width, h = info->height, fpsNum, fpsDen, totalFrames,
+                    ar = info->audioSampleRate, ac = info->audioChannels]() {
+    catalog_.insertAsset(assetId, filePath, w, h, fpsNum, fpsDen, totalFrames, ar, ac);
   });
 
   // 2. Deterministic video scene analysis
@@ -89,12 +123,34 @@ bool IndexManager::analyzeAssetSync(const QString& assetId,
       QMutexLocker lock(&mutex_);
       if (cancelledAssets_.contains(assetId)) {
         activeAssets_.remove(assetId);
+        emit analysisFailed(assetId, QStringLiteral("cancelled"));
         return false;
       }
     }
-    runOnOwnerThread([&]() {
+    runOnOwnerThread([this, scenes]() {
       catalog_.insertScenes(scenes);
     });
+  }
+
+  // OCR and VLM no longer depend on scene detection (they previously silently skipped when
+  // detectScenes was off): without scenes they sample evenly spaced keyframes instead, so a
+  // speech-only or LLM-only index keeps its text/visual evidence.
+  struct KeyframeHit {
+    qint64 frame;
+    double sec;
+    QString sceneId;
+  };
+  std::vector<KeyframeHit> keyframeHits;
+  keyframeHits.reserve(scenes.size());
+  for (const auto& sc : scenes) {
+    keyframeHits.push_back({sc.startFrame, sc.startSec, sc.id});
+  }
+  if (keyframeHits.empty() && info->hasVideo) {
+    const qint64 sampleCount = std::clamp<qint64>(info->durationMs / 10000, 1, 24); // 1 sample per ~10 s, capped
+    for (qint64 i = 0; i < sampleCount; ++i) {
+      const qint64 fr = totalFrames > 0 ? (totalFrames - 1) * i / std::max<qint64>(sampleCount - 1, 1) : 0;
+      keyframeHits.push_back({fr, static_cast<double>(fr) / std::max<double>(info->fps, 1.0), QString()});
+    }
   }
 
   // 3. Deterministic audio & silence analysis
@@ -108,34 +164,36 @@ bool IndexManager::analyzeAssetSync(const QString& assetId,
       QMutexLocker lock(&mutex_);
       if (cancelledAssets_.contains(assetId)) {
         activeAssets_.remove(assetId);
+        emit analysisFailed(assetId, QStringLiteral("cancelled"));
         return false;
       }
     }
-    runOnOwnerThread([&]() {
-      catalog_.insertSpeechSpans(audioRes.spans);
+    runOnOwnerThread([this, spans = audioRes.spans]() {
+      catalog_.insertSpeechSpans(spans);
     });
   }
 
   // 4. OCR on keyframes
-  if (opts.ocrKeyframes && ocrBridge_.isAvailable() && !scenes.empty()) {
+  if (opts.ocrKeyframes && ocrBridge_.isAvailable() && !keyframeHits.empty()) {
     emit analysisProgress(assetId, 0.82, QStringLiteral("Scanning on-screen text with OCR"));
-    for (size_t i = 0; i < scenes.size(); ++i) {
+    for (size_t i = 0; i < keyframeHits.size(); ++i) {
       {
         QMutexLocker lock(&mutex_);
         if (cancelledAssets_.contains(assetId)) {
           activeAssets_.remove(assetId);
+          emit analysisFailed(assetId, QStringLiteral("cancelled"));
           return false;
         }
       }
 
-      const auto& sc = scenes[i];
+      const auto& kf = keyframeHits[i];
       QString decErr;
-      const qint64 midMs = static_cast<qint64>(sc.startSec * 1000.0);
+      const qint64 midMs = static_cast<qint64>(kf.sec * 1000.0);
       const QImage frame = sf::decodeFrame(filePath, midMs, &decErr);
       if (!frame.isNull()) {
-        const auto ocrItems = ocrBridge_.recognize(frame, assetId, sc.startFrame, sc.startSec);
+        const auto ocrItems = ocrBridge_.recognize(frame, assetId, kf.frame, kf.sec);
         if (!ocrItems.empty()) {
-          runOnOwnerThread([&]() {
+          runOnOwnerThread([this, ocrItems]() {
             catalog_.insertOcrRecords(ocrItems);
           });
         }
@@ -144,26 +202,31 @@ bool IndexManager::analyzeAssetSync(const QString& assetId,
   }
 
   // 5. Opt-in VLM scene description
-  if (opts.vlmSummarize && !scenes.empty()) {
+  if (opts.vlmSummarize && !keyframeHits.empty()) {
     emit analysisProgress(assetId, 0.92, QStringLiteral("Generating visual scene summaries"));
-    for (size_t i = 0; i < scenes.size(); ++i) {
+    for (size_t i = 0; i < keyframeHits.size(); ++i) {
       {
         QMutexLocker lock(&mutex_);
         if (cancelledAssets_.contains(assetId)) {
           activeAssets_.remove(assetId);
+          emit analysisFailed(assetId, QStringLiteral("cancelled"));
           return false;
         }
       }
 
-      const auto& sc = scenes[i];
+      const auto& kf = keyframeHits[i];
       QString decErr;
-      const qint64 midMs = static_cast<qint64>(sc.startSec * 1000.0);
+      const qint64 midMs = static_cast<qint64>(kf.sec * 1000.0);
       const QImage frame = sf::decodeFrame(filePath, midMs, &decErr);
       if (!frame.isNull()) {
-        const auto tag = vlmDescriptor_.describeKeyframe(frame, assetId, sc.id);
-        runOnOwnerThread([&]() {
-          catalog_.insertVlmTag(tag);
-        });
+        auto tag = vlmDescriptor_.describeKeyframe(frame, assetId, kf.sceneId);
+        tag.frame = kf.frame;
+        tag.timeSec = kf.sec;
+        if (!tag.summary.isEmpty()) { // empty = no real description produced: do not store a fake one
+          runOnOwnerThread([this, tag]() {
+            catalog_.insertVlmTag(tag);
+          });
+        }
       }
     }
   }

@@ -212,7 +212,8 @@ void registerSessionCommands(Engine& e) {
                const Project parsed = parseProject(Rd(proj, QStringLiteral("project")));
                p.setColorManagement(parsed.colorManagement);
                return Result::success(projectInfo(*c.session));
-             }));
+             },
+             true, false)); // not undoable (no core op for colour management): MCP destructiveHint reflects that
 }
 
 } // namespace sf::engine

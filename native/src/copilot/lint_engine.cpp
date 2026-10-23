@@ -1,4 +1,5 @@
 #include "copilot/lint_engine.h"
+#include "core/schema.h"
 #include "core/time.h"
 
 #include <cmath>
@@ -288,9 +289,9 @@ void LintEngine::checkAudioClipping(const TimelineDoc& doc,
       const double dbGain = 20.0 * std::log10(compoundGain);
       iss.message = QStringLiteral("Audio clipping risk: compound track gain is +%1 dBFS").arg(dbGain, 0, 'f', 1);
       iss.explanation = QStringLiteral("Compound item and mixer volume exceeds safe 0 dBFS ceiling.");
-      iss.autoFixAvailable = true;
 
-      // Safe reduction: if item volume is boosted, reduce item volume to 1.0
+      // Safe reduction: if item volume is boosted, reduce item volume to 1.0; when the boost
+      // comes from the mixer/track instead there is no autofix to advertise.
       if (item.volume > 1.0) {
         QJsonObject patch{{QStringLiteral("volume"), 1.0}};
         iss.fixOps.append(QJsonObject{
@@ -299,6 +300,7 @@ void LintEngine::checkAudioClipping(const TimelineDoc& doc,
           {QStringLiteral("patch"), patch}
         });
       }
+      iss.autoFixAvailable = !iss.fixOps.isEmpty();
       out.push_back(iss);
     }
   }
@@ -331,8 +333,10 @@ void LintEngine::checkAudioAbruptEnd(const TimelineDoc& doc, const LintOptions&,
       iss.explanation = QStringLiteral("Lack of a micro-fade (>=20ms) can create audible clicks and pops at cut boundaries.");
       iss.autoFixAvailable = true;
 
-      // Apply 2-frame fade-out (~66ms at 30fps)
-      QJsonObject propPatch{{QStringLiteral("fadeOutFrames"), 2}};
+      // Apply 2-frame fade-out (~66ms at 30fps). item.update replaces props wholesale
+      // (core/apply.cpp), so the autofix copies the current props to keep fadeInFrames.
+      QJsonObject propPatch = toJson(item.props);
+      propPatch.insert(QStringLiteral("fadeOutFrames"), 2);
       QJsonObject patch{{QStringLiteral("props"), propPatch}};
       iss.fixOps.append(QJsonObject{
         {QStringLiteral("type"), QStringLiteral("item.update")},
@@ -366,8 +370,12 @@ void LintEngine::checkCaptionSafeZone(const TimelineDoc& doc, const LintOptions&
       iss.explanation = QStringLiteral("Captions placed in upper half risk occluding faces and focal elements.");
       iss.autoFixAvailable = true;
 
-      QJsonObject stylePatch{{QStringLiteral("placementY"), 0.82}};
-      QJsonObject propPatch{{QStringLiteral("style"), stylePatch}};
+      // item.update replaces props wholesale, so the autofix copies the full caption props
+      // and only overrides the style's placementY (the rest of the style is preserved).
+      QJsonObject propPatch = toJson(item.props);
+      QJsonObject stylePatch = propPatch.value(QStringLiteral("style")).toObject();
+      stylePatch.insert(QStringLiteral("placementY"), 0.82);
+      propPatch.insert(QStringLiteral("style"), stylePatch);
       QJsonObject patch{{QStringLiteral("props"), propPatch}};
       iss.fixOps.append(QJsonObject{
         {QStringLiteral("type"), QStringLiteral("item.update")},
@@ -394,9 +402,10 @@ void LintEngine::checkMissingMedia(const TimelineDoc& doc,
     for (const auto& asset : assets) {
       if (asset.id == assetId) {
         found = true;
-        if (asset.status == AssetStatus::Missing || asset.status == AssetStatus::Failed || asset.durationMs <= 0) {
-          broken = true;
-        }
+        // Missing/Failed status is the "missing media" case; an asset that is still being
+        // probed (Importing/Processing, durationMs still 0) is not, and images carry no
+        // duration at all.
+        broken = asset.status == AssetStatus::Missing || asset.status == AssetStatus::Failed;
         break;
       }
     }

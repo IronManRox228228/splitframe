@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstring>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <thread>
 
@@ -42,25 +43,50 @@ struct Lib {
   }
 };
 
+// One load + entry->init() per .clap file: every effect instance of the same plugin shares
+// the Lib, so a second instance no longer re-inits (inside the first plugin's lifetime) and
+// no first-instance dtor can deinit while the second still runs. The registry keeps the
+// strong reference for the process lifetime; ~Lib's deinit then runs only at teardown.
+std::map<QString, std::shared_ptr<Lib>>& libRegistry() {
+  static std::map<QString, std::shared_ptr<Lib>> libs;
+  return libs;
+}
+
 std::shared_ptr<Lib> openLib(const QString& path, QString* error) {
   auto fail = [&](const QString& m) -> std::shared_ptr<Lib> {
     if (error) *error = m;
     return nullptr;
   };
+  auto& libs = libRegistry();
+  if (const auto it = libs.find(path); it != libs.end()) return it->second;
 #ifdef _WIN32
   const std::wstring wpath = QDir::toNativeSeparators(path).toStdWString();
   HMODULE h = LoadLibraryExW(wpath.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (!h) return fail(QStringLiteral("cannot load %1 (error %2)").arg(path).arg(GetLastError()));
+  const auto* entry = reinterpret_cast<const clap_plugin_entry_t*>(GetProcAddress(h, "clap_entry"));
+  if (!entry) {
+    FreeLibrary(h);
+    return fail(QStringLiteral("%1 exports no clap_entry").arg(path));
+  }
+  if (!clap_version_is_compatible(entry->clap_version)) {
+    FreeLibrary(h);
+    return fail(QStringLiteral("%1 needs a newer CLAP version").arg(path));
+  }
+  if (!entry->init(path.toUtf8().constData())) {
+    FreeLibrary(h);
+    return fail(QStringLiteral("%1: clap_entry.init failed").arg(path));
+  }
   auto lib = std::make_shared<Lib>();
   lib->handle = h;
-  lib->path = path;
-  const auto* entry = reinterpret_cast<const clap_plugin_entry_t*>(GetProcAddress(h, "clap_entry"));
-  if (!entry) return fail(QStringLiteral("%1 exports no clap_entry").arg(path));
-  if (!clap_version_is_compatible(entry->clap_version)) return fail(QStringLiteral("%1 needs a newer CLAP version").arg(path));
-  if (!entry->init(path.toUtf8().constData())) return fail(QStringLiteral("%1: clap_entry.init failed").arg(path));
   lib->entry = entry;
   lib->factory = static_cast<const clap_plugin_factory_t*>(entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-  if (!lib->factory) return fail(QStringLiteral("%1 has no plugin factory").arg(path));
+  if (!lib->factory) {
+    entry->deinit();
+    FreeLibrary(h);
+    return fail(QStringLiteral("%1 has no plugin factory").arg(path));
+  }
+  lib->path = path;
+  libs.emplace(path, lib);
   return lib;
 #else
   return fail(QStringLiteral("CLAP hosting is only implemented on Windows"));
@@ -124,6 +150,7 @@ public:
     in_.resize(kMaxFrames);
   }
   ~ClapEffect() override {
+    if (!plugin_) return; // init() failed and nulls plugin_: nothing to deactivate/destroy
     if (processing_) plugin_->stop_processing(plugin_);
     if (active_) plugin_->deactivate(plugin_);
     plugin_->destroy(plugin_);
@@ -132,6 +159,7 @@ public:
   bool init(double sampleRate, QString* error) {
     if (!plugin_->init(plugin_)) {
       if (error) *error = QStringLiteral("plugin init failed");
+      plugin_->destroy(plugin_); // still owned even with a failed init: destroy before dropping
       plugin_ = nullptr;
       return false;
     }

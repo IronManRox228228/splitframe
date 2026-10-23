@@ -551,10 +551,13 @@ bool Catalog::insertVlmTag(const VlmTag& tag) {
   QSqlQuery ftsQ(database);
   ftsQ.prepare(QStringLiteral(
     "INSERT INTO sf_fts (asset_id, item_type, ref_id, time_sec, frame, content) "
-    "VALUES (:asset_id, 'vlm', :ref_id, 0.0, 0, :content);"
+    "VALUES (:asset_id, 'vlm', :ref_id, :time_sec, :frame, :content);"
   ));
   ftsQ.bindValue(QStringLiteral(":asset_id"), tag.assetId);
   ftsQ.bindValue(QStringLiteral(":ref_id"), tag.id);
+  // real provenance: time/frame 0 made every hit pile up at the start of the asset
+  ftsQ.bindValue(QStringLiteral(":time_sec"), tag.timeSec);
+  ftsQ.bindValue(QStringLiteral(":frame"), tag.frame);
   ftsQ.bindValue(QStringLiteral(":content"), content);
   if (!ftsQ.exec()) {
     database.rollback();

@@ -89,6 +89,8 @@ struct BranchDiff {
   QStringList removedItemIds;
   QStringList modifiedItemIds;
   QStringList trackChanges;
+  // Set instead of a fabricated empty diff when a branch name is unknown.
+  QString error;
 
   QJsonObject toJson() const;
 };

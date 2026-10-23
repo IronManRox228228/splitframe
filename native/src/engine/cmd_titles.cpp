@@ -267,7 +267,10 @@ Result titleApplyCmd(CallContext& c, const QJsonObject& a) {
                                    ? resolvedFields[repeatKey]
                                    : tmpl->fields.value(repeatKey).toObject().value(q("default")).toString();
       const QStringList wordsList = wordsVal.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-      const int count = std::clamp<int>(static_cast<int>(wordsList.size()), layer.repeatMin, layer.repeatMax);
+      // wordsList can be empty (empty/whitespace field): count must come from the list, not
+      // clamp up to repeatMin, or wordsList[i] below reads past the end. Empty layer: is skipped.
+      const int count = std::min<int>(static_cast<int>(wordsList.size()), layer.repeatMax);
+      if (count == 0) continue;
       for (int i = 0; i < count; ++i) {
         LayerDef ld = layer;
         ld.id.replace(QStringLiteral("{i}"), QString::number(i));

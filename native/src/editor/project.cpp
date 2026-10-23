@@ -213,6 +213,12 @@ bool Project::removeAsset(const QString& id) {
   const auto n = std::erase_if(bundle_.assets, [&](const Asset& a) { return a.id == id; });
   if (n == 0) return false;
   history_.dropReferences(id);
+  // No dangling references: the reference-style asset, plus per-asset analyses that would
+  // resurface on id reuse, all point at the removed asset otherwise.
+  if (bundle_.doc.project.referenceAssetId == id) bundle_.doc.project.referenceAssetId.reset();
+  std::erase_if(bundle_.transcripts, [id](const Transcript& t) { return t.assetId == id; });
+  std::erase_if(bundle_.scenes, [id](const Scene& s) { return s.assetId == id; });
+  std::erase_if(bundle_.beatMaps, [id](const BeatMap& b) { return b.assetId == id; });
   emit assetsChanged();
   refreshDirty();
   return true;

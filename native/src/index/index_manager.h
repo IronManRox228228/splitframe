@@ -34,7 +34,9 @@ public:
   // Set shared LLM client for VLM descriptors
   void setLlmClient(std::shared_ptr<agent::LlmClient> llm);
 
-  // Synchronous analysis (ideal for worker threads or CLI tests)
+  // Synchronous analysis. On the owner thread it runs on the pool with the owner's event
+  // loop pumped (commands and API responses keep processing); from any other thread it runs
+  // in place. Returns whether the analysis completed.
   bool analyzeAssetSync(const QString& assetId,
                         const QString& filePath,
                         const AnalysisOptions& opts = {});
@@ -62,6 +64,8 @@ signals:
   void analysisFailed(const QString& assetId, const QString& error);
 
 private:
+  bool analyzeAssetImpl(const QString& assetId, const QString& filePath, const AnalysisOptions& opts);
+
   mutable QMutex mutex_;
   Catalog catalog_;
   VideoAnalyzer videoAnalyzer_;

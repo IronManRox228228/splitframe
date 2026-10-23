@@ -219,7 +219,8 @@ Op parseOp(const Rd& r) {
     o.itemId = f("itemId").str();
     o.newItemId = f("newItemId").str();
     o.trackId = f("trackId").optStr();
-    o.startFrame = f("startFrame").optInteger();
+    // timeline position: never negative (validateOp does not rescale a parse artefact)
+    o.startFrame = f("startFrame").optInteger(kIntNonNeg);
     return o;
   }
   if (type == q("item.slip")) {
@@ -297,7 +298,7 @@ Op parseOp(const Rd& r) {
     o.markerId = f("markerId").str();
     const Rd p = f("patch");
     p.requireObject();
-    o.patch.frame = p.field(QStringLiteral("frame")).optInteger();
+    o.patch.frame = p.field(QStringLiteral("frame")).optInteger(kIntNonNeg);
     o.patch.label = p.field(QStringLiteral("label")).optStr();
     o.patch.color = p.field(QStringLiteral("color")).optStr();
     return o;

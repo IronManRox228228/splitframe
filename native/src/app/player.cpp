@@ -189,7 +189,9 @@ void Player::refreshTransport() {
   const bool playing = clock_.playing();
   if (!playing && audio_->playing()) audio_->pause(); // the clock stopped on its own (end of timeline)
   if (playing && audio_->playing() && clock_.fps() > 0) { // a loop wrap moved the clock: bring the sound along
-    const qint64 af = audio::sampleToFrame(audio_->positionSamples(), static_cast<std::int64_t>(clock_.fps()));
+    // 29.97-style fps must not truncate (sampleToFrame takes an integer fps): estimate in float.
+    const double fps = clock_.fps();
+    const qint64 af = static_cast<qint64>(std::llround(static_cast<double>(audio_->positionSamples()) * fps / static_cast<double>(audio::kRate)));
     if (std::abs(af - f) > 3) audio_->seek(f);
   }
   if (f != frame_ || playing != wasPlaying_) {

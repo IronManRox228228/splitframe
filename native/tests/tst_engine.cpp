@@ -1435,6 +1435,12 @@ private slots:
     QVERIFY(!job.isEmpty());
     QCOMPARE(st.value(Q("plan")).toObject().value(Q("frames")).toInt(), 10);
     const QJsonObject done = ok(Q("export.status"), {{Q("jobId"), job}, {Q("waitMs"), 90000}});
+    // The export renderer needs a working D3D11 QRhi; machines whose D3D11 stack cannot create
+    // one fail before the first frame. Same boundary the frame/analysis tests above skip on.
+    if (done.value(Q("state")).toString() == Q("failed")
+        && done.value(Q("error")).toString().contains(Q("D3D11"))) {
+      QSKIP("no D3D11 device for the offscreen renderer");
+    }
     QCOMPARE(done.value(Q("state")).toString(), Q("done"));
     QCOMPARE(done.value(Q("result")).toObject().value(Q("videoFrames")).toInt(), 10);
     QVERIFY(QFileInfo(out).size() > 1000);
@@ -1612,7 +1618,12 @@ private slots:
     for (const QJsonValue& i : items()) itemId = i.toObject().value(Q("id")).toString();
     QVERIFY(!itemId.isEmpty());
 
-    const QJsonObject r = ok(Q("mask.trackHands"), {{Q("itemId"), itemId}, {Q("wait"), true}});
+    const Result track = raw(Q("mask.trackHands"), {{Q("itemId"), itemId}, {Q("wait"), true}});
+    if (!track.ok && track.error.code == Q("unavailable")) {
+      QSKIP("hands analyzer unavailable (ONNX models not present on this machine)");
+    }
+    QVERIFY2(track.ok, qPrintable(track.error.message));
+    const QJsonObject r = track.value.toObject();
     QCOMPARE(r.value(Q("trackedSamples")).toInt(), 0);
     const QJsonArray gaps = r.value(Q("gaps")).toArray();
     QCOMPARE(gaps.size(), 1);
@@ -1652,6 +1663,10 @@ private slots:
       if (!probe.ok && probe.error.code == Q("unavailable") && probe.error.message.contains(Q("renderer"))) QSKIP("no D3D11 device for the offscreen renderer");
       QVERIFY2(probe.ok, qPrintable(probe.error.message));
       const QJsonObject r = probe.value.toObject();
+      // The flash/contrast rules render through a D3D11 QRhi; on devices without one the rules
+      // land in `skipped` with the renderer error. Same boundary the tests above skip on.
+      for (const QJsonValue& sk : r.value(Q("summary")).toObject().value(Q("skipped")).toArray())
+        if (sk.toString().contains(Q("D3D11"))) QSKIP("no D3D11 device for the offscreen renderer");
       QVERIFY(r.value(Q("summary")).toObject().value(Q("skipped")).toArray().isEmpty());
       QVERIFY2(kinds(r.value(Q("violations")).toArray()).contains(Q("photosensitive_general_flash")), qPrintable(QString::fromUtf8(QJsonDocument(r).toJson())));
       QVERIFY(!r.value(Q("pass")).toBool());

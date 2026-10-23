@@ -123,7 +123,11 @@ bool AudioDecoder::Impl::decodeMore() {
         draining = true;
         avcodec_send_packet(ctx.get(), nullptr);
       } else {
-        if (pkt->stream_index == stream) avcodec_send_packet(ctx.get(), pkt.get());
+        if (pkt->stream_index == stream && avcodec_send_packet(ctx.get(), pkt.get()) < 0) {
+          // decoder rejected the packet (corrupt stream): stop feeding, drain instead of spinning
+          draining = true;
+          avcodec_send_packet(ctx.get(), nullptr);
+        }
         av_packet_unref(pkt.get());
       }
       continue;

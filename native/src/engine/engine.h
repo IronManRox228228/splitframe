@@ -69,6 +69,10 @@ struct CommandSpec {
   bool needsSession = true;
   QJsonObject inputSchema; // JSON schema of the arguments (`session` / `origin` are added automatically)
   Handler handler;
+  // Declared last so the 8-arg braced initializations (agent/index/copilot commands) keep
+  // binding positionally. False only for the mutations core has no op for (project.color.set):
+  // not undoable via history, and MCP's destructiveHint reflects it.
+  bool undoable = true;
 };
 
 struct ExportRecord {

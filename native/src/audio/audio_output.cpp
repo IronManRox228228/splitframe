@@ -141,6 +141,11 @@ void AudioClockSource::setAudioMaster(bool audio) {
   base_.store(before - raw(audio));
 }
 
-std::int64_t AudioClockSource::nowNs() const { return raw(audio_.load()) + base_.load(); }
+std::int64_t AudioClockSource::nowNs() const {
+  // setAudioMaster rewrites audio_/base_ as a pair; an unlocked two-load read here can mix
+  // old flag + new base into a one-tick clock jump on play/pause transitions.
+  std::lock_guard<std::mutex> l(m_);
+  return raw(audio_.load()) + base_.load();
+}
 
 } // namespace sf::audio

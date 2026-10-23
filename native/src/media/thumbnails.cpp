@@ -82,7 +82,11 @@ std::vector<Thumbnail> extractThumbnailStrip(const QString& path, int count, QSi
           draining = true;
           avcodec_send_packet(ctx.get(), nullptr);
         } else {
-          if (pkt->stream_index == v) avcodec_send_packet(ctx.get(), pkt.get());
+          if (pkt->stream_index == v && avcodec_send_packet(ctx.get(), pkt.get()) < 0) {
+            // decoder rejected the packet (corrupt stream): stop feeding, drain
+            draining = true;
+            avcodec_send_packet(ctx.get(), nullptr);
+          }
           av_packet_unref(pkt.get());
         }
       } else if (rc == AVERROR_INVALIDDATA) {

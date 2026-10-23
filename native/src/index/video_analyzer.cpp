@@ -1,6 +1,7 @@
 #include "index/video_analyzer.h"
 
 #include "media/probe.h"
+#include "media/video_decoder.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -158,22 +159,36 @@ std::vector<SceneRecord> VideoAnalyzer::analyzeVideo(const QString& filePath,
   };
 
   std::vector<SamplePoint> samples;
-  QImage prevFrame;
+  QImage prevThumb;
 
+  // One decoder for the whole pass: sf::decodeFrame re-opens the file for every sample.
+  // Samples keep only a 320 px copy — full-res frames in `samples` would hold GBs
+  // (2 min 1080p ≈ 2.8 GB, 5 min 4K would bad_alloc).
+  QString decoderErr;
+  auto decoder = sf::VideoDecoder::open(filePath, {}, &decoderErr);
   for (qint64 t = 0; t < totalMs; t += stepMs) {
-    QString decErr;
-    QImage frame = sf::decodeFrame(filePath, t, &decErr);
+    QImage frame;
+    if (decoder && decoder->frameCount() > 0) {
+      const auto vf = decoder->frameAt(decoder->indexAtTime(t / 1000.0));
+      if (vf) frame = vf->image;
+    } else if (!decoder) {
+      // decoder open failed: keep the old one-shot helper so analysis still works
+      QString decErr;
+      frame = sf::decodeFrame(filePath, t, &decErr);
+    }
     if (!frame.isNull()) {
       SamplePoint pt;
       pt.timeMs = t;
       pt.frame = static_cast<qint64>(std::round((t / 1000.0) * fps));
       pt.sharpness = calculateSharpness(frame);
       calculateLuma(frame, &pt.luma, &pt.clippedPct);
-      pt.motion = prevFrame.isNull() ? 0.0 : calculateMotion(prevFrame, frame);
-      pt.frameImg = frame;
+      const QImage thumb = (frame.width() > 320) ? frame.scaledToWidth(320, Qt::FastTransformation) : frame;
+      // motion on the 320 px copies: calculateMotion downscales to 320 anyway
+      pt.motion = prevThumb.isNull() ? 0.0 : calculateMotion(prevThumb, thumb);
+      pt.frameImg = thumb;
 
       samples.push_back(pt);
-      prevFrame = frame;
+      prevThumb = thumb;
     }
 
     if (progressCb && totalMs > 0) {

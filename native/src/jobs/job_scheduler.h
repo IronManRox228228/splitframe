@@ -185,6 +185,7 @@ private:
   QString cacheDir_;
   std::vector<std::thread> workers_;
   bool stopping_ = false;
+  int exitedWorkers_ = 0; // workers acknowledge shutdown (bounded join in ~JobScheduler)
   quint64 nextSeq_ = 1;
   int running_ = 0, mlRunning_ = 0;
   QString manualReason_;

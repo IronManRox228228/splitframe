@@ -183,9 +183,9 @@ void registerCopilotCommands(engine::Engine* engine,
   engine->add(engine::CommandSpec{
     QStringLiteral("copilot.review.run"),
     QStringLiteral("reviewTimeline"),
-    QStringLiteral("Executes an autonomous self-review pass on the current timeline, checking technical and narrative continuity."),
+    QStringLiteral("Executes an autonomous self-review pass on the current timeline, checking technical and narrative continuity. With applySafeFixes=true the collected safe fixes are applied for real, all-or-nothing in one undo step, and the response reports autoFixApplied."),
     QStringLiteral("copilot"),
-    false,
+    true,
     true,
     QJsonObject{
       {QStringLiteral("type"), QStringLiteral("object")},
@@ -203,7 +203,29 @@ void registerCopilotCommands(engine::Engine* engine,
       if (args.contains(QStringLiteral("applySafeFixes"))) opts.applySafeFixes = args.value(QStringLiteral("applySafeFixes")).toBool();
       if (args.contains(QStringLiteral("passThreshold"))) opts.passThreshold = args.value(QStringLiteral("passThreshold")).toDouble(0.70);
 
-      const auto res = reviewEngine->reviewTimeline(ctx.session->project->doc(), ctx.session->project->assets(), catalog, opts);
+      auto res = reviewEngine->reviewTimeline(ctx.session->project->doc(), ctx.session->project->assets(), catalog, opts);
+      if (opts.applySafeFixes && !res.autoFixOps.isEmpty()) {
+        // The safe fixes only exist as ops above; apply them here for real, all-or-nothing
+        // in one undo group: a failure rolls the whole autofix back and reports false.
+        editor::Project& project = *ctx.session->project;
+        project.beginGroup(QStringLiteral("Review safe fixes"), ctx.actor());
+        bool applied = true;
+        for (const auto& opJson : res.autoFixOps) {
+          try {
+            const std::vector<Op> ops{parseOp(Rd(QJsonValue(opJson)))};
+            if (!project.apply(ops, QStringLiteral("Review safe fix"))) {
+              applied = false;
+              break;
+            }
+          } catch (...) {
+            applied = false;
+            break;
+          }
+        }
+        if (applied) project.endGroup();
+        else project.rollbackGroup();
+        res.autoFixApplied = applied;
+      }
       return engine::Result::success(res.toJson());
     }
   });
@@ -347,7 +369,7 @@ void registerCopilotCommands(engine::Engine* engine,
   engine->add(engine::CommandSpec{
     QStringLiteral("branch.merge"),
     QStringLiteral("mergeBranch"),
-    QStringLiteral("Merges changes from a source branch into the active branch."),
+    QStringLiteral("Merges changes from a source branch into the active branch. The active branch's items and tracks are made equal to the source branch's (no base-document three-way merge); `strategy` is accepted but only the default behaviour exists."),
     QStringLiteral("branch"),
     true,
     true,

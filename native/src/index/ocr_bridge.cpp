@@ -2,6 +2,7 @@
 
 #include <QUuid>
 #include <future>
+#include <mutex>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -29,6 +30,7 @@ struct OcrBridge::Impl {
   bool available = false;
 #ifdef _WIN32
   OcrEngine engine = nullptr;
+  std::mutex engineMutex; // one OcrEngine serves up to 4 pool threads: serialize RecognizeAsync
 #endif
 
   Impl() {
@@ -103,6 +105,8 @@ std::vector<OcrRecord> OcrBridge::recognize(const QImage& image,
       try {
         init_apartment(apartment_type::multi_threaded);
       } catch (...) {}
+      // one shared engine: concurrent RecognizeAsync calls from the index pool are racy
+      std::lock_guard<std::mutex> lk(impl_->engineMutex);
       return impl_->engine.RecognizeAsync(softwareBitmap).get();
     });
     auto ocrResult = ocrTask.get();

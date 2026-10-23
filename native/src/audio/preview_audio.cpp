@@ -84,6 +84,9 @@ PreviewAudio::~PreviewAudio() {
   d->cv.notify_all();
   d->th.join();
   d->out.stop();
+  // the clock source can be shared beyond this object (clockSource()); it must not keep
+  // pointing at the device impl above once this dies
+  d->clock->setOutput(nullptr);
 }
 
 bool PreviewAudio::openDevice(QString* error) {

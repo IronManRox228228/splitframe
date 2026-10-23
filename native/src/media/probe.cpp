@@ -138,18 +138,25 @@ QImage decodeFrame(const QString& path, qint64 atMs, QString* error) {
         flushing = true;
         avcodec_send_packet(dec.get(), nullptr);
       } else {
-        if (pkt->stream_index == v) avcodec_send_packet(dec.get(), pkt.get());
+        if (pkt->stream_index == v && avcodec_send_packet(dec.get(), pkt.get()) < 0) {
+          flushing = true; // decoder rejected the packet (corrupt stream): stop feeding, flush
+          avcodec_send_packet(dec.get(), nullptr);
+        }
         av_packet_unref(pkt.get());
       }
     }
     const int rc = avcodec_receive_frame(dec.get(), frame.get());
     if (rc == AVERROR(EAGAIN) && !flushing) continue;
     if (rc < 0) break;
-    // after a seek, decode forward to the frame that covers the requested time
-    if (atMs > 0 && frame->best_effort_timestamp != AV_NOPTS_VALUE && frame->best_effort_timestamp < target &&
-        frame->duration > 0 && frame->best_effort_timestamp + frame->duration <= target) {
-      av_frame_unref(frame.get());
-      continue;
+    // after a seek, decode forward to the frame that covers the requested time; with a
+    // 0-duration frame the end is unknown, so advance on any strictly-earlier frame instead
+    // of snapping to the post-seek keyframe
+    if (atMs > 0 && frame->best_effort_timestamp != AV_NOPTS_VALUE && frame->best_effort_timestamp < target) {
+      const bool covers = frame->duration > 0 ? frame->best_effort_timestamp + frame->duration <= target : true;
+      if (covers) {
+        av_frame_unref(frame.get());
+        continue;
+      }
     }
     QImage out(frame->width, frame->height, QImage::Format_RGBA8888);
     av::SwsPtr sws(sws_getContext(frame->width, frame->height, static_cast<AVPixelFormat>(frame->format), frame->width,

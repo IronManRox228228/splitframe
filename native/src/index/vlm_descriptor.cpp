@@ -40,7 +40,14 @@ VlmTag VlmDescriptor::describeKeyframe(const QImage& keyframe,
 
     agent::ChatMessage msg;
     msg.role = QStringLiteral("user");
-    msg.content = QStringLiteral("data:image/jpeg;base64,%1").arg(b64);
+    // multimodal content array: a plain-text data URL is never seen by vision models
+    msg.contentParts = QJsonArray{
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("text")},
+                  {QStringLiteral("text"), QStringLiteral("Describe this keyframe.")}},
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("image_url")},
+                  {QStringLiteral("image_url"), QJsonObject{{QStringLiteral("url"),
+                      QStringLiteral("data:image/jpeg;base64,%1").arg(b64)}}}}};
+    msg.content = QStringLiteral("[keyframe attached]");
 
     QJsonObject resp = llm_->complete(systemPrompt, {msg});
     QString content = resp.value(QStringLiteral("content")).toString().trimmed();
@@ -61,19 +68,13 @@ VlmTag VlmDescriptor::describeKeyframe(const QImage& keyframe,
       tag.shotType = obj.value(QStringLiteral("shot_type")).toString();
       tag.subject = obj.value(QStringLiteral("subject")).toString();
     } else if (!content.isEmpty()) {
+      // A free-form reply is still a real description; shot/subject stay unset (not invented).
       tag.summary = content;
-      tag.shotType = QStringLiteral("medium");
-      tag.subject = QStringLiteral("scene");
     }
   }
 
-  // Fallback defaults if LLM didn't produce structured tags
-  if (tag.summary.isEmpty()) {
-    tag.summary = QStringLiteral("Scene %1 in %2").arg(sceneId, assetId);
-    tag.shotType = QStringLiteral("medium");
-    tag.subject = QStringLiteral("footage");
-  }
-
+  // No fabricated default here: when no VLM was available (or it failed) a tag that pretends
+  // to describe the frame must not enter the catalog/FTS. The caller skips empty summaries.
   return tag;
 }
 

@@ -128,6 +128,28 @@ private slots:
     QVERIFY(run({Q("--json"), Q("commands"), Q("--domain"), Q("branch")}).json().value(Q("result")).toObject().value(Q("commands")).toArray().size() >= 5);
   }
 
+  // Part A items 1 and 3 (vendor-neutral surface): the provider is queryable. The local
+  // OpenAI-compatible provider reports provider/base URL/model with a live reachability boolean;
+  // the Meterless routing/lane surface is gone.
+  void providerSurfaceCommands() {
+    Engine e;
+    ai::AiServices services(e, mockOptions(script_));
+    bool hasStatus = false, hasRoute = false;
+    for (const auto& c : e.commands()) {
+      hasStatus |= c->name == Q("agent.provider.status");
+      hasRoute |= c->name == Q("agent.provider.route");
+    }
+    QVERIFY(hasStatus);
+    QVERIFY2(!hasRoute, "the Meterless routing command is gone");
+    const Result status = e.call(Q("agent.provider.status"));
+    QVERIFY(status.ok);
+    const QJsonObject st = status.value.toObject();
+    QCOMPARE(st.value(Q("provider")).toString(), Q("local"));
+    QCOMPARE(st.value(Q("endpoint")).toString(), Q("mock"));
+    QVERIFY(st.value(Q("reachable")).toBool());
+    QVERIFY(st.value(Q("model")).toString().isEmpty() == false);
+  }
+
   void agentCommandChangesTheProjectAndSaves() {
     const QString out = dir_.filePath(Q("agent_out.json"));
     Run r = run(withArgs({Q("--json"), Q("agent"), Q("add a marker at frame 15"), Q("--project"), project_, Q("--out"), out}, mock()));

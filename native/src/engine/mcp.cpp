@@ -65,7 +65,7 @@ QJsonObject McpServer::toolsList() const {
   QJsonArray tools;
   for (const auto& c : engine_.commands()) {
     QJsonObject annotations{{q("readOnlyHint"), !c->mutates}, {q("openWorldHint"), false}};
-    if (c->mutates) annotations.insert(q("destructiveHint"), false); // edits are undoable (history.undo)
+    if (c->mutates) annotations.insert(q("destructiveHint"), !c->undoable); // edits are undoable (history.undo); project.color.set is not
     QJsonObject tool{{q("name"), toolName(c->name)}, {q("title"), c->name}, {q("description"), c->description}, {q("inputSchema"), c->inputSchema},
                      {q("annotations"), annotations}, {q("_meta"), QJsonObject{{q("splitframe/domain"), c->domain}, {q("splitframe/command"), c->name}}}};
     tools.append(tool);

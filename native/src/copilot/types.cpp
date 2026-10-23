@@ -90,6 +90,7 @@ QJsonObject BranchDiff::toJson() const {
     {QStringLiteral("modifiedItemIds"), QJsonArray::fromStringList(modifiedItemIds)},
     {QStringLiteral("trackChanges"), QJsonArray::fromStringList(trackChanges)}
   };
+  if (!error.isEmpty()) o.insert(QStringLiteral("error"), error);
   return o;
 }
 
