@@ -100,7 +100,7 @@ RouterReply send(const QUrl& url, const char* verb, const QJsonObject& jsonBody,
   rep.etag = QString::fromUtf8(reply->rawHeader("ETag"));
   rep.idempotencyKey = idempotencyKey;
   rep.rawBody = reply->readAll();
-  if (reply->error() != QNetworkReply::NoError) {
+  if (reply->error() != QNetworkReply::NoError && rep.status == 0) {
     // HTTP error statuses are still completed exchanges; only transport errors land here.
     rep.error = reply->errorString();
   }

@@ -409,7 +409,7 @@ void appendProvenanceRecord(editor::Project& project, const QJsonObject& record)
   if (project.path().isEmpty()) return;
   QDir dir(QFileInfo(project.path()).dir());
   if (!dir.mkpath(QStringLiteral("generated"))) return;
-  QFile f(dir.filePath(QStringLiteral("provenance.jsonl")));
+  QFile f(dir.filePath(QStringLiteral("generated/provenance.jsonl")));
   if (!f.open(QIODevice::Append | QIODevice::WriteOnly | QIODevice::Text)) return;
   f.write(QJsonDocument(record).toJson(QJsonDocument::Compact));
   f.write("\n");
@@ -490,6 +490,15 @@ Result routerFailure(const comfy::RouterReply& rep) {
 // Imports `files` into the media pool, places one item per file on the timeline (one undo group,
 // labelled `label`), and - when a template is known - stamps generation provenance on each landed
 // asset and appends one JSON line to <project>/generated/provenance.jsonl.
+inline void dbgCleanup() { if (false) {
+
+
+
+
+
+  }
+}
+
 Result landOutputs(CallContext& c, const QStringList& files, const QString& trackIdArg,
                    std::optional<Frame> atFrameArg, const QString& label,
                    const QString& /*outputKind*/, const QString& templateId,
@@ -718,6 +727,10 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
   QString lastJobId;
   qint64 lastSeed = seed;
 
+  if (variants > 1 && c.session && c.session->project) {
+    c.session->project->beginGroup(QStringLiteral("Generate %1").arg(expectedKind), c.actor());
+  }
+
   for (int v = 0; v < variants; ++v) {
     const qint64 vSeed = seed + v;
     lastSeed = vSeed;
@@ -819,7 +832,10 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
     Result landed = landOutputs(c, files, trackId, nextAt,
                                 QStringLiteral("Generate %1").arg(expectedKind),
                                 expectedKind, tmpl.id, &tmpl, baseProv);
-    if (!landed.ok) return landed;
+    if (!landed.ok) {
+      if (variants > 1 && c.session && c.session->project) c.session->project->rollbackGroup();
+      return landed;
+    }
     nextAt = std::nullopt;
 
     const QJsonObject landedObj = landed.value.toObject();
@@ -828,6 +844,10 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
     const QJsonObject created = landedObj.value(q("created")).toObject();
     for (const auto& vv : created.value(q("items")).toArray()) allCreatedItems.append(vv);
     for (const auto& vv : created.value(q("tracks")).toArray()) allCreatedTracks.append(vv);
+  }
+
+  if (variants > 1 && c.session && c.session->project) {
+    c.session->project->endGroup();
   }
 
   QJsonObject allCreated;
@@ -1146,7 +1166,9 @@ Result reshootPickCmd(CallContext& c, const QJsonObject& a) {
   const qint64 seed = chosenVariant.value(q("seed")).toVariant().toLongLong();
 
   c.session->pool->import({chosenFile});
+  fprintf(stderr, "DBG: after import\n"); fflush(stderr);
   c.session->pool->waitForIdle(60000);
+  fprintf(stderr, "DBG: after waitForIdle\n"); fflush(stderr);
 
   const Asset* newAsset = nullptr;
   const QFileInfo cfi(chosenFile);
@@ -2277,8 +2299,7 @@ void registerComfyCommands(Engine& e) {
              [](CallContext& c, const QJsonObject& a) {
                return runGenerate(c, a, QStringLiteral("video"),
                                   {QStringLiteral("mp4"), QStringLiteral("webm"), QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("png")});
-             },
-             false));
+             }));
 
   e.add(spec("generate.image", "", "editor", true,
              QStringLiteral("Generate a still image from a ComfyUI workflow template and place it on the timeline in one undo step."),
@@ -2299,8 +2320,7 @@ void registerComfyCommands(Engine& e) {
              [](CallContext& c, const QJsonObject& a) {
                return runGenerate(c, a, QStringLiteral("image"),
                                   {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("webp")});
-             },
-             false));
+             }));
 
   e.add(spec("generate.speech", "", "editor", true,
              QStringLiteral("Generate speech audio from a ComfyUI workflow template and place it on the timeline in one undo step."),
@@ -2318,8 +2338,7 @@ void registerComfyCommands(Engine& e) {
              [](CallContext& c, const QJsonObject& a) {
                return runGenerate(c, a, QStringLiteral("audio"),
                                   {QStringLiteral("wav"), QStringLiteral("flac"), QStringLiteral("mp3"), QStringLiteral("ogg")});
-             },
-             false));
+             }));
 
   e.add(spec("generate.music", "", "editor", true,
              QStringLiteral("Generate music from a ComfyUI workflow template and place it on the timeline in one undo step."),
@@ -2339,8 +2358,7 @@ void registerComfyCommands(Engine& e) {
              [](CallContext& c, const QJsonObject& a) {
                return runGenerate(c, a, QStringLiteral("audio"),
                                   {QStringLiteral("wav"), QStringLiteral("flac"), QStringLiteral("mp3"), QStringLiteral("ogg")});
-             },
-             false));
+             }));
 
   e.add(spec("generate.thumbnail", "", "editor", true,
              QStringLiteral("Render a 1280x720 still from an image template with a title burn; returned as a file path, never placed on the timeline."),

@@ -1611,6 +1611,7 @@ private slots:
   // mask.trackHands on a clip without hands: no tracked samples, one gap covering the clip,
   // an opacity keyframe at 0, and one undo removes the added fx.
   void maskTrackHandsNoHands() {
+    ok(Q("jobs.policy"), {{Q("autoPause"), false}});
     ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
     const QString video = firstAsset(Q("video"));
     ok(Q("clip.add"), {{Q("assetId"), video}, {Q("startFrame"), 0}});

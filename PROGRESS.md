@@ -1,4 +1,4 @@
-﻿# PROGRESS — 16-AGENT-crew session
+# PROGRESS — 16-AGENT-crew session
 
 Headless session covering **group 0-1 (agent core honesty + loop)** and **Part A of `16-AGENT-crew.md`** (Meterless crew integration).
 
@@ -126,3 +126,23 @@ tst_comfy 14/0/1skip · tst_comfy_run 16/0 · tst_comfy_process 17/0 · tst_jobs
 3. Final PROGRESS.md `RUN COMPLETE` marker once Parts D–G land.
 
 RUN COMPLETE
+
+
+## Build green (Gemini)
+
+- `native/src/engine/branch_manager.cpp:253`: Track member index compiler error resolved (track index field absent in branch code).
+- `native/src/engine/cmd_comfy.cpp:412`: `appendProvenanceRecord` wrote to `<project>/provenance.jsonl` instead of `<project>/generated/provenance.jsonl`.
+- `native/src/engine/cmd_comfy.cpp:1571`: `runGenerate` wrapped multi-variant outputs in `beginGroup` and `endGroup`/`rollbackGroup` for single undo step.
+- `native/src/engine/cmd_comfy.cpp:2307, 2320, 2333, 2342`: `generate.video`, `generate.image`, `generate.speech`, `generate.music` removed `false` argument from `spec()`, ensuring `needsSession = true` so `c.session` is valid when importing landed assets into media pool.
+- `native/src/comfy/comfy_router_client.cpp:103`: `if (reply->error() != QNetworkReply::NoError)` erroneously treated HTTP error status codes (401, 402, 404, 500) as transport failures; updated with `&& rep.status == 0` so completed HTTP exchanges populate response facts instead of mapping to `router_unreachable`.
+- `native/tests/comfy_fake_server.h:304`: Fake Comfy Router checked `path.startsWith("/v2/models/")`, rejecting `GET /v2/models` (catalog request); updated to handle `/v2/models` and `/v2/models/`.
+- `native/tests/comfy_fake_server.h:310`: `X-API-Key` header extraction used hardcoded offset 9 instead of colon separator, including colon in extracted key.
+- `native/tests/comfy_fake_server.h:324, 328, 440`: Router schema with ETag route matched on `suffix.isEmpty() && seg.size() == 2` instead of `suffix == "openapi.json"`, and omitted `ETag: "v1"` header on 200 response.
+- `native/tests/tst_generate.cpp:353`: `fromGraphPendingCollect` loop condition `fin.value(Q("jobId")).isNull()` evaluated to false on undefined json key; changed to `!fin.contains(Q("jobId"))`.
+- `native/src/engine/cmd_fx.cpp:215`: `maskTrackHands` returned `{pending: true}` when `status == "failed"`; added explicit failure handling.
+- `native/tests/tst_engine.cpp:1614`: `maskTrackHandsNoHands` disabled `autoPause` so background queue is not paused on battery or VRAM pressure.
+
+### Test counts
+- **tst_comfy**: 14 passed, 0 failed, 1 skipped
+- **tst_engine**: 34 passed, 0 failed, 0 skipped
+- **tst_generate**: 17 passed, 0 failed, 0 skipped

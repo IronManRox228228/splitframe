@@ -350,12 +350,12 @@ private slots:
 
     // poll generate.collect until the job state is Done
     QJsonObject fin;
-    for (int i = 0; i < 200 && fin.value(Q("jobId")).isNull(); ++i) {
+    for (int i = 0; i < 200 && !fin.contains(Q("jobId")); ++i) {
       const Result rr = tryCall(Q("generate.collect"), {{Q("jobId"), jobId}});
       if (rr.ok) fin = rr.value.toObject();
       else QTest::qWait(50);
     }
-    QVERIFY2(!fin.value(Q("jobId")).isNull(), "generate.collect never succeeded");
+    QVERIFY2(fin.contains(Q("jobId")), "generate.collect never succeeded");
     QCOMPARE(fin.value(Q("files")).toArray().size(), 1);
     QCOMPARE(fin.value(Q("created")).toObject().value(Q("items")).toArray().size(), 1);
     QCOMPARE(timelineItemCount(), 1);

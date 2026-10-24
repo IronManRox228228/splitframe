@@ -301,13 +301,13 @@ class FakeComfyServer {
           }
           QJsonObject intObj{{QStringLiteral("status"), QStringLiteral("interrupted")}};
           respBody = QJsonDocument(intObj).toJson(QJsonDocument::Compact);
-        } else if (path.startsWith(QLatin1String("/v2/models/"))) {
+        } else if (path == QLatin1String("/v2/models") || path.startsWith(QLatin1String("/v2/models/"))) {
           // Minimal Comfy Router API surface (15-GEN Part G tests): catalog, one model, schema with
           // ETag, queued submit/status/collect/cancel, and the error shapes the engine maps.
           QString apiKey, etagHdr;
           for (const auto& rawLine : lines) {
             const auto line = rawLine.trimmed();
-            if (line.toLower().startsWith("x-api-key:")) apiKey = line.mid(9).trimmed();
+            if (line.toLower().startsWith("x-api-key:")) apiKey = line.mid(line.indexOf(':') + 1).trimmed();
             if (line.toLower().startsWith("if-none-match:")) etagHdr = QString::fromUtf8(line.mid(14).trimmed());
           }
           QString errorHdr;
@@ -321,11 +321,12 @@ class FakeComfyServer {
             errorHdr = QStringLiteral("unauthorized");
             respBody = QJsonDocument(QJsonObject{{QStringLiteral("detail"), QStringLiteral("Missing API key")}}).toJson(QJsonDocument::Compact);
           } else {
-            const QStringList seg = path.mid(QLatin1String("/v2/models/").size()).split(QLatin1Char('/'), Qt::SkipEmptyParts);
+            QString sub = path.mid(QLatin1String("/v2/models").size()); if (sub.startsWith(QLatin1Char('/'))) sub.remove(0, 1); const QStringList seg = sub.split(QLatin1Char('/'), Qt::SkipEmptyParts);
             const QString modelId = seg.size() >= 2 ? seg.at(0) + QLatin1Char('/') + seg.at(1) : QString();
             const QString suffix = seg.size() >= 3 ? seg.mid(2).join(QLatin1Char('/')) : QString();
 
-            if (suffix.isEmpty() && seg.size() == 2 && modelId.startsWith(QLatin1String("test/schema"))) {
+            if (suffix == QLatin1String("openapi.json")) {
+              extraHeaders += "ETag: \"v1\"\r\n";
               // openapi.json with an ETag; If-None-Match "v1" -> 304 (no body)
               if (etagHdr == QLatin1String("\"v1\"")) {
                 statusCode = 304;
@@ -436,7 +437,7 @@ class FakeComfyServer {
               }
             }
             if (!errorHdr.isEmpty()) extraHeaders += "X-Comfy-Error-Type: " + errorHdr.toUtf8() + "\r\n";
-            if (statusCode == 304) extraHeaders += "ETag: \"v1\"\r\n";
+            if (statusCode == 304 && !extraHeaders.contains("ETag:")) extraHeaders += "ETag: \"v1\"\r\n";
           }
         } else {
           statusCode = 404;

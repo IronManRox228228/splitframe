@@ -212,6 +212,7 @@ Result maskTrackHands(CallContext& c, const QJsonObject& a) {
   const Result ar = c.engine->call(q("analysis.get"), getArgs);
   if (!ar.ok) return ar;
   const QJsonObject g = ar.value.toObject();
+  if (g.value(q("status")).toString() == q("failed")) return Result::failure(q("analysis_failed"), g.value(q("error")).toString());
   if (g.value(q("status")).toString() != q("done"))
     return Result::success(QJsonObject{{q("pending"), true}, {q("jobId"), g.value(q("jobId"))}});
   const QJsonArray frames = g.value(q("result")).toObject().value(q("frames")).toArray();
