@@ -45,6 +45,8 @@ public:
   QJsonObject skipPending();
   bool hasPending() const { return pending_.kind != PendingKind::None; }
 
+  QString currentProjectDir() const;
+
   // Register agent commands into the engine (agent.turn, agent.mode.get/set, agent.team_thread, etc.)
   void registerCommands(engine::Engine& engine);
 

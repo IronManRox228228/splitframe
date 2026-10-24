@@ -39,6 +39,7 @@ public:
   explicit RecordingLlmClient(std::shared_ptr<LlmClient> inner) : inner_(std::move(inner)) {}
   QJsonObject complete(const QString& systemPrompt, const std::vector<ChatMessage>& messages, const QJsonArray& tools = {}, int slotId = -1) override;
   bool reachable(QString* error = nullptr) const override;
+  QString lastObservedModel() const override { return inner_ ? inner_->lastObservedModel() : QString(); }
   void clearError() { lastError_.clear(); }
   const QString& lastError() const { return lastError_; }
   const std::shared_ptr<LlmClient>& inner() const { return inner_; }

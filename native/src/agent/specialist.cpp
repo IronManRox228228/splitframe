@@ -1,7 +1,9 @@
 #include "agent/specialist.h"
+#include "agent/trace.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QUuid>
 
 namespace sf::agent {
 
@@ -287,6 +289,8 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
   QJsonObject result;
   result.insert(QStringLiteral("specialist"), name());
 
+  const QString runId = !currentRunId_.isEmpty() ? currentRunId_ : QUuid::createUuid().toString(QUuid::WithoutBraces);
+
   addMessage(ChatMessage{
     .role = QStringLiteral("user"),
     .content = userMessage
@@ -296,6 +300,16 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
     result.insert(QStringLiteral("content"), QString());
     result.insert(QStringLiteral("status"), QStringLiteral("error"));
     result.insert(QStringLiteral("error"), QStringLiteral("no_llm_client"));
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = name(),
+      .role = domain(),
+      .action = QStringLiteral("error"),
+      .inputSummary = userMessage,
+      .status = QStringLiteral("error"),
+      .retryCount = 0,
+      .error = QStringLiteral("no_llm_client")
+    }, projectDir_);
     return result;
   }
 
@@ -310,6 +324,19 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
   bool hitCap = false;
 
   for (int round = 0; round < kMaxToolRounds; ++round) {
+    if (round > 0) {
+      logAgentTrace(AgentTraceRecord{
+        .runId = runId,
+        .agentName = name(),
+        .role = domain(),
+        .action = QStringLiteral("retry"),
+        .inputSummary = QStringLiteral("Turn round %1").arg(round),
+        .model = llm_->lastObservedModel(),
+        .status = QStringLiteral("success"),
+        .retryCount = round
+      }, projectDir_);
+    }
+
     QJsonObject llmResp = llm_->complete(enrichedPrompt, history_, availableTools(), slotId_);
     const QJsonValue errVal = llmResp.value(QStringLiteral("error"));
     QJsonArray toolCalls = llmResp.value(QStringLiteral("tool_calls")).toArray();
@@ -317,7 +344,20 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
 
     if (!errVal.isUndefined() && !errVal.isNull() && respContent.isEmpty() && toolCalls.isEmpty()) {
       status = QStringLiteral("error");
-      result.insert(QStringLiteral("error"), errVal.isString() ? errVal.toString() : QStringLiteral("llm_error"));
+      const QString code = llmErrorCode(llmResp);
+      const QString finalErr = !code.isEmpty() ? code : (errVal.isString() ? errVal.toString() : QStringLiteral("llm_error"));
+      result.insert(QStringLiteral("error"), finalErr);
+      logAgentTrace(AgentTraceRecord{
+        .runId = runId,
+        .agentName = name(),
+        .role = domain(),
+        .action = QStringLiteral("error"),
+        .inputSummary = userMessage,
+        .model = llm_->lastObservedModel(),
+        .status = QStringLiteral("error"),
+        .retryCount = round,
+        .error = finalErr
+      }, projectDir_);
       break;
     }
 
@@ -327,7 +367,22 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       .toolCalls = toolCalls
     });
 
-    if (toolCalls.isEmpty()) break;
+    if (toolCalls.isEmpty()) {
+      if (!respContent.isEmpty()) {
+        logAgentTrace(AgentTraceRecord{
+          .runId = runId,
+          .agentName = name(),
+          .role = domain(),
+          .action = QStringLiteral("message"),
+          .inputSummary = userMessage,
+          .outputSummary = respContent,
+          .model = llm_->lastObservedModel(),
+          .status = QStringLiteral("success"),
+          .retryCount = round
+        }, projectDir_);
+      }
+      break;
+    }
 
     for (const auto& tcVal : toolCalls) {
       QJsonObject tc = tcVal.toObject();
@@ -371,6 +426,25 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
         toolResult = executeCommand(fnName, fnArgs, sessionId).toJson();
       }
 
+      const bool isPeer = (fnName == QStringLiteral("peer_request"));
+      const QString targetAgent = isPeer ? fnArgs.value(QStringLiteral("to")).toString() : QString();
+      const bool ok = toolResult.value(QStringLiteral("ok")).toBool(true);
+      const QString toolStatus = (policy == TurnPolicy::Propose && mutating) ? QStringLiteral("needs_revision") : (ok ? QStringLiteral("success") : QStringLiteral("error"));
+      logAgentTrace(AgentTraceRecord{
+        .runId = runId,
+        .agentName = name(),
+        .role = domain(),
+        .action = QStringLiteral("tool_call"),
+        .inputSummary = QString::fromUtf8(QJsonDocument(fnArgs).toJson(QJsonDocument::Compact)),
+        .outputSummary = QString::fromUtf8(QJsonDocument(toolResult).toJson(QJsonDocument::Compact)),
+        .targetAgent = targetAgent,
+        .tool = fnName,
+        .model = llm_->lastObservedModel(),
+        .status = toolStatus,
+        .retryCount = round,
+        .error = ok ? QString() : toolResult.value(QStringLiteral("error")).toString()
+      }, projectDir_);
+
       QJsonObject row{
         {QStringLiteral("call_id"), callId},
         {QStringLiteral("name"), fnName},
@@ -393,6 +467,17 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
   if (hitCap && status == QStringLiteral("ok")) {
     status = QStringLiteral("error");
     result.insert(QStringLiteral("error"), QStringLiteral("tool_loop_limit"));
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = name(),
+      .role = domain(),
+      .action = QStringLiteral("error"),
+      .inputSummary = userMessage,
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("error"),
+      .retryCount = kMaxToolRounds,
+      .error = QStringLiteral("tool_loop_limit")
+    }, projectDir_);
   }
 
   if (!allToolResults.isEmpty()) result.insert(QStringLiteral("tool_results"), allToolResults);

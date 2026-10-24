@@ -15,6 +15,14 @@
 
 namespace sf::agent {
 
+// Strips <think>...</think> and markdown ```think...``` fences, plus separate reasoning/reasoning_content fields.
+QJsonObject stripReasoning(const QJsonObject& message);
+
+// Maps response error representation to one of:
+// provider_unreachable, provider_auth, model_not_found, rate_limited, provider_error.
+// Returns an empty QString if the response has no error code or is unmapped.
+QString llmErrorCode(const QJsonObject& resp);
+
 // LLM lanes are a product-level routing idea: Fast = planning/tool-calling turns, Deep =
 // generation-prompt and storyboard writing, Judge = peer review. The agent mesh (Part C) picks
 // a lane per call by purpose; with one OpenAI-compatible provider all lanes share its model.
@@ -45,6 +53,9 @@ public:
     if (error) error->clear();
     return true;
   }
+
+  // Observed model id from the response (differs from requested when substituted by the provider).
+  virtual QString lastObservedModel() const { return {}; }
 };
 
 // Mock LLM client for deterministic unit testing.
@@ -74,6 +85,9 @@ public:
   void setLane(Lane lane) { laneOverride_ = lane; }
   Lane lastLane() const { return laneOverride_; }
 
+  void setLastObservedModel(QString model) { lastObservedModel_ = std::move(model); }
+  QString lastObservedModel() const override { return lastObservedModel_; }
+
   const std::vector<CallRecord>& calls() const { return calls_; }
   void clearCalls() { calls_.clear(); }
 
@@ -85,6 +99,7 @@ private:
     {QStringLiteral("content"), QStringLiteral("Acknowledged.")}
   };
   std::vector<CallRecord> calls_;
+  QString lastObservedModel_;
 };
 
 // HTTP client connecting to llama-server over OpenAI-compatible endpoint.
@@ -106,11 +121,14 @@ public:
   const QString& apiKey() const { return apiKey_; }
   bool reachable(QString* error = nullptr) const override;
 
+  QString lastObservedModel() const override { return lastObservedModel_; }
+
 private:
   QString endpoint_;
   QString model_;
   QString apiKey_;
   int timeoutMs_ = 30000;
+  QString lastObservedModel_;
 };
 
 // TCP connect to host:port of an OpenAI-style URL. True for empty/"mock".

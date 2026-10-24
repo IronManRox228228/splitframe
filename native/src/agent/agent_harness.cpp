@@ -1,6 +1,9 @@
 #include "agent/agent_harness.h"
+#include "agent/trace.h"
 
+#include <QFileInfo>
 #include <QJsonArray>
+#include <QUuid>
 
 namespace sf::agent {
 
@@ -37,6 +40,15 @@ Specialist* AgentHarness::specialist(SpecialistKind kind) const {
   return it != specialists_.end() ? it->second.get() : nullptr;
 }
 
+QString AgentHarness::currentProjectDir() const {
+  if (!engine_) return QString();
+  engine::Session* s = engine_->session(lastSessionId_);
+  if (s && s->project && !s->project->path().isEmpty()) {
+    return QFileInfo(s->project->path()).absolutePath();
+  }
+  return QString();
+}
+
 QJsonArray AgentHarness::applyProposed(Specialist* sp, const QJsonArray& proposed, const QString& sessionId) {
   QJsonArray results;
   if (!sp) return results;
@@ -70,6 +82,18 @@ QJsonArray AgentHarness::applyProposed(Specialist* sp, const QJsonArray& propose
 }
 
 QJsonObject AgentHarness::skipPending() {
+  const QString projDir = currentProjectDir();
+  logAgentTrace(AgentTraceRecord{
+    .runId = QUuid::createUuid().toString(QUuid::WithoutBraces),
+    .agentName = QStringLiteral("harness"),
+    .role = QStringLiteral("coordinator"),
+    .action = QStringLiteral("critique"),
+    .inputSummary = pending_.message.isEmpty() ? QStringLiteral("skipPending") : pending_.message,
+    .outputSummary = QStringLiteral("Pending plan skipped/discarded"),
+    .model = llm_ ? llm_->lastObservedModel() : QString(),
+    .status = QStringLiteral("needs_revision"),
+    .retryCount = 0
+  }, projDir);
   pending_ = {};
   return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("skipped"), true}};
 }
@@ -77,14 +101,31 @@ QJsonObject AgentHarness::skipPending() {
 QJsonObject AgentHarness::runPending(const QString& sessionId) {
   QJsonObject out;
   out.insert(QStringLiteral("ok"), true);
-  if (pending_.kind == PendingKind::None) {
-    out.insert(QStringLiteral("ok"), false);
-    out.insert(QStringLiteral("error"), QStringLiteral("no_pending_plan"));
-    return out;
-  }
 
   const QString sess = !sessionId.isEmpty() ? sessionId : pending_.sessionId;
   lastSessionId_ = sess;
+  const QString runId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+  const QString projDir = currentProjectDir();
+  bus_->setCurrentRun(runId, projDir);
+  for (auto& [k, sp] : specialists_) sp->setCurrentRun(runId, projDir);
+
+  if (pending_.kind == PendingKind::None) {
+    out.insert(QStringLiteral("ok"), false);
+    out.insert(QStringLiteral("error"), QStringLiteral("no_pending_plan"));
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = QStringLiteral("harness"),
+      .role = QStringLiteral("coordinator"),
+      .action = QStringLiteral("error"),
+      .inputSummary = QStringLiteral("runPending"),
+      .outputSummary = QStringLiteral("no pending plan"),
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("error"),
+      .retryCount = 0,
+      .error = QStringLiteral("no_pending_plan")
+    }, projDir);
+    return out;
+  }
 
   if (pending_.kind == PendingKind::Ask) {
     Specialist* sp = specialist(pending_.specialist);
@@ -94,6 +135,19 @@ QJsonObject AgentHarness::runPending(const QString& sessionId) {
     if (engine_) engine_->call(QStringLiteral("session.group.begin"), groupArgs);
     QJsonArray toolResults = applyProposed(sp, pending_.proposed, sess);
     if (engine_) engine_->call(QStringLiteral("session.group.end"), groupArgs);
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = QStringLiteral("harness"),
+      .role = QStringLiteral("coordinator"),
+      .action = QStringLiteral("tool_call"),
+      .inputSummary = pending_.message,
+      .outputSummary = QStringLiteral("Applied %1 proposed change(s)").arg(toolResults.size()),
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("success"),
+      .retryCount = 0
+    }, projDir);
+
     pending_ = {};
     out.insert(QStringLiteral("applied"), true);
     out.insert(QStringLiteral("toolResults"), toolResults);
@@ -113,6 +167,11 @@ QJsonObject AgentHarness::runPending(const QString& sessionId) {
 
 QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString& sessionId) {
   lastSessionId_ = sessionId;
+  const QString runId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+  const QString projDir = currentProjectDir();
+  bus_->setCurrentRun(runId, projDir);
+  for (auto& [k, sp] : specialists_) sp->setCurrentRun(runId, projDir);
+
   RouteResult route = router_->route(userMessage);
 
   Specialist* primary = specialist(route.primary);
@@ -131,6 +190,35 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
     out.insert(QStringLiteral("status"), res.value(QStringLiteral("status")));
     if (res.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), res.value(QStringLiteral("error")));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+
+    const QString resStatus = res.value(QStringLiteral("status")).toString();
+    if (resStatus == QStringLiteral("error") || res.contains(QStringLiteral("error"))) {
+      logAgentTrace(AgentTraceRecord{
+        .runId = runId,
+        .agentName = primary ? primary->name() : QStringLiteral("harness"),
+        .role = primary ? primary->domain() : QStringLiteral("coordinator"),
+        .action = QStringLiteral("error"),
+        .inputSummary = userMessage,
+        .outputSummary = res.value(QStringLiteral("content")).toString(),
+        .model = llm_ ? llm_->lastObservedModel() : QString(),
+        .status = QStringLiteral("error"),
+        .retryCount = 0,
+        .error = res.value(QStringLiteral("error")).toString()
+      }, projDir);
+    } else {
+      logAgentTrace(AgentTraceRecord{
+        .runId = runId,
+        .agentName = primary ? primary->name() : QStringLiteral("harness"),
+        .role = primary ? primary->domain() : QStringLiteral("coordinator"),
+        .action = QStringLiteral("message"),
+        .inputSummary = userMessage,
+        .outputSummary = res.value(QStringLiteral("content")).toString(),
+        .model = llm_ ? llm_->lastObservedModel() : QString(),
+        .status = QStringLiteral("success"),
+        .retryCount = 0
+      }, projDir);
+    }
+
     emit turnCompleted(out);
     return out;
   }
@@ -160,6 +248,19 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
     });
     out.insert(QStringLiteral("response"), QStringLiteral("Plan created. Call agent.plan.run to execute."));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = QStringLiteral("harness"),
+      .role = QStringLiteral("coordinator"),
+      .action = QStringLiteral("plan"),
+      .inputSummary = userMessage,
+      .outputSummary = QStringLiteral("Plan created with %1 steps").arg(steps.size()),
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("success"),
+      .retryCount = 0
+    }, projDir);
+
     emit turnCompleted(out);
     return out;
   }
@@ -181,7 +282,21 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
                  : turnRes.value(QStringLiteral("content")));
     out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
     out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
+    if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = QStringLiteral("harness"),
+      .role = QStringLiteral("coordinator"),
+      .action = QStringLiteral("escalate"),
+      .inputSummary = userMessage,
+      .outputSummary = QStringLiteral("Proposed %1 change(s) awaiting approval").arg(pending_.proposed.size()),
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("needs_revision"),
+      .retryCount = 0
+    }, projDir);
+
     emit turnCompleted(out);
     return out;
   }
@@ -206,6 +321,34 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
   out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
   if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
   out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+
+  const QString turnStatus = turnRes.value(QStringLiteral("status")).toString();
+  if (turnStatus == QStringLiteral("error") || turnRes.contains(QStringLiteral("error"))) {
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = primary ? primary->name() : QStringLiteral("harness"),
+      .role = primary ? primary->domain() : QStringLiteral("coordinator"),
+      .action = QStringLiteral("error"),
+      .inputSummary = userMessage,
+      .outputSummary = turnRes.value(QStringLiteral("content")).toString(),
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("error"),
+      .retryCount = 0,
+      .error = turnRes.value(QStringLiteral("error")).toString()
+    }, projDir);
+  } else {
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = primary ? primary->name() : QStringLiteral("harness"),
+      .role = primary ? primary->domain() : QStringLiteral("coordinator"),
+      .action = QStringLiteral("message"),
+      .inputSummary = userMessage,
+      .outputSummary = turnRes.value(QStringLiteral("content")).toString(),
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("success"),
+      .retryCount = 0
+    }, projDir);
+  }
 
   emit turnCompleted(out);
   return out;
@@ -364,6 +507,32 @@ void AgentHarness::registerCommands(engine::Engine& engine) {
     .handler = [this](engine::CallContext&, const QJsonObject& a) {
       RouteResult r = router_->route(a.value(QStringLiteral("message")).toString());
       return engine::Result::success(r.toJson());
+    }
+  });
+
+  // agent.trace: Read back the last N lines from the agent trace log
+  engine.add(engine::CommandSpec{
+    .name = QStringLiteral("agent.trace"),
+    .alias = QStringLiteral("agentTrace"),
+    .description = QStringLiteral("Read back the last N lines from the agent trace log (SF_AGENT_TRACE or agent-trace.jsonl)."),
+    .domain = QStringLiteral("engine"),
+    .mutates = false,
+    .needsSession = false,
+    .inputSchema = QJsonObject{
+      {QStringLiteral("type"), QStringLiteral("object")},
+      {QStringLiteral("properties"), QJsonObject{
+        {QStringLiteral("limit"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}
+      }}
+    },
+    .handler = [this](engine::CallContext& c, const QJsonObject& a) {
+      int limit = a.contains(QStringLiteral("limit")) ? a.value(QStringLiteral("limit")).toInt() : 50;
+      QString projectDir;
+      if (c.session && c.session->project && !c.session->project->path().isEmpty()) {
+        projectDir = QFileInfo(c.session->project->path()).absolutePath();
+      } else {
+        projectDir = currentProjectDir();
+      }
+      return engine::Result::success(readAgentTrace(limit, projectDir));
     }
   });
 }

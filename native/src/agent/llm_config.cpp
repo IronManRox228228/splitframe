@@ -26,8 +26,13 @@ QJsonObject RecordingLlmClient::complete(const QString& systemPrompt, const std:
   QJsonObject r = inner_ ? inner_->complete(systemPrompt, messages, tools, slotId) : QJsonObject{{QStringLiteral("error"), QStringLiteral("no LLM client")}};
   const QJsonValue err = r.value(QStringLiteral("error"));
   if (!err.isUndefined() && !r.contains(QStringLiteral("content")) && !r.contains(QStringLiteral("tool_calls"))) {
-    lastError_ = err.isString() ? err.toString() : QString::fromUtf8(QJsonDocument(err.toObject()).toJson(QJsonDocument::Compact));
-    if (lastError_.isEmpty()) lastError_ = QStringLiteral("the model returned an error");
+    const QString code = llmErrorCode(r);
+    if (!code.isEmpty()) {
+      lastError_ = code;
+    } else {
+      lastError_ = err.isString() ? err.toString() : QString::fromUtf8(QJsonDocument(err.toObject()).toJson(QJsonDocument::Compact));
+      if (lastError_.isEmpty()) lastError_ = QStringLiteral("the model returned an error");
+    }
   }
   return r;
 }
@@ -65,7 +70,7 @@ bool loadMockScript(MockLlmClient& mock, const QString& path, QString* error) {
 }
 
 std::shared_ptr<LlmClient> makeLlmClient(const LlmConfig& config, QString* error) {
-  // Seam: the provider choice made in AiOptions.fromEnvironment → the OpenAI-compatible local client
+  // Seam: the provider choice made in AiOptions.fromEnvironment -> the OpenAI-compatible local client
   // or the offline mock.
   if (config.isMock()) {
     auto mock = std::make_shared<MockLlmClient>();

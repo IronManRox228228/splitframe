@@ -44,6 +44,12 @@ public:
   void clearHistory() { history_.clear(); }
   void addMessage(ChatMessage msg) { history_.push_back(std::move(msg)); }
 
+  // Set the current run ID and project dir for trace logging.
+  void setCurrentRun(QString runId, QString projectDir = QString()) {
+    currentRunId_ = std::move(runId);
+    projectDir_ = std::move(projectDir);
+  }
+
   // Produces the specialist's scoped view of the project state.
   QJsonObject scopedViewJson(const QString& sessionId = {}) const;
 
@@ -81,6 +87,8 @@ private:
   std::shared_ptr<LlmClient> llm_;
   int slotId_ = -1;
   std::vector<ChatMessage> history_;
+  QString currentRunId_;
+  QString projectDir_;
 };
 
 } // namespace sf::agent

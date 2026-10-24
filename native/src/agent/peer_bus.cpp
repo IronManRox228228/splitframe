@@ -1,4 +1,5 @@
 #include "agent/peer_bus.h"
+#include "agent/trace.h"
 
 #include <QUuid>
 #include <algorithm>
@@ -13,6 +14,8 @@ PeerResponse PeerBus::send(PeerRequest req) {
   if (req.id.isEmpty()) {
     req.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
   }
+
+  const QString runId = !currentRunId_.isEmpty() ? currentRunId_ : req.id;
 
   // 1. Guard against self-requests
   if (req.from == req.to) {
@@ -36,6 +39,21 @@ PeerResponse PeerBus::send(PeerRequest req) {
       .outputs = res.outputs
     });
     emit messageLogged(log_.back());
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = specialistName(req.from),
+      .role = QStringLiteral("peer"),
+      .action = QStringLiteral("error"),
+      .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
+      .outputSummary = res.note,
+      .targetAgent = specialistName(req.to),
+      .tool = req.kind,
+      .status = QStringLiteral("error"),
+      .retryCount = req.depth,
+      .error = res.note
+    }, projectDir_);
+
     return res;
   }
 
@@ -61,6 +79,21 @@ PeerResponse PeerBus::send(PeerRequest req) {
       .outputs = res.outputs
     });
     emit messageLogged(log_.back());
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = specialistName(req.from),
+      .role = QStringLiteral("peer"),
+      .action = QStringLiteral("escalate"),
+      .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
+      .outputSummary = res.note,
+      .targetAgent = specialistName(req.to),
+      .tool = req.kind,
+      .status = QStringLiteral("error"),
+      .retryCount = req.depth,
+      .error = res.note
+    }, projectDir_);
+
     return res;
   }
 
@@ -86,6 +119,21 @@ PeerResponse PeerBus::send(PeerRequest req) {
       .outputs = res.outputs
     });
     emit messageLogged(log_.back());
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = specialistName(req.from),
+      .role = QStringLiteral("peer"),
+      .action = QStringLiteral("error"),
+      .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
+      .outputSummary = res.note,
+      .targetAgent = specialistName(req.to),
+      .tool = req.kind,
+      .status = QStringLiteral("error"),
+      .retryCount = req.depth,
+      .error = res.note
+    }, projectDir_);
+
     return res;
   }
 
@@ -122,6 +170,21 @@ PeerResponse PeerBus::send(PeerRequest req) {
       .outputs = res.outputs
     });
     emit messageLogged(log_.back());
+
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = specialistName(req.from),
+      .role = QStringLiteral("peer"),
+      .action = QStringLiteral("error"),
+      .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
+      .outputSummary = res.note,
+      .targetAgent = specialistName(req.to),
+      .tool = req.kind,
+      .status = QStringLiteral("error"),
+      .retryCount = req.depth,
+      .error = res.note
+    }, projectDir_);
+
     return res;
   }
 
@@ -157,6 +220,36 @@ PeerResponse PeerBus::send(PeerRequest req) {
     .outputs = res.outputs
   });
   emit messageLogged(log_.back());
+
+  const bool isCritique = (req.kind == QStringLiteral("critique") || req.kind.startsWith(QStringLiteral("critique")) ||
+                           req.kind == QStringLiteral("review") || req.kind == QStringLiteral("peer_review") ||
+                           req.kind.contains(QStringLiteral("critique")) || req.kind.contains(QStringLiteral("review")));
+  const QString action = isCritique ? QStringLiteral("critique") : QStringLiteral("handoff");
+
+  QString traceStatus;
+  if (res.status == QStringLiteral("done") || res.status == QStringLiteral("ok")) {
+    traceStatus = QStringLiteral("success");
+  } else if (res.status == QStringLiteral("needs_revision")) {
+    traceStatus = QStringLiteral("needs_revision");
+  } else if (res.status == QStringLiteral("declined")) {
+    traceStatus = isCritique ? QStringLiteral("needs_revision") : QStringLiteral("error");
+  } else {
+    traceStatus = QStringLiteral("error");
+  }
+
+  logAgentTrace(AgentTraceRecord{
+    .runId = runId,
+    .agentName = specialistName(req.from),
+    .role = QStringLiteral("peer"),
+    .action = action,
+    .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
+    .outputSummary = res.note,
+    .targetAgent = specialistName(req.to),
+    .tool = req.kind,
+    .status = traceStatus,
+    .retryCount = req.depth,
+    .error = (traceStatus == QStringLiteral("error")) ? res.note : QString()
+  }, projectDir_);
 
   return res;
 }

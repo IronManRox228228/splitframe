@@ -1,6 +1,7 @@
 # Agent harness: three specialists (editor, colourist, audio), peer bus, router, and modes.
 add_library(sf_agent STATIC
   types.h
+  trace.h trace.cpp
   peer_bus.h peer_bus.cpp
   router.h router.cpp
   llm_client.h llm_client.cpp

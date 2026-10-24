@@ -42,6 +42,13 @@ public:
   QJsonArray teamThreadJson() const;
   void clearLog();
 
+  // Set the current run ID and project dir for trace logging.
+  void setCurrentRun(QString runId, QString projectDir = QString()) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    currentRunId_ = std::move(runId);
+    projectDir_ = std::move(projectDir);
+  }
+
 signals:
   void messageLogged(const PeerLogEntry& entry);
 
@@ -51,6 +58,8 @@ private:
   std::map<SpecialistKind, PeerHandler> defaultHandlers_;
   std::vector<SpecialistKind> activeStack_;
   std::vector<PeerLogEntry> log_;
+  QString currentRunId_;
+  QString projectDir_;
 };
 
 } // namespace sf::agent

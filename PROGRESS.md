@@ -146,3 +146,34 @@ RUN COMPLETE
 - **tst_comfy**: 14 passed, 0 failed, 1 skipped
 - **tst_engine**: 34 passed, 0 failed, 0 skipped
 - **tst_generate**: 17 passed, 0 failed, 0 skipped
+
+
+## Trace log + error codes (Gemini)
+
+- Restored vendor-neutral agent trace log (`SF_AGENT_TRACE`, default `<project dir>/agent-trace.jsonl`, else `AppLocalDataLocation/agent-trace.jsonl`) recording actions `plan`, `tool_call`, `handoff`, `critique`, `retry`, `escalate`, `message`, `error` with observed response `model` and sanitized tokens/keys.
+- Added engine command `agent.trace {limit?}` to query recent trace log entries.
+- Wired trace logger into `AgentHarness`, `Specialist`, and `PeerBus`.
+- Restored vendor-neutral provider error code mapping in `HttpLlmClient` (`SF_LLM_*` seam) mapping HTTP statuses and response bodies to `provider_unreachable`, `provider_auth`, `model_not_found`, `rate_limited`, and `provider_error`, surfaced in agent results and trace entries.
+- Added `stripReasoning` stripping `<think>...</think>`, markdown fences, and `reasoning`/`reasoning_content` fields before answer use.
+- Files changed:
+  - `native/src/agent/trace.h` (new)
+  - `native/src/agent/trace.cpp` (new)
+  - `native/src/agent/CMakeLists.txt`
+  - `native/src/agent/llm_client.h`
+  - `native/src/agent/llm_client.cpp`
+  - `native/src/agent/llm_config.h`
+  - `native/src/agent/llm_config.cpp`
+  - `native/src/agent/peer_bus.h`
+  - `native/src/agent/peer_bus.cpp`
+  - `native/src/agent/specialist.h`
+  - `native/src/agent/specialist.cpp`
+  - `native/src/agent/agent_harness.h`
+  - `native/src/agent/agent_harness.cpp`
+  - `native/tests/CMakeLists.txt`
+  - `native/tests/tst_agent_trace.cpp` (new)
+
+### Test counts
+- **tst_agent_trace**: 16 passed, 0 failed, 0 skipped
+- **tst_agent_harness**: 12 passed, 0 failed, 0 skipped
+- **tst_agent_specialists**: 9 passed, 0 failed, 0 skipped
+- **tst_agent_peer_bus**: 8 passed, 0 failed, 0 skipped

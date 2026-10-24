@@ -5,11 +5,60 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRegularExpression>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
 
 namespace sf::agent {
+
+// Strips <think>...</think> and markdown ```think...``` fences, plus separate reasoning/reasoning_content fields.
+QJsonObject stripReasoning(const QJsonObject& message) {
+  QJsonObject out = message;
+  out.remove(QStringLiteral("reasoning"));
+  out.remove(QStringLiteral("reasoning_content"));
+
+  QString content = out.value(QStringLiteral("content")).toString();
+
+  // Strip XML-style <think>...</think> tags (including unclosed <think>)
+  static const QRegularExpression xmlFence(QStringLiteral("<think>[\\s\\S]*?</think>"), QRegularExpression::DotMatchesEverythingOption);
+  content.remove(xmlFence);
+  const qsizetype xmlOpen = content.indexOf(QStringLiteral("<think>"));
+  if (xmlOpen >= 0) content.truncate(xmlOpen);
+
+  // Strip markdown ```think...``` fences (including unclosed ```think)
+  static const QRegularExpression mdFence(QStringLiteral("```think[\\s\\S]*?```"), QRegularExpression::DotMatchesEverythingOption);
+  content.remove(mdFence);
+  const qsizetype mdOpen = content.indexOf(QStringLiteral("```think"));
+  if (mdOpen >= 0) content.truncate(mdOpen);
+
+  content = content.trimmed();
+  out.insert(QStringLiteral("content"), content);
+  return out;
+}
+
+// Maps response error representation to one of:
+// provider_unreachable, provider_auth, model_not_found, rate_limited, provider_error.
+QString llmErrorCode(const QJsonObject& resp) {
+  static const QStringList codes{
+    QStringLiteral("provider_unreachable"),
+    QStringLiteral("provider_auth"),
+    QStringLiteral("model_not_found"),
+    QStringLiteral("rate_limited"),
+    QStringLiteral("provider_error")
+  };
+  const QJsonValue err = resp.value(QStringLiteral("error"));
+  QString code;
+  if (err.isObject()) {
+    code = err.toObject().value(QStringLiteral("code")).toString();
+  } else if (err.isString()) {
+    code = err.toString();
+  }
+  if (code.isEmpty() && resp.contains(QStringLiteral("code"))) {
+    code = resp.value(QStringLiteral("code")).toString();
+  }
+  return codes.contains(code) ? code : QString();
+}
 
 // ---- MockLlmClient ----
 
@@ -33,13 +82,24 @@ QJsonObject MockLlmClient::complete(const QString& systemPrompt,
     .systemPrompt = systemPrompt,
     .messages = messages,
     .tools = tools,
-    .slotId = slotId
+    .slotId = slotId,
+    .lane = laneOverride_
   });
+
+  auto processResp = [this](QJsonObject r) -> QJsonObject {
+    const QJsonValue err = r.value(QStringLiteral("error"));
+    if (err.isObject() || err.isString()) {
+      lastObservedModel_.clear();
+    } else if (r.contains(QStringLiteral("model"))) {
+      lastObservedModel_ = r.value(QStringLiteral("model")).toString();
+    }
+    return stripReasoning(r);
+  };
 
   if (!queued_.empty()) {
     QJsonObject next = std::move(queued_.front());
     queued_.erase(queued_.begin());
-    return next;
+    return processResp(next);
   }
 
   QString combined;
@@ -47,11 +107,11 @@ QJsonObject MockLlmClient::complete(const QString& systemPrompt,
 
   for (const auto& [trigger, resp] : scripted_) {
     if (combined.contains(trigger, Qt::CaseInsensitive) || systemPrompt.contains(trigger, Qt::CaseInsensitive)) {
-      return resp;
+      return processResp(resp);
     }
   }
 
-  return defaultResponse_;
+  return processResp(defaultResponse_);
 }
 
 // ---- HttpLlmClient ----
@@ -164,41 +224,119 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
   timer.start(timeoutMs_);
   loop.exec();
 
+  const auto errorOut = [this](const QString& code, const QString& message) {
+    lastObservedModel_.clear();
+    return QJsonObject{
+      {QStringLiteral("error"), QJsonObject{
+        {QStringLiteral("code"), code},
+        {QStringLiteral("message"), message}
+      }},
+      {QStringLiteral("code"), code}
+    };
+  };
+
   if (timer.isActive()) {
     timer.stop();
   } else {
     // Timeout
     reply->abort();
     reply->deleteLater();
-    return QJsonObject{{QStringLiteral("error"), QStringLiteral("Request timed out")}};
+    return errorOut(QStringLiteral("provider_unreachable"), QStringLiteral("Request timed out"));
   }
 
-  if (reply->error() != QNetworkReply::NoError) {
-    QString errStr = reply->errorString();
-    if (const QByteArray body = reply->readAll(); !body.isEmpty()) errStr += QStringLiteral(": ") + QString::fromUtf8(body.left(400));
-    reply->deleteLater();
-    return QJsonObject{{QStringLiteral("error"), errStr}};
-  }
-
-  QByteArray respData = reply->readAll();
+  const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+  const QByteArray respData = reply->readAll();
+  const QString transportError = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
   reply->deleteLater();
 
-  QJsonDocument doc = QJsonDocument::fromJson(respData);
+  if (!transportError.isEmpty() && status == 0) {
+    return errorOut(QStringLiteral("provider_unreachable"), transportError);
+  }
+
+  const QJsonDocument doc = QJsonDocument::fromJson(respData);
+  const QJsonObject body = doc.isObject() ? doc.object() : QJsonObject();
+
+  // Check for error in response body or HTTP error status
+  if (body.contains(QStringLiteral("error"))) {
+    const QJsonValue berr = body.value(QStringLiteral("error"));
+    QString bodyCode;
+    QString bodyMsg;
+    if (berr.isObject()) {
+      const QJsonObject bo = berr.toObject();
+      bodyCode = bo.value(QStringLiteral("code")).toString();
+      if (bodyCode.isEmpty()) bodyCode = bo.value(QStringLiteral("type")).toString();
+      bodyMsg = bo.value(QStringLiteral("message")).toString();
+    } else {
+      bodyCode = berr.toString();
+      bodyMsg = berr.toString();
+    }
+    QString code;
+    static const QStringList kValidCodes{
+      QStringLiteral("provider_unreachable"),
+      QStringLiteral("provider_auth"),
+      QStringLiteral("model_not_found"),
+      QStringLiteral("rate_limited"),
+      QStringLiteral("provider_error")
+    };
+    if (kValidCodes.contains(bodyCode)) {
+      code = bodyCode;
+    } else if (bodyCode == QStringLiteral("invalid_api_key") || bodyCode.contains(QStringLiteral("auth"), Qt::CaseInsensitive) || status == 401 || status == 403) {
+      code = QStringLiteral("provider_auth");
+    } else if (bodyCode == QStringLiteral("rate_limit_exceeded") || status == 429) {
+      code = QStringLiteral("rate_limited");
+    } else if (bodyCode == QStringLiteral("model_not_found") || status == 404) {
+      code = QStringLiteral("model_not_found");
+    } else if (status >= 500) {
+      code = QStringLiteral("provider_error");
+    } else if (status == 0 || !transportError.isEmpty()) {
+      code = QStringLiteral("provider_unreachable");
+    } else {
+      code = QStringLiteral("provider_error");
+    }
+    return errorOut(code, bodyMsg.isEmpty() ? code : bodyMsg);
+  }
+
+  if (status == 401 || status == 403) {
+    return errorOut(QStringLiteral("provider_auth"), QStringLiteral("Authentication failed (HTTP %1)").arg(status));
+  }
+  if (status == 429) {
+    return errorOut(QStringLiteral("rate_limited"), QStringLiteral("Rate limited (HTTP %1)").arg(status));
+  }
+  if (status == 404) {
+    return errorOut(QStringLiteral("model_not_found"), QStringLiteral("Model not found (HTTP 404)"));
+  }
+  if (status >= 500) {
+    return errorOut(QStringLiteral("provider_error"), QStringLiteral("Provider server error (HTTP %1)").arg(status));
+  }
+  if (!transportError.isEmpty() || status < 200 || status >= 300) {
+    return errorOut(QStringLiteral("provider_unreachable"), !transportError.isEmpty() ? transportError : QStringLiteral("HTTP %1").arg(status));
+  }
+
   if (!doc.isObject()) {
-    return QJsonObject{{QStringLiteral("error"), QStringLiteral("Invalid JSON from LLM")}};
+    return errorOut(QStringLiteral("provider_error"), QStringLiteral("Invalid JSON from LLM"));
   }
 
   // Parse OpenAI format: choices[0].message
   QJsonObject docObj = doc.object();
-  QJsonArray choices = docObj.value(QStringLiteral("choices")).toArray();
-  if (!choices.isEmpty()) {
-    QJsonObject message = choices.first().toObject().value(QStringLiteral("message")).toObject();
-    if (message.contains(QStringLiteral("tool_calls")))
-      message.insert(QStringLiteral("tool_calls"), wireToolCalls(message.value(QStringLiteral("tool_calls")).toArray(), engineName));
-    return message;
+  if (docObj.contains(QStringLiteral("model"))) {
+    lastObservedModel_ = docObj.value(QStringLiteral("model")).toString();
+  } else {
+    lastObservedModel_ = model_;
   }
 
-  return docObj;
+  QJsonArray choices = docObj.value(QStringLiteral("choices")).toArray();
+  if (choices.isEmpty()) {
+    return errorOut(QStringLiteral("provider_error"), QStringLiteral("No choices returned from LLM"));
+  }
+
+  QJsonObject message = choices.first().toObject().value(QStringLiteral("message")).toObject();
+  if (message.contains(QStringLiteral("tool_calls"))) {
+    message.insert(QStringLiteral("tool_calls"), wireToolCalls(message.value(QStringLiteral("tool_calls")).toArray(), engineName));
+  }
+  if (!lastObservedModel_.isEmpty()) {
+    message.insert(QStringLiteral("model"), lastObservedModel_);
+  }
+  return stripReasoning(message);
 }
 
 } // namespace sf::agent
