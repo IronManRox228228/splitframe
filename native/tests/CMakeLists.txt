@@ -228,6 +228,8 @@ sf_add_engine_test(tst_safety)
 sf_add_engine_test(tst_assembly)
 sf_add_engine_test(tst_hand_quad)
 sf_add_engine_test(tst_comfy_run DEFS "SF_COMFY_FIXTURES=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy\"")
+# 15-GEN Part F: saveAsTemplate / generate.fromGraph / readiness / pending-collect.
+sf_add_engine_test(tst_generate DEFS "SF_COMFY_FIXTURES=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy\"")
 
 qt_add_executable(fake_comfy fake_comfy_main.cpp)
 target_include_directories(fake_comfy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/src")

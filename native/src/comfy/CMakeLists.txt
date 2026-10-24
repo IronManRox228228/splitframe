@@ -6,6 +6,7 @@ add_library(sf_comfy STATIC
   comfy_client.h comfy_client.cpp
   comfy_generate.h comfy_generate.cpp
   comfy_process.h comfy_process.cpp
+  comfy_router_client.h comfy_router_client.cpp
 )
 target_include_directories(sf_comfy PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/..")
 target_link_libraries(sf_comfy PUBLIC Qt6::Core Qt6::Network sf_jobs PRIVATE sf_options)

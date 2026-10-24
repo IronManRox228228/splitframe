@@ -5,6 +5,7 @@
 #include "comfy/comfy_client.h"
 #include "comfy/comfy_graph.h"
 #include "comfy/comfy_process.h"
+#include "comfy/comfy_router_client.h"
 #include "comfy/comfy_schema.h"
 #include "comfy/comfy_validate.h"
 
@@ -206,6 +207,42 @@ QString deriveOutputKind(const QString& kind) {
   return {};
 }
 
+// Default bindings for a graph saved as a template: map well-known scalar inputs to canonical
+// parameter names (kAllowedBindings), mirroring the builtin templates. Link inputs arrive as
+// arrays in API-format graphs and never bind; the first CLIPTextEncode "text" binds prompt,
+// further ones bind negative.
+QJsonObject deriveDefaultBindings(const QJsonObject& apiGraph) {
+  QJsonObject bindings;
+  int textNodes = 0;
+  for (auto itN = apiGraph.begin(); itN != apiGraph.end(); ++itN) {
+    const QJsonObject node = itN.value().toObject();
+    const QString ct = node.value(q("class_type")).toString();
+    const QJsonObject ins = node.value(q("inputs")).toObject();
+    for (auto itI = ins.begin(); itI != ins.end(); ++itI) {
+      if (itI.value().isArray() || itI.value().isObject()) continue; // a link input
+      const QString name = itI.key();
+      QString key;
+      if (name == QLatin1String("text") && ct == QLatin1String("CLIPTextEncode")) {
+        key = (textNodes++ == 0) ? QStringLiteral("prompt") : QStringLiteral("negative");
+      } else if (name == QLatin1String("seed")) {
+        key = QStringLiteral("seed");
+      } else if (name == QLatin1String("width")) {
+        key = QStringLiteral("width");
+      } else if (name == QLatin1String("height")) {
+        key = QStringLiteral("height");
+      } else if (name == QLatin1String("steps")) {
+        key = QStringLiteral("steps");
+      } else if (name == QLatin1String("audio")) {
+        key = QStringLiteral("audio");
+      }
+      if (!key.isEmpty() && !bindings.contains(key)) {
+        bindings.insert(key, QJsonObject{{q("node"), itN.key()}, {q("input"), name}});
+      }
+    }
+  }
+  return bindings;
+}
+
 // ---- generate readiness: what generate.* consults before queueing a template ----
 
 struct TemplateReadiness {
@@ -395,6 +432,61 @@ QJsonObject provBase(const QString& templateId, const TemplateInfo* tmpl, const 
   return p;
 }
 
+// Maps a Router HTTP exchange to an engine Result: the four planned error codes plus a generic
+// router_error bucket that still carries status/errorType/requestId for diagnostics. Never
+// includes the API key: error strings come from the client and never echo headers.
+Result routerFailure(const comfy::RouterReply& rep) {
+  if (rep.transportFailed()) {
+    if (rep.error.contains(QStringLiteral("no API key"))) {
+      return Result::failure(
+          q("not_configured"), rep.error,
+          QStringLiteral("Set COMFY_API_KEY (or store the key in QSettings comfyRouter/apiKey) to use Comfy Router."));
+    }
+    return Result::failure(q("router_unreachable"), rep.error,
+                           QStringLiteral("Check the network or COMFY_ROUTER_BASE_URL override."));
+  }
+  QString message = QStringLiteral("HTTP %1").arg(rep.status);
+  if (!rep.errorType.isEmpty()) message += QStringLiteral(" %1").arg(rep.errorType);
+  if (!rep.requestId.isEmpty()) message += QStringLiteral(" request %1").arg(rep.requestId);
+  QJsonObject details;
+  details.insert(q("status"), rep.status);
+  if (!rep.errorType.isEmpty()) details.insert(q("errorType"), rep.errorType);
+  if (!rep.requestId.isEmpty()) details.insert(q("requestId"), rep.requestId);
+  if (!rep.retryAfter.isEmpty()) details.insert(q("retryAfter"), rep.retryAfter);
+  if (!rep.rawBody.isEmpty() && rep.rawBody.size() <= 4096) {
+    details.insert(q("body"), QString::fromUtf8(rep.rawBody));
+  }
+  const QJsonValue detail = rep.body.value(QStringLiteral("detail"));
+  if (detail.isString()) {
+    // Router detail is a message; use it verbatim without echoing credentials (it never carries any)
+    message = detail.toString() + QStringLiteral(" (%1)").arg(message);
+  } else if (detail.isArray()) {
+    // per-field validation detail from a Router 422: one {loc, msg, type} entry per rejected field
+    QJsonArray msgs;
+    for (const QJsonValue& v : detail.toArray()) {
+      const QJsonObject vo = v.toObject();
+      const QJsonArray loc = vo.value(QStringLiteral("loc")).toArray();
+      QStringList path;
+      for (const QJsonValue& l : loc) path << l.toVariant().toString();
+      msgs.append(QJsonObject{
+        {q("path"), QJsonArray::fromStringList(path)},
+        {q("msg"), vo.value(QStringLiteral("msg")).toString()},
+        {q("type"), vo.value(QStringLiteral("type")).toString()}
+      });
+    }
+    details.insert(q("validation"), msgs);
+  }
+  if (rep.errorType == QLatin1String("insufficient_credits") || rep.status == 402) {
+    return Result::failure(q("insufficient_credits"), message, details);
+  }
+  if (rep.status == 404) {
+    // model_not_found vs request_not_found, both 404 in the Router contract
+    const QString code = rep.errorType == QLatin1String("request_not_found") ? q("not_found") : q("model_not_found");
+    return Result::failure(code, message, details);
+  }
+  return Result::failure(q("router_error"), message, details);
+}
+
 // Imports `files` into the media pool, places one item per file on the timeline (one undo group,
 // labelled `label`), and - when a template is known - stamps generation provenance on each landed
 // asset and appends one JSON line to <project>/generated/provenance.jsonl.
@@ -405,7 +497,7 @@ Result landOutputs(CallContext& c, const QStringList& files, const QString& trac
   QJsonArray sidecarsArr;
   for (const QString& f : files) sidecarsArr.append(f + QStringLiteral(".sfgen.json"));
   if (files.isEmpty()) {
-    return Result::success(QJsonObject{{q("created"), QJsonObject{}}, {q("sidecars"), sidecarsArr}});
+    return Result::success(QJsonObject{{q("files"), QJsonArray::fromStringList(files)}, {q("created"), QJsonObject{}}, {q("sidecars"), sidecarsArr}});
   }
 
   c.session->pool->import(files);
@@ -507,6 +599,7 @@ Result landOutputs(CallContext& c, const QStringList& files, const QString& trac
   }
 
   return Result::success(QJsonObject{
+    {q("files"), QJsonArray::fromStringList(files)},
     {q("created"), createdIds(ops)},
     {q("sidecars"), sidecarsArr}
   });
@@ -522,13 +615,10 @@ Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, cons
   for (const auto& v : filesArr) files.append(v.toString());
 
   if (files.isEmpty()) {
-    return Result::success(QJsonObject{
-      {q("jobId"), jobId},
-      {q("seed"), seed},
-      {q("files"), filesArr},
-      {q("created"), QJsonObject{}},
-      {q("sidecars"), QJsonArray{}}
-    });
+    // Job is Done but outputs not yet populated in the result: signal "not ready" so the caller
+    // (generate.collect polling) retries instead of observing a spurious empty file list.
+    return Result::failure(q("internal"),
+                           QStringLiteral("Job '%1' has no outputs yet").arg(jobId));
   }
 
   Result landed = landOutputs(c, files, trackIdArg, atFrameArg, QStringLiteral("generateShot"),
@@ -552,8 +642,9 @@ qint64 deriveSeed(const QString& templateId, const QString& basis) {
   return okSeed ? static_cast<qint64>(s32) : 0;
 }
 
-// Shared core for generate.video/image/speech/music: bind template params to the graph, run
-// ComfyUI (1..4 variants), land outputs via the media pool + one undo group, record provenance.
+// Shared core for generate.video/image/speech/music/fromGraph: run ComfyUI (1..4 variants), land
+// outputs via the media pool + one undo group, record provenance. Two instantiation paths: bind
+// template params per variant (templateId) or run an already-open graph document (graphId).
 // `expectedKind` must match the template's outputKind; `allowedExtensions` are the lowercase
 // suffixes accepted from ComfyUI outputs for this kind.
 Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expectedKind,
@@ -561,24 +652,53 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
   ComfyService& svc = c.engine->comfy();
   (void)ensureSchema(svc, a); // populate svc.schema so the readiness gate can run
 
+  const QString sourceGraphId = a.value(q("graphId")).toString();
   const QString templateId = a.value(q("templateId")).toString();
-  if (templateId.isEmpty()) return invalid(QStringLiteral("Argument 'templateId' is required"));
-
-  auto allT = loadAllTemplates();
-  auto itT = allT.find(templateId);
-  if (itT == allT.end()) {
-    return notFound(QStringLiteral("Template '%1' not found").arg(templateId),
-                    QStringLiteral("Call comfy.template.list to see imported templates."));
+  if (templateId.isEmpty() && sourceGraphId.isEmpty()) {
+    return invalid(QStringLiteral("Argument 'templateId' or 'graphId' is required"));
   }
-  const TemplateInfo& tmpl = itT->second;
-  if (!tmpl.outputKind.isEmpty() && tmpl.outputKind != expectedKind) {
-    return invalid(QStringLiteral("Template '%1' produces %2, not %3").arg(templateId, tmpl.outputKind, expectedKind));
+
+  // Two instantiation paths share this core: bind template params per variant (generate.* /
+  // templateId), or run an already-open graph document (generate.fromGraph / graphId). The graph
+  // path builds a transient TemplateInfo from the document so the readiness gate runs the same way.
+  const bool fromGraph = !sourceGraphId.isEmpty();
+  QJsonObject srcJson;
+  QString srcName;
+  QJsonObject srcUploads;
+  TemplateInfo tmpl;
+  if (!fromGraph) {
+    auto allT = loadAllTemplates();
+    auto itT = allT.find(templateId);
+    if (itT == allT.end()) {
+      return notFound(QStringLiteral("Template '%1' not found").arg(templateId),
+                      QStringLiteral("Call comfy.template.list to see imported templates."));
+    }
+    tmpl = itT->second;
+    if (!tmpl.outputKind.isEmpty() && tmpl.outputKind != expectedKind) {
+      return invalid(QStringLiteral("Template '%1' produces %2, not %3").arg(templateId, tmpl.outputKind, expectedKind));
+    }
+  } else {
+    auto itG = svc.graphs.find(sourceGraphId);
+    if (itG == svc.graphs.end()) {
+      return notFound(QStringLiteral("Graph '%1' not found").arg(sourceGraphId),
+                      QStringLiteral("Call comfy.graph.list to see open graphs."));
+    }
+    // Provenance label: document name when set, else graph:<id>. No template kind mismatch check
+    // here - the caller derives expectedKind from the requested kind.
+    tmpl.id = itG->second.name.isEmpty() ? QStringLiteral("graph:%1").arg(sourceGraphId)
+                                         : itG->second.name;
+    tmpl.graph = itG->second.graph.toApiJson();
+    tmpl.required = a.value(q("requires")).toObject();
+    tmpl.needsUserModel = a.value(q("needsUserModel")).toBool();
+    srcJson = tmpl.graph;
+    srcName = itG->second.name;
+    srcUploads = itG->second.uploads;
   }
 
   const TemplateReadiness ready = checkTemplateReadiness(svc, tmpl);
   if (!ready.ok) {
     return Result::failure(q("not_ready"), ready.reason,
-                           QStringLiteral("Call comfy.ready for the missing nodes/models of '%1'.").arg(templateId));
+                           QStringLiteral("Call comfy.ready for the missing nodes/models of '%1'.").arg(tmpl.id));
   }
 
   const int variants = qBound(1, a.value(q("variants")).toInt(1), 4);
@@ -588,7 +708,7 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
   const QString prompt = a.value(q("prompt")).toString();
   const QString text = a.value(q("text")).toString();
   const qint64 seed = a.contains(q("seed")) ? a.value(q("seed")).toVariant().toLongLong()
-                                            : deriveSeed(templateId, prompt.isEmpty() ? text : prompt);
+                                            : deriveSeed(tmpl.id, prompt.isEmpty() ? text : prompt);
 
   const QString trackId = a.value(q("trackId")).toString();
   std::optional<Frame> nextAt;
@@ -603,7 +723,7 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
     lastSeed = vSeed;
 
     QJsonObject tParams;
-    tParams.insert(q("templateId"), templateId);
+    tParams.insert(q("templateId"), tmpl.id);
     if (!prompt.isEmpty()) tParams.insert(q("prompt"), prompt);
     if (!text.isEmpty()) tParams.insert(q("text"), text);
     tParams.insert(q("seed"), vSeed);
@@ -624,11 +744,33 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
       tParams.insert(q("image"), rRender.value.toObject().value(q("path")).toString());
     }
 
-    Result rTmpl = c.engine->call(q("comfy.graph.fromTemplate"), QJsonObject{
-      {q("templateId"), templateId}, {q("params"), tParams}
-    });
-    if (!rTmpl.ok) return rTmpl;
-    const QString graphId = rTmpl.value.toObject().value(q("graphId")).toString();
+    QString graphId;
+    if (!fromGraph) {
+      Result rTmpl = c.engine->call(q("comfy.graph.fromTemplate"), QJsonObject{
+        {q("templateId"), templateId}, {q("params"), tParams}
+      });
+      if (!rTmpl.ok) return rTmpl;
+      graphId = rTmpl.value.toObject().value(q("graphId")).toString();
+    } else {
+      // Fresh copy of the open source doc per variant so seed/params bind cleanly.
+      QString gErr;
+      auto optG = comfy::Graph::fromApiJson(srcJson, &gErr);
+      if (!optG) {
+        return Result::failure(q("internal"),
+                               QStringLiteral("Source graph '%1' is invalid: %2").arg(sourceGraphId, gErr));
+      }
+      ComfyService::Doc ndoc;
+      ndoc.graph = std::move(*optG);
+      ndoc.name = srcName;
+      ndoc.params = tParams;
+      ndoc.seed = vSeed;
+      for (auto it = srcUploads.begin(); it != srcUploads.end(); ++it) {
+        ndoc.uploads.insert(it.key(), it.value());
+      }
+      const QString nid = QStringLiteral("g%1").arg(svc.nextGraph++);
+      svc.graphs[nid] = std::move(ndoc);
+      graphId = nid;
+    }
 
     QJsonObject runArgs{
       {q("graphId"), graphId}, {q("wait"), wait}, {q("timeoutMs"), timeoutMs},
@@ -671,12 +813,12 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
       }
     }
 
-    QJsonObject baseProv = provBase(templateId, &tmpl, expectedKind, prompt, text,
+    QJsonObject baseProv = provBase(tmpl.id, &tmpl, expectedKind, prompt, text,
                                     a.value(q("negative")).toString(), vSeed, promptId, workflowHash);
 
     Result landed = landOutputs(c, files, trackId, nextAt,
                                 QStringLiteral("Generate %1").arg(expectedKind),
-                                expectedKind, templateId, &tmpl, baseProv);
+                                expectedKind, tmpl.id, &tmpl, baseProv);
     if (!landed.ok) return landed;
     nextAt = std::nullopt;
 
@@ -1702,6 +1844,122 @@ void registerComfyCommands(Engine& e) {
              },
              false));
 
+  e.add(spec("comfy.graph.saveAsTemplate", "", "comfy", false,
+             QStringLiteral("Save an open ComfyUI graph document as a user template (v2 schema) with typed bindings. Validates that referenced nodes and inputs exist; overwrites an existing user template with the same id."),
+             js::obj({{q("graphId"), js::str(QStringLiteral("Graph document ID"))},
+                      {q("id"), js::str(QStringLiteral("Template identifier (^[A-Za-z0-9_-]{1,64}$)"))},
+                      {q("name"), js::str(QStringLiteral("Human-readable template name"))},
+                      {q("kind"), js::str(QStringLiteral("Media kind: 'image', 'video', 'speech', or 'music'"))},
+                      {q("outputNode"), js::str(QStringLiteral("ID of the node producing the final output (defaults to the last node in workflow order)"))},
+                      {q("bindings"), js::any(QStringLiteral("Map of parameter names to {node, input}"))},
+                      {q("description"), js::str(QStringLiteral("Template description"))},
+                      {q("whenToUse"), js::array(js::str(), QStringLiteral("Keywords for when to use this template"))},
+                      {q("outputKind"), js::str(QStringLiteral("File kind this workflow produces: 'video', 'image', or 'audio'; derived from kind when omitted"))},
+                      {q("requires"), js::any(QStringLiteral("Optional {nodes: [class_type...], models: [{folder, file}...]} the ComfyUI install must have"))},
+                      {q("needsUserModel"), js::boolean(QStringLiteral("True when the template's model files are placeholders the user must have (default false)"))}},
+                     {q("graphId"), q("id"), q("name"), q("kind")}),
+             [](CallContext& c, const QJsonObject& a) {
+               ComfyService& svc = c.engine->comfy();
+               const QString gid = a.value(q("graphId")).toString();
+               auto itG = svc.graphs.find(gid);
+               if (itG == svc.graphs.end()) {
+                 return notFound(QStringLiteral("Graph '%1' not found").arg(gid),
+                                 QStringLiteral("Call comfy.graph.list to see open graphs."));
+               }
+               const QString id = a.value(q("id")).toString();
+               if (id.isEmpty()) return invalid(QStringLiteral("Argument 'id' is required"));
+               static const QRegularExpression kValidId(QStringLiteral("^[A-Za-z0-9_-]{1,64}$"));
+               if (!kValidId.match(id).hasMatch()) {
+                 return invalid(QStringLiteral("Invalid template id: must match ^[A-Za-z0-9_-]{1,64}$"));
+               }
+               const QString kind = a.value(q("kind")).toString();
+               if (!kTemplateKinds.contains(kind)) {
+                 return invalid(QStringLiteral("Invalid kind '%1': must be one of image, video, speech, music").arg(kind));
+               }
+               QString outputKind = a.value(q("outputKind")).toString();
+               if (!outputKind.isEmpty() && outputKind != QLatin1String("video")
+                   && outputKind != QLatin1String("image") && outputKind != QLatin1String("audio")) {
+                 return invalid(QStringLiteral("Invalid outputKind '%1': must be video, image, or audio").arg(outputKind));
+               }
+               if (outputKind.isEmpty()) outputKind = deriveOutputKind(kind);
+               const QJsonObject required = a.value(q("requires")).toObject();
+               for (const QJsonValue& n : required.value(q("nodes")).toArray()) {
+                 if (!n.isString()) {
+                   return invalid(QStringLiteral("requires.nodes must be an array of node class_type strings"));
+                 }
+               }
+               for (const QJsonValue& m : required.value(q("models")).toArray()) {
+                 if (!m.isObject()
+                     || !m.toObject().value(q("folder")).isString()
+                     || !m.toObject().value(q("file")).isString()) {
+                   return invalid(QStringLiteral("requires.models must be an array of {folder, file} objects"));
+                 }
+               }
+
+               const QJsonObject apiGraph = itG->second.graph.toApiJson();
+               QJsonObject bindings = a.value(q("bindings")).toObject();
+                if (bindings.isEmpty()) bindings = deriveDefaultBindings(apiGraph);
+               for (auto it = bindings.begin(); it != bindings.end(); ++it) {
+                 const QString bName = it.key();
+                 if (!kAllowedBindings.contains(bName)) {
+                   return invalid(QStringLiteral("Invalid binding name '%1'").arg(bName));
+                 }
+                 if (!it.value().isObject()) {
+                   return invalid(QStringLiteral("Binding '%1' must be an object").arg(bName));
+                 }
+                 const QJsonObject bObj = it.value().toObject();
+                 const QString bNode = bObj.value(q("node")).toString();
+                 const QString bInput = bObj.value(q("input")).toString();
+                 if (!apiGraph.contains(bNode)) {
+                   return invalid(QStringLiteral("Binding '%1' references missing node '%2'").arg(bName, bNode));
+                 }
+                 const QJsonObject nodeObj = apiGraph.value(bNode).toObject();
+                 const QJsonObject inObj = nodeObj.value(q("inputs")).toObject();
+                 if (!inObj.contains(bInput)) {
+                   return invalid(QStringLiteral("Node '%1' has no input '%2' for binding '%3'").arg(bNode, bInput, bName));
+                 }
+               }
+
+               QString outputNode = a.value(q("outputNode")).toString();
+               if (outputNode.isEmpty()) {
+                 // Deterministic default: the last node in workflow order.
+                 for (auto it = apiGraph.begin(); it != apiGraph.end(); ++it) outputNode = it.key();
+               } else if (!apiGraph.contains(outputNode)) {
+                 return invalid(QStringLiteral("outputNode '%1' does not exist in graph").arg(outputNode));
+               }
+
+               const QJsonObject templateDoc{
+                 {q("id"), id},
+                 {q("name"), a.value(q("name")).toString()},
+                 {q("kind"), kind},
+                 {q("description"), a.value(q("description")).toString()},
+                 {q("whenToUse"), a.value(q("whenToUse")).toArray()},
+                 {q("graph"), apiGraph},
+                 {q("outputNode"), outputNode},
+                 {q("bindings"), bindings},
+                 {q("outputKind"), outputKind},
+                 {q("requires"), required},
+                 {q("needsUserModel"), a.value(q("needsUserModel")).toBool()}
+               };
+
+               const QString uDir = userTemplatesDir();
+               QDir().mkpath(uDir);
+               const QString outPath = QDir(uDir).filePath(id + QStringLiteral(".json"));
+               QFile outF(outPath);
+               if (!outF.open(QIODevice::WriteOnly)) {
+                 return Result::failure(q("io_error"), QStringLiteral("Could not write template to %1").arg(outPath));
+               }
+               outF.write(QJsonDocument(templateDoc).toJson(QJsonDocument::Indented));
+               outF.close();
+
+               return Result::success(QJsonObject{
+                 {q("id"), id},
+                 {q("path"), outPath},
+                 {q("outputKind"), outputKind}
+               });
+             },
+             false));
+
   e.add(spec("comfy.graph.fromTemplate", "", "comfy", false,
              QStringLiteral("Instantiate a workflow graph from a template and bind parameter values. Edits are deterministic."),
              js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
@@ -2114,6 +2372,226 @@ void registerComfyCommands(Engine& e) {
                  }
                }
                return Result::success(QJsonObject{{q("history"), arr}});
+              }));
+
+  e.add(spec("generate.fromGraph", "", "editor", true,
+             QStringLiteral("Run an already-open ComfyUI graph document (from comfy.graph.new/load/fromTemplate/op) through the generate pipeline and place outputs on the timeline in one undo step."),
+             js::obj({{q("graphId"), js::str(QStringLiteral("Graph document ID to execute"))},
+                      {q("kind"), js::str(QStringLiteral("Media kind: 'image', 'video', 'speech', or 'music'"))},
+                      {q("requires"), js::any(QStringLiteral("Optional {nodes: [class_type...], models: [{folder, file}...]} readiness gate on top of the graph's own nodes"))},
+                      {q("needsUserModel"), js::boolean(QStringLiteral("True when required model files are placeholders the user must have (default false)"))},
+                      {q("prompt"), js::str(QStringLiteral("Prompt text"))},
+                      {q("negative"), js::str(QStringLiteral("Negative prompt"))},
+                      {q("seed"), js::integer(QStringLiteral("Deterministic seed"), 0)},
+                      {q("variants"), js::integer(QStringLiteral("Variant count (1-4, default 1)"), 1, 4)},
+                      {q("trackId"), js::str(QStringLiteral("Target track ID"))},
+                      {q("atFrame"), js::integer(QStringLiteral("Start frame on timeline"), 0)},
+                      {q("name"), js::str(QStringLiteral("Output name stem"))},
+                      {q("wait"), js::boolean(QStringLiteral("Wait for completion (default true)"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
+                     {q("graphId"), q("kind")}),
+             [](CallContext& c, const QJsonObject& a) {
+               const QString kind = a.value(q("kind")).toString();
+               if (!kTemplateKinds.contains(kind)) {
+                 return invalid(QStringLiteral("Invalid kind '%1': must be one of image, video, speech, music").arg(kind));
+               }
+               if (kind == QLatin1String("image")) {
+                 return runGenerate(c, a, QStringLiteral("image"),
+                                    {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("webp")});
+               }
+               if (kind == QLatin1String("video")) {
+                 return runGenerate(c, a, QStringLiteral("video"),
+                                    {QStringLiteral("mp4"), QStringLiteral("webm"), QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("png")});
+               }
+               return runGenerate(c, a, QStringLiteral("audio"),
+                                  {QStringLiteral("wav"), QStringLiteral("flac"), QStringLiteral("mp3"), QStringLiteral("ogg")});
+             }));
+
+  e.add(spec("comfy.router.info", "", "comfy", false,
+             QStringLiteral("Report the Comfy Router configuration: base URL and whether an API key is set. Never returns the key itself."),
+             js::obj({}),
+             [](CallContext&, const QJsonObject&) {
+               comfy::RouterClient client;
+               return Result::success(QJsonObject{
+                 {q("baseUrl"), client.base().toString()},
+                 {q("keyConfigured"), !comfy::RouterClient::resolveApiKey().isEmpty()}
+               });
+             },
+             false));
+
+  e.add(spec("generate.router.models", "", "comfy", false,
+             QStringLiteral("List the Comfy Router model catalog (GET /v2/models, cursor-paginated). One entry per partner model; use each entry's 'id' in generate.router.* calls."),
+             js::obj({{q("limit"), js::integer(QStringLiteral("Page size (default 20, capped 100)"), 1, 100)},
+                      {q("cursor"), js::str(QStringLiteral("Opaque pagination cursor from a previous page"))}}),
+             [](CallContext&, const QJsonObject& a) {
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.listModels(a.value(q("limit")).toInt(20),
+                                                          a.value(q("cursor")).toString());
+               if (!rep.ok()) return routerFailure(rep);
+               return Result::success(QJsonObject{
+                 {q("models"), rep.body.value(q("data")).toArray()},
+                 {q("hasMore"), rep.body.value(q("has_more")).toBool()},
+                 {q("nextCursor"), rep.body.value(q("next_cursor")).toString()},
+                 {q("limit"), rep.body.value(q("limit")).toInt(0)}
+               });
+             },
+             false));
+
+  e.add(spec("generate.router.model", "", "comfy", false,
+             QStringLiteral("Fetch one Comfy Router catalog entry by model id '{provider}/{model}' (GET /v2/models/{id})."),
+             js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model', e.g. 'higgsfield/kling-3-pro'"))}},
+                     {q("modelId")}),
+             [](CallContext&, const QJsonObject& a) {
+               const QString modelId = a.value(q("modelId")).toString();
+               if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
+                 return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
+               }
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.getModel(modelId);
+               if (!rep.ok()) return routerFailure(rep);
+               return Result::success(rep.body);
+             },
+             false));
+
+  e.add(spec("generate.router.schema", "", "comfy", false,
+             QStringLiteral("Fetch a model's OpenAPI input/output schema (GET /v2/models/{id}/openapi.json). Pass the etag of a cached copy to receive notModified:true."),
+             js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model'"))},
+                      {q("etag"), js::str(QStringLiteral("ETag of a cached schema (sent as If-None-Match)"))}},
+                     {q("modelId")}),
+             [](CallContext&, const QJsonObject& a) {
+               const QString modelId = a.value(q("modelId")).toString();
+               if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
+                 return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
+               }
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.getSchema(modelId, a.value(q("etag")).toString());
+               if (!rep.ok() && rep.status != 304) return routerFailure(rep);
+               QJsonObject out{{q("notModified"), rep.status == 304}};
+               if (rep.status == 304) {
+                 out.insert(q("etag"), a.value(q("etag")).toString());
+               } else {
+                 out.insert(q("etag"), rep.etag);
+                 out.insert(q("schema"), rep.body);
+               }
+               return Result::success(out);
+             },
+             false));
+
+  e.add(spec("generate.router.submit", "", "comfy", false,
+             QStringLiteral("Queue a Comfy Router generation (POST /v2/models/{id}/requests). Returns requestId at once; poll generate.router.status, then generate.router.collect. A fresh Idempotency-Key is minted per submit."),
+             js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model'"))},
+                      {q("body"), js::any(QStringLiteral("The model's native request body (discover fields via generate.router.schema)"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Submit HTTP timeout (default 30000)"))}},
+                     {q("modelId"), q("body")}),
+             [](CallContext&, const QJsonObject& a) {
+               const QString modelId = a.value(q("modelId")).toString();
+               if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
+                 return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
+               }
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.submitRequest(modelId, a.value(q("body")).toObject(),
+                                                             a.value(q("timeoutMs")).toInt(30000));
+               if (!rep.ok()) return routerFailure(rep);
+               return Result::success(QJsonObject{
+                 {q("requestId"), rep.body.value(q("request_id")).toString()},
+                 {q("status"), rep.body.value(q("status")).toString()},
+                 {q("queuePosition"), rep.body.value(q("queue_position")).toInt(-1)},
+                 {q("idempotencyKey"), rep.idempotencyKey}
+               });
+             },
+             false));
+
+  e.add(spec("generate.router.status", "", "comfy", false,
+             QStringLiteral("Poll one queued Comfy Router request (GET .../requests/{requestId}/status). status is IN_QUEUE, IN_PROGRESS or COMPLETED; a failed or cancelled run is COMPLETED with errorType set."),
+             js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model'"))},
+                      {q("requestId"), js::str(QStringLiteral("request_id from generate.router.submit"))}},
+                     {q("modelId"), q("requestId")}),
+             [](CallContext&, const QJsonObject& a) {
+               const QString modelId = a.value(q("modelId")).toString();
+               if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
+                 return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
+               }
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.requestStatus(modelId, a.value(q("requestId")).toString());
+               if (!rep.ok()) return routerFailure(rep);
+               return Result::success(QJsonObject{
+                 {q("requestId"), rep.body.value(q("request_id")).toString()},
+                 {q("status"), rep.body.value(q("status")).toString()},
+                 {q("queuePosition"), rep.body.value(q("queue_position")).toInt(-1)},
+                 {q("errorType"), rep.body.value(q("error_type")).toString()},
+                 {q("retryAfter"), rep.retryAfter}
+               });
+             },
+             false));
+
+  e.add(spec("generate.router.collect", "", "comfy", false,
+             QStringLiteral("Collect a finished Comfy Router request (GET .../requests/{requestId}). Returns the model's native output; a 202 answer means it is still running. Non-JSON (inline binary) outputs require 'saveAs' to be written to disk."),
+             js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model'"))},
+                      {q("requestId"), js::str(QStringLiteral("request_id from generate.router.submit"))},
+                      {q("saveAs"), js::str(QStringLiteral("File path for non-JSON (binary) outputs"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Collect HTTP timeout (default 120000)"))}},
+                     {q("modelId"), q("requestId")}),
+             [](CallContext&, const QJsonObject& a) {
+               const QString modelId = a.value(q("modelId")).toString();
+               if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
+                 return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
+               }
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.collectRequest(modelId, a.value(q("requestId")).toString(),
+                                                             a.value(q("timeoutMs")).toInt(120000));
+               if (rep.status == 202) {
+                 // still running: the same status body the queue contract answers with
+                 return Result::success(QJsonObject{
+                   {q("requestId"), a.value(q("requestId")).toString()},
+                   {q("status"), rep.body.value(q("status")).toString()},
+                   {q("errorType"), rep.body.value(q("error_type")).toString()},
+                   {q("retryAfter"), rep.retryAfter}
+                 });
+               }
+               if (!rep.ok()) return routerFailure(rep);
+               QJsonObject out{
+                 {q("requestId"), a.value(q("requestId")).toString()},
+                 {q("output"), rep.body}
+               };
+               if (!rep.body.isEmpty()) return Result::success(out);
+               // non-JSON output: inline bytes, binary result
+               const QString saveAs = a.value(q("saveAs")).toString();
+               if (saveAs.isEmpty()) {
+                 return Result::failure(
+                     q("invalid_params"),
+                     QStringLiteral("Output is not JSON (%1 bytes); pass 'saveAs' to write it to a file.").arg(rep.rawBody.size()));
+               }
+               QFileInfo fi(saveAs);
+               QDir().mkpath(fi.absolutePath());
+               QFile f(saveAs);
+               if (!f.open(QIODevice::WriteOnly) || f.write(rep.rawBody) != rep.rawBody.size()) {
+                 return Result::failure(q("io_error"), QStringLiteral("Could not write output to %1").arg(saveAs));
+               }
+               f.close();
+               out.insert(q("file"), saveAs);
+               out.insert(q("bytes"), static_cast<int>(rep.rawBody.size()));
+               return Result::success(out);
+             },
+             false));
+
+  e.add(spec("generate.router.cancel", "", "comfy", false,
+             QStringLiteral("Cancel a queued Comfy Router request (PUT .../requests/{requestId}/cancel). A run already executing at the partner may still complete and bill."),
+             js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model'"))},
+                      {q("requestId"), js::str(QStringLiteral("request_id from generate.router.submit"))}},
+                     {q("modelId"), q("requestId")}),
+             [](CallContext&, const QJsonObject& a) {
+               const QString modelId = a.value(q("modelId")).toString();
+               if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
+                 return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
+               }
+               comfy::RouterClient client;
+               comfy::RouterReply rep = client.cancelRequest(modelId, a.value(q("requestId")).toString());
+               if (!rep.ok()) return routerFailure(rep);
+               return Result::success(QJsonObject{
+                 {q("requestId"), a.value(q("requestId")).toString()},
+                 {q("cancelled"), true},
+                 {q("status"), rep.status}
+               });
              },
              false));
 
