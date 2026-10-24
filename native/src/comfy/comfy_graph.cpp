@@ -207,10 +207,14 @@ OpResult applyOps(const Graph& g, const QJsonArray& ops) {
         }
       }
     } else if (kind == QStringLiteral("remove")) {
-      const QString id = resolveId(op.value(QStringLiteral("id")).toString(), &err);
+      QString rawId = op.value(QStringLiteral("id")).toString();
+      if (rawId.isEmpty()) rawId = op.value(QStringLiteral("nodeId")).toString();
+      const QString id = resolveId(rawId, &err);
       if (err.isEmpty()) err = copy.removeNode(id);
     } else if (kind == QStringLiteral("set")) {
-      const QString id = resolveId(op.value(QStringLiteral("id")).toString(), &err);
+      QString rawId = op.value(QStringLiteral("id")).toString();
+      if (rawId.isEmpty()) rawId = op.value(QStringLiteral("nodeId")).toString();
+      const QString id = resolveId(rawId, &err);
       const QString input = op.value(QStringLiteral("input")).toString();
       const QJsonValue val = op.value(QStringLiteral("value"));
       if (err.isEmpty()) err = copy.setInput(id, input, val);
@@ -221,11 +225,16 @@ OpResult applyOps(const Graph& g, const QJsonArray& ops) {
       const QString input = op.value(QStringLiteral("input")).toString();
       if (err.isEmpty()) err = copy.connect(from, output, to, input);
     } else if (kind == QStringLiteral("disconnect")) {
-      const QString id = resolveId(op.value(QStringLiteral("id")).toString(), &err);
+      QString rawId = op.value(QStringLiteral("id")).toString();
+      if (rawId.isEmpty()) rawId = op.value(QStringLiteral("to")).toString();
+      if (rawId.isEmpty()) rawId = op.value(QStringLiteral("nodeId")).toString();
+      const QString id = resolveId(rawId, &err);
       const QString input = op.value(QStringLiteral("input")).toString();
       if (err.isEmpty()) err = copy.disconnect(id, input);
     } else if (kind == QStringLiteral("clear")) {
-      const QString id = resolveId(op.value(QStringLiteral("id")).toString(), &err);
+      QString rawId = op.value(QStringLiteral("id")).toString();
+      if (rawId.isEmpty()) rawId = op.value(QStringLiteral("nodeId")).toString();
+      const QString id = resolveId(rawId, &err);
       const QString input = op.value(QStringLiteral("input")).toString();
       if (err.isEmpty()) err = copy.clearInput(id, input);
     } else {

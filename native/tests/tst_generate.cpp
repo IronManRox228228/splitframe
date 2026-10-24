@@ -140,7 +140,9 @@ private slots:
 
     // provenance: templateId is the document name; outputKind/seed/workflowHash recorded
     const QJsonObject rec = lastHistoryRecord();
-    QCOMPARE(rec.value(Q("templateId")).toString(), QStringLiteral("GusGraph"));
+    QVERIFY(rec.value(Q("templateId")).isNull());
+    QCOMPARE(rec.value(Q("graphId")).toString(), gid);
+    QCOMPARE(rec.value(Q("graphName")).toString(), QStringLiteral("GusGraph"));
     QCOMPARE(rec.value(Q("outputKind")).toString(), QStringLiteral("image"));
     QVERIFY(rec.contains(Q("seed")));
     QVERIFY(!rec.value(Q("workflowHash")).toString().isEmpty());
@@ -563,6 +565,68 @@ private slots:
         {Q("requestId"), QStringLiteral("req-bin")}, {Q("saveAs"), binPath}});
     QCOMPARE(bin.value(Q("file")).toString(), binPath);
     QVERIFY(QFile(binPath).size() > 100);
+  }
+
+  // 16. Part D & Part F test 8: fromTemplate (no params) -> comfy.graph.op -> saveAsTemplate -> generate.fromGraph.
+  //     An invalid graph fails validation and queues nothing.
+  void fromTemplateEditSaveAndRunPipeline() {
+    const size_t queuedBefore = fake_->queued.size();
+
+    // 1. fromTemplate with only { templateId } (no params)
+    const QJsonObject rTmpl = ok(Q("comfy.graph.fromTemplate"), {{Q("templateId"), QStringLiteral("sd15_txt2img")}});
+    const QString gid = rTmpl.value(Q("graphId")).toString();
+    QVERIFY(!gid.isEmpty());
+
+    // 2. comfy.graph.op set on node 6 (positive prompt)
+    const QJsonArray ops = {
+      QJsonObject{{QStringLiteral("op"), QStringLiteral("set")},
+                  {QStringLiteral("id"), QStringLiteral("6")},
+                  {QStringLiteral("input"), QStringLiteral("text")},
+                  {QStringLiteral("value"), QStringLiteral("emerald mountains under aurora")}}
+    };
+    const QJsonObject rOp = ok(Q("comfy.graph.op"), {{Q("graphId"), gid}, {Q("ops"), ops}});
+    QCOMPARE(rOp.value(Q("graphId")).toString(), gid);
+
+    // 3. saveAsTemplate
+    ok(Q("comfy.graph.saveAsTemplate"), {{
+        Q("graphId"), gid}, {Q("id"), QStringLiteral("aurora_tmpl")},
+        {Q("name"), QStringLiteral("Aurora Template")}, {Q("kind"), Q("image")},
+        {Q("outputNode"), QStringLiteral("9")}});
+
+    // Empty graph save fails
+    const QString emptyGid = ok(Q("comfy.graph.new")).value(Q("graphId")).toString();
+    const Result rEmpty = tryCall(Q("comfy.graph.saveAsTemplate"), {{
+        Q("graphId"), emptyGid}, {Q("id"), QStringLiteral("empty_tmpl")},
+        {Q("name"), QStringLiteral("Empty")}, {Q("kind"), Q("image")}});
+    QVERIFY(!rEmpty.ok);
+    QCOMPARE(rEmpty.error.code, Q("invalid_params"));
+
+    // 4. generate.fromGraph directly from edited graph gid
+    const QJsonObject rGen = ok(Q("generate.fromGraph"), {{
+        Q("graphId"), gid}, {Q("kind"), Q("image")}, {Q("wait"), true}});
+    QCOMPARE(rGen.value(Q("files")).toArray().size(), 1);
+    QCOMPARE(fake_->queued.size(), queuedBefore + 1);
+
+    // Provenance: templateId is null, graphId and graphName recorded
+    const QJsonObject rec = lastHistoryRecord();
+    QVERIFY(rec.value(Q("templateId")).isNull());
+    QCOMPARE(rec.value(Q("graphId")).toString(), gid);
+    QCOMPARE(rec.value(Q("outputKind")).toString(), QStringLiteral("image"));
+
+    // 5. Invalid graph fails at validation step and queues nothing
+    const QJsonArray breakOps = {
+      QJsonObject{{QStringLiteral("op"), QStringLiteral("disconnect")},
+                  {QStringLiteral("to"), QStringLiteral("9")},
+                  {QStringLiteral("input"), QStringLiteral("images")}}
+    };
+    ok(Q("comfy.graph.op"), {{Q("graphId"), gid}, {Q("ops"), breakOps}});
+
+    const size_t queuedBeforeInvalid = fake_->queued.size();
+    const Result rInvalid = tryCall(Q("generate.fromGraph"), {{
+        Q("graphId"), gid}, {Q("kind"), Q("image")}, {Q("wait"), true}});
+    QVERIFY(!rInvalid.ok);
+    QCOMPARE(rInvalid.error.code, Q("invalid"));
+    QCOMPARE(fake_->queued.size(), queuedBeforeInvalid);
   }
 };
 

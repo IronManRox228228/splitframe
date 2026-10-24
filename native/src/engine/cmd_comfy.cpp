@@ -501,8 +501,8 @@ inline void dbgCleanup() { if (false) {
 
 Result landOutputs(CallContext& c, const QStringList& files, const QString& trackIdArg,
                    std::optional<Frame> atFrameArg, const QString& label,
-                   const QString& /*outputKind*/, const QString& templateId,
-                   const TemplateInfo* tmpl, const QJsonObject& provBase) {
+                   const QString& /*outputKind*/, const QString& /*templateId*/,
+                   const TemplateInfo* /*tmpl*/, const QJsonObject& provBase) {
   QJsonArray sidecarsArr;
   for (const QString& f : files) sidecarsArr.append(f + QStringLiteral(".sfgen.json"));
   if (files.isEmpty()) {
@@ -588,7 +588,7 @@ Result landOutputs(CallContext& c, const QStringList& files, const QString& trac
     return Result::failure(q("edit_rejected"), p.lastError());
   }
 
-  if (!templateId.isEmpty() && tmpl) {
+  if (!provBase.isEmpty()) {
     const QDateTime now = QDateTime::currentDateTimeUtc();
     for (const QString& fPath : files) {
       const Asset* asset = findAssetByPath(*c.session->project, fPath);
@@ -692,10 +692,11 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
       return notFound(QStringLiteral("Graph '%1' not found").arg(sourceGraphId),
                       QStringLiteral("Call comfy.graph.list to see open graphs."));
     }
-    // Provenance label: document name when set, else graph:<id>. No template kind mismatch check
+    // Graph execution directly: templateId is null in provenance, graphId recorded.
     // here - the caller derives expectedKind from the requested kind.
-    tmpl.id = itG->second.name.isEmpty() ? QStringLiteral("graph:%1").arg(sourceGraphId)
-                                         : itG->second.name;
+    tmpl.id = sourceGraphId;
+    tmpl.kind = a.value(q("kind")).toString();
+
     tmpl.graph = itG->second.graph.toApiJson();
     tmpl.required = a.value(q("requires")).toObject();
     tmpl.needsUserModel = a.value(q("needsUserModel")).toBool();
@@ -780,6 +781,22 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
       for (auto it = srcUploads.begin(); it != srcUploads.end(); ++it) {
         ndoc.uploads.insert(it.key(), it.value());
       }
+      const QJsonObject autoBindings = deriveDefaultBindings(srcJson);
+      for (auto it = tParams.begin(); it != tParams.end(); ++it) {
+        const QString paramKey = it.key();
+        if (paramKey == QLatin1String("templateId")) continue;
+        if (autoBindings.contains(paramKey)) {
+          const QJsonObject bObj = autoBindings.value(paramKey).toObject();
+          const QString bNode = bObj.value(q("node")).toString();
+          const QString bInput = bObj.value(q("input")).toString();
+          const QJsonValue val = it.value();
+          if (paramKey == QLatin1String("image")) {
+            ndoc.uploads.insert(QStringLiteral("%1.%2").arg(bNode, bInput), val.toString());
+          } else {
+            ndoc.graph.setInput(bNode, bInput, val);
+          }
+        }
+      }
       const QString nid = QStringLiteral("g%1").arg(svc.nextGraph++);
       svc.graphs[nid] = std::move(ndoc);
       graphId = nid;
@@ -828,6 +845,11 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
 
     QJsonObject baseProv = provBase(tmpl.id, &tmpl, expectedKind, prompt, text,
                                     a.value(q("negative")).toString(), vSeed, promptId, workflowHash);
+    if (fromGraph) {
+      baseProv.insert(q("templateId"), QJsonValue(QJsonValue::Null));
+      baseProv.insert(q("graphId"), sourceGraphId);
+      if (!srcName.isEmpty()) baseProv.insert(q("graphName"), srcName);
+    }
 
     Result landed = landOutputs(c, files, trackId, nextAt,
                                 QStringLiteral("Generate %1").arg(expectedKind),
@@ -1918,6 +1940,9 @@ void registerComfyCommands(Engine& e) {
                  }
                }
 
+               if (itG->second.graph.nodes().empty()) {
+                 return invalid(QStringLiteral("Cannot save an empty graph as a template"));
+               }
                const QJsonObject apiGraph = itG->second.graph.toApiJson();
                QJsonObject bindings = a.value(q("bindings")).toObject();
                 if (bindings.isEmpty()) bindings = deriveDefaultBindings(apiGraph);
@@ -1985,8 +2010,8 @@ void registerComfyCommands(Engine& e) {
   e.add(spec("comfy.graph.fromTemplate", "", "comfy", false,
              QStringLiteral("Instantiate a workflow graph from a template and bind parameter values. Edits are deterministic."),
              js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
-                      {q("params"), js::any(QStringLiteral("Parameter values to bind"))}},
-                     {q("templateId"), q("params")}),
+                      {q("params"), js::any(QStringLiteral("Optional parameter values to bind"))}},
+                     {q("templateId")}),
              [](CallContext& c, const QJsonObject& a) {
                const QString templateId = a.value(q("templateId")).toString();
                auto allTemplates = loadAllTemplates();
@@ -2006,7 +2031,15 @@ void registerComfyCommands(Engine& e) {
                doc.graph = std::move(*optG);
                doc.name = tmpl.name;
 
-               const QJsonObject params = a.value(q("params")).toObject();
+               QJsonObject params = a.value(q("params")).toObject();
+               if (params.isEmpty()) {
+                 for (auto it = a.begin(); it != a.end(); ++it) {
+                   if (it.key() != QLatin1String("templateId") && it.key() != QLatin1String("help")
+                       && tmpl.bindings.contains(it.key())) {
+                     params.insert(it.key(), it.value());
+                   }
+                 }
+               }
                doc.params = params;
                if (params.contains(q("seed"))) {
                  doc.seed = params.value(q("seed")).toVariant().toLongLong();
