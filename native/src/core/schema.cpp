@@ -19,6 +19,7 @@ QJsonValue jv(double v) { return QJsonValue(v); }
 QJsonValue jv(Frame v) { return QJsonValue(static_cast<qint64>(v)); }
 QJsonValue jv(const QString& v) { return QJsonValue(v); }
 QJsonValue jv(bool v) { return QJsonValue(v); }
+QJsonValue jv(const QJsonObject& v) { return QJsonValue(v); }
 
 template <class T> void putOpt(QJsonObject& o, const char* key, const std::optional<T>& v) {
   if (v) o.insert(QLatin1String(key), jv(*v));
@@ -577,6 +578,11 @@ Asset parseAsset(const Rd& r) {
     a.metadata.location = md.field(QStringLiteral("location")).optStr();
     a.metadata.capturedAt = md.field(QStringLiteral("capturedAt")).optStr();
     a.metadata.codec = md.field(QStringLiteral("codec")).optStr();
+    const Rd prov = md.field(QStringLiteral("provenance"));
+    if (!prov.missing()) {
+      prov.requireObject();
+      a.metadata.provenance = prov.raw().toObject();
+    }
   }
   a.createdAt = r.field(QStringLiteral("createdAt")).str();
   a.error = r.field(QStringLiteral("error")).optStr();
@@ -952,6 +958,7 @@ QJsonObject toJson(const Asset& a) {
   putOpt(md, "location", a.metadata.location);
   putOpt(md, "capturedAt", a.metadata.capturedAt);
   putOpt(md, "codec", a.metadata.codec);
+  putOpt(md, "provenance", a.metadata.provenance);
   o.insert(QStringLiteral("metadata"), md);
   return o;
 }

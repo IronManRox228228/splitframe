@@ -23,7 +23,12 @@
 #include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QSet>
+#include <QDateTime>
+#include <QImage>
+#include <QMap>
+#include <QPainter>
 #include "engine/cmd_comfy.h"
+#include "render/layer_painter.h"
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -354,23 +359,53 @@ Frame calcTrackEnd(const TimelineDoc& d, const QString& trackId) {
   return end;
 }
 
-Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, const QString& trackIdArg, std::optional<Frame> atFrameArg) {
-  auto res = c.engine->jobs().result(jobId);
-  if (!res || !res->contains(QStringLiteral("files"))) {
-    return Result::failure(q("internal"), QStringLiteral("Job result has no files."));
+const Asset* findAssetByPath(const editor::Project& project, const QString& fPath) {
+  const QFileInfo fi(fPath);
+  const QString abs = fi.absoluteFilePath();
+  for (const Asset& as : project.assets()) {
+    if (as.path == fPath || as.path == abs || QFileInfo(as.path).absoluteFilePath() == abs) return &as;
   }
-  const QJsonArray filesArr = res->value(QStringLiteral("files")).toArray();
-  QStringList files;
-  for (const auto& v : filesArr) files.append(v.toString());
+  return nullptr;
+}
 
+void appendProvenanceRecord(editor::Project& project, const QJsonObject& record) {
+  if (project.path().isEmpty()) return;
+  QDir dir(QFileInfo(project.path()).dir());
+  if (!dir.mkpath(QStringLiteral("generated"))) return;
+  QFile f(dir.filePath(QStringLiteral("provenance.jsonl")));
+  if (!f.open(QIODevice::Append | QIODevice::WriteOnly | QIODevice::Text)) return;
+  f.write(QJsonDocument(record).toJson(QJsonDocument::Compact));
+  f.write("\n");
+}
+
+QJsonObject provBase(const QString& templateId, const TemplateInfo* tmpl, const QString& outputKind,
+                     const QString& prompt, const QString& text, const QString& negative,
+                     qint64 seed, const QString& promptId, const QString& workflowHash) {
+  QJsonObject p;
+  p.insert(q("templateId"), templateId);
+  if (tmpl) p.insert(q("kind"), tmpl->kind);
+  p.insert(q("outputKind"), outputKind);
+  if (!prompt.isEmpty()) p.insert(q("prompt"), prompt);
+  if (!text.isEmpty()) p.insert(q("text"), text);
+  if (!negative.isEmpty()) p.insert(q("negative"), negative);
+  p.insert(q("seed"), seed);
+  if (!promptId.isEmpty()) p.insert(q("promptId"), promptId);
+  if (!workflowHash.isEmpty()) p.insert(q("workflowHash"), workflowHash);
+  p.insert(q("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+  return p;
+}
+
+// Imports `files` into the media pool, places one item per file on the timeline (one undo group,
+// labelled `label`), and - when a template is known - stamps generation provenance on each landed
+// asset and appends one JSON line to <project>/generated/provenance.jsonl.
+Result landOutputs(CallContext& c, const QStringList& files, const QString& trackIdArg,
+                   std::optional<Frame> atFrameArg, const QString& label,
+                   const QString& /*outputKind*/, const QString& templateId,
+                   const TemplateInfo* tmpl, const QJsonObject& provBase) {
+  QJsonArray sidecarsArr;
+  for (const QString& f : files) sidecarsArr.append(f + QStringLiteral(".sfgen.json"));
   if (files.isEmpty()) {
-    return Result::success(QJsonObject{
-      {q("jobId"), jobId},
-      {q("seed"), seed},
-      {q("files"), filesArr},
-      {q("created"), QJsonObject{}},
-      {q("sidecars"), QJsonArray{}}
-    });
+    return Result::success(QJsonObject{{q("created"), QJsonObject{}}, {q("sidecars"), sidecarsArr}});
   }
 
   c.session->pool->import(files);
@@ -379,17 +414,15 @@ Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, cons
   TimelineDoc doc = c.session->project->doc();
   const double fps = static_cast<double>(doc.project.fps);
 
-  std::vector<Op> ops;
-
+  QMap<QString, sf::MediaInfo> probed;
   for (const QString& fPath : files) {
-    const Asset* asset = nullptr;
-    const QFileInfo fi(fPath);
-    for (const Asset& as : c.session->project->assets()) {
-      if (QFileInfo(as.path).absoluteFilePath() == fi.absoluteFilePath() || as.path == fi.absoluteFilePath() || as.path == fPath) {
-        asset = &as;
-        break;
-      }
-    }
+    QString err;
+    if (auto mi = sf::probeMedia(fPath, &err)) probed.insert(fPath, *mi);
+  }
+
+  std::vector<Op> ops;
+  for (const QString& fPath : files) {
+    const Asset* asset = findAssetByPath(*c.session->project, fPath);
     if (!asset) continue;
 
     ItemType type = ItemType::Image;
@@ -399,9 +432,7 @@ Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, cons
     QString targetTrackId = trackIdArg;
     if (!targetTrackId.isEmpty()) {
       const Track* t = getTrack(doc, targetTrackId);
-      if (!t || t->locked || !trackAllowsItem(t->kind, type)) {
-        targetTrackId.clear();
-      }
+      if (!t || t->locked || !trackAllowsItem(t->kind, type)) targetTrackId.clear();
     }
     if (targetTrackId.isEmpty()) {
       for (const Track& t : doc.tracks) {
@@ -422,14 +453,17 @@ Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, cons
       doc.tracks.push_back(newTrk);
     }
 
-    // With `atFrame`, the anchor applies to the first file only: each further file of the
-    // batch advances past the previous one (calcTrackEnd sees the item just added) instead
-    // of piling every file onto the same frame.
+    // With `atFrame`, the anchor applies to the first file only: each further file of the batch
+    // advances past the previous one instead of piling every file onto the same frame.
     Frame start = atFrameArg ? *atFrameArg : calcTrackEnd(doc, targetTrackId);
-    if (atFrameArg) atFrameArg = std::nullopt;
+    atFrameArg = std::nullopt;
+
     Frame dur = 1;
+    const auto pit = probed.find(fPath);
     if (type == ItemType::Image) {
       dur = jsRound(3.0 * fps);
+    } else if (pit != probed.end()) {
+      dur = jsRound(static_cast<double>(pit.value().durationMs) / 1000.0 * fps);
     } else {
       dur = asset->durationMs > 0 ? jsRound(static_cast<double>(asset->durationMs) / 1000.0 * fps) : jsRound(fps);
     }
@@ -449,21 +483,347 @@ Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, cons
   }
 
   editor::Project& p = *c.session->project;
-  if (!p.apply(ops, QStringLiteral("generateShot"), c.actor())) {
+  if (!p.apply(ops, label, c.actor())) {
     return Result::failure(q("edit_rejected"), p.lastError());
   }
 
-  QJsonArray sidecarsArr;
-  for (const QString& f : files) {
-    sidecarsArr.append(f + QStringLiteral(".sfgen.json"));
+  if (!templateId.isEmpty() && tmpl) {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (const QString& fPath : files) {
+      const Asset* asset = findAssetByPath(*c.session->project, fPath);
+      if (!asset) continue;
+      QJsonObject prov = provBase;
+      prov.insert(q("outputFile"), fPath);
+      if (const auto pit = probed.find(fPath); pit != probed.end()) {
+        prov.insert(q("width"), pit.value().width);
+        prov.insert(q("height"), pit.value().height);
+        prov.insert(q("durationMs"), static_cast<qint64>(pit.value().durationMs));
+      }
+      Asset updated = *asset;
+      updated.metadata.provenance = prov;
+      p.updateAsset(updated);
+      appendProvenanceRecord(p, prov);
+    }
   }
 
+  return Result::success(QJsonObject{
+    {q("created"), createdIds(ops)},
+    {q("sidecars"), sidecarsArr}
+  });
+}
+
+Result collectJobOutputs(CallContext& c, const QString& jobId, qint64 seed, const QString& trackIdArg, std::optional<Frame> atFrameArg) {
+  auto res = c.engine->jobs().result(jobId);
+  if (!res || !res->contains(q("files"))) {
+    return Result::failure(q("internal"), QStringLiteral("Job result has no files."));
+  }
+  const QJsonArray filesArr = res->value(q("files")).toArray();
+  QStringList files;
+  for (const auto& v : filesArr) files.append(v.toString());
+
+  if (files.isEmpty()) {
+    return Result::success(QJsonObject{
+      {q("jobId"), jobId},
+      {q("seed"), seed},
+      {q("files"), filesArr},
+      {q("created"), QJsonObject{}},
+      {q("sidecars"), QJsonArray{}}
+    });
+  }
+
+  Result landed = landOutputs(c, files, trackIdArg, atFrameArg, QStringLiteral("generateShot"),
+                              {}, {}, nullptr, {});
+  if (!landed.ok) return landed;
+  const QJsonObject landedObj = landed.value.toObject();
   return Result::success(QJsonObject{
     {q("jobId"), jobId},
     {q("seed"), seed},
     {q("files"), filesArr},
-    {q("created"), createdIds(ops)},
-    {q("sidecars"), sidecarsArr}
+    {q("created"), landedObj.value(q("created"))},
+    {q("sidecars"), landedObj.value(q("sidecars"))}
+  });
+}
+
+// Deterministic seed (same recipe as the original generate.shot): sha1(templateId | basis) -> 32 bits.
+qint64 deriveSeed(const QString& templateId, const QString& basis) {
+  const QByteArray sha = QCryptographicHash::hash((templateId + QLatin1Char('|') + basis).toUtf8(), QCryptographicHash::Sha1).toHex();
+  bool okSeed = false;
+  const quint32 s32 = sha.left(8).toUInt(&okSeed, 16);
+  return okSeed ? static_cast<qint64>(s32) : 0;
+}
+
+// Shared core for generate.video/image/speech/music: bind template params to the graph, run
+// ComfyUI (1..4 variants), land outputs via the media pool + one undo group, record provenance.
+// `expectedKind` must match the template's outputKind; `allowedExtensions` are the lowercase
+// suffixes accepted from ComfyUI outputs for this kind.
+Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expectedKind,
+                   const QStringList& allowedExtensions) {
+  ComfyService& svc = c.engine->comfy();
+  (void)ensureSchema(svc, a); // populate svc.schema so the readiness gate can run
+
+  const QString templateId = a.value(q("templateId")).toString();
+  if (templateId.isEmpty()) return invalid(QStringLiteral("Argument 'templateId' is required"));
+
+  auto allT = loadAllTemplates();
+  auto itT = allT.find(templateId);
+  if (itT == allT.end()) {
+    return notFound(QStringLiteral("Template '%1' not found").arg(templateId),
+                    QStringLiteral("Call comfy.template.list to see imported templates."));
+  }
+  const TemplateInfo& tmpl = itT->second;
+  if (!tmpl.outputKind.isEmpty() && tmpl.outputKind != expectedKind) {
+    return invalid(QStringLiteral("Template '%1' produces %2, not %3").arg(templateId, tmpl.outputKind, expectedKind));
+  }
+
+  const TemplateReadiness ready = checkTemplateReadiness(svc, tmpl);
+  if (!ready.ok) {
+    return Result::failure(q("not_ready"), ready.reason,
+                           QStringLiteral("Call comfy.ready for the missing nodes/models of '%1'.").arg(templateId));
+  }
+
+  const int variants = qBound(1, a.value(q("variants")).toInt(1), 4);
+  const bool wait = a.value(q("wait")).toBool(true);
+  const int timeoutMs = a.value(q("timeoutMs")).toInt(900000);
+
+  const QString prompt = a.value(q("prompt")).toString();
+  const QString text = a.value(q("text")).toString();
+  const qint64 seed = a.contains(q("seed")) ? a.value(q("seed")).toVariant().toLongLong()
+                                            : deriveSeed(templateId, prompt.isEmpty() ? text : prompt);
+
+  const QString trackId = a.value(q("trackId")).toString();
+  std::optional<Frame> nextAt;
+  if (a.contains(q("atFrame"))) nextAt = a.value(q("atFrame")).toInteger();
+
+  QJsonArray allFiles, allSidecars, allCreatedItems, allCreatedTracks;
+  QString lastJobId;
+  qint64 lastSeed = seed;
+
+  for (int v = 0; v < variants; ++v) {
+    const qint64 vSeed = seed + v;
+    lastSeed = vSeed;
+
+    QJsonObject tParams;
+    tParams.insert(q("templateId"), templateId);
+    if (!prompt.isEmpty()) tParams.insert(q("prompt"), prompt);
+    if (!text.isEmpty()) tParams.insert(q("text"), text);
+    tParams.insert(q("seed"), vSeed);
+    for (const char* k : {"negative", "width", "height", "frames", "fps", "steps",
+                          "image", "voiceRef", "durationSec", "bpm", "lyrics", "tags", "audio"}) {
+      if (a.contains(q(k))) tParams.insert(q(k), a.value(q(k)));
+    }
+    if (a.contains(q("imageFromItemId"))) {
+      const QString itmId = a.value(q("imageFromItemId")).toString();
+      const Item* itm = getItem(c.session->project->doc(), itmId);
+      if (!itm) {
+        return notFound(QStringLiteral("Item '%1' not found").arg(itmId));
+      }
+      Result rRender = c.engine->call(q("frame.render"), QJsonObject{
+        {q("session"), c.session->id}, {q("frame"), static_cast<double>(itm->startFrame)}
+      });
+      if (!rRender.ok) return rRender;
+      tParams.insert(q("image"), rRender.value.toObject().value(q("path")).toString());
+    }
+
+    Result rTmpl = c.engine->call(q("comfy.graph.fromTemplate"), QJsonObject{
+      {q("templateId"), templateId}, {q("params"), tParams}
+    });
+    if (!rTmpl.ok) return rTmpl;
+    const QString graphId = rTmpl.value.toObject().value(q("graphId")).toString();
+
+    QJsonObject runArgs{
+      {q("graphId"), graphId}, {q("wait"), wait}, {q("timeoutMs"), timeoutMs},
+      {q("params"), tParams}, {q("seed"), vSeed}
+    };
+    Result rRun = c.engine->call(q("comfy.run"), runArgs);
+    if (!rRun.ok) return rRun;
+    const QString jobId = rRun.value.toObject().value(q("jobId")).toString();
+    lastJobId = jobId;
+
+    auto info = c.engine->jobs().info(jobId);
+    if (info && info->state == jobs::JobState::Failed) {
+      return Result::failure(q("comfy_error"), info->error);
+    }
+    if (!info || info->state != jobs::JobState::Done) {
+      return Result::success(QJsonObject{
+        {q("jobId"), jobId},
+        {q("seed"), lastSeed},
+        {q("files"), QJsonArray{}},
+        {q("created"), QJsonObject{}},
+        {q("sidecars"), QJsonArray{}},
+        {q("pending"), true},
+        {q("hint"), QStringLiteral("call generate.collect")}
+      });
+    }
+
+    const QJsonObject res = *c.engine->jobs().result(jobId);
+    const QJsonArray filesArr = res.value(q("files")).toArray();
+    const QString promptId = res.value(q("promptId")).toString();
+    const QString workflowHash = res.value(q("workflowHash")).toString();
+
+    QStringList files;
+    for (const auto& vv : filesArr) files.append(vv.toString());
+
+    // ComfyUI must only emit extensions this kind accepts.
+    for (const QString& f : files) {
+      const QString ext = QFileInfo(f).suffix().toLower();
+      if (!allowedExtensions.contains(ext)) {
+        return Result::failure(q("internal"), QStringLiteral("Template produced unexpected extension '%1' for kind '%2'").arg(ext, expectedKind));
+      }
+    }
+
+    QJsonObject baseProv = provBase(templateId, &tmpl, expectedKind, prompt, text,
+                                    a.value(q("negative")).toString(), vSeed, promptId, workflowHash);
+
+    Result landed = landOutputs(c, files, trackId, nextAt,
+                                QStringLiteral("Generate %1").arg(expectedKind),
+                                expectedKind, templateId, &tmpl, baseProv);
+    if (!landed.ok) return landed;
+    nextAt = std::nullopt;
+
+    const QJsonObject landedObj = landed.value.toObject();
+    for (const auto& vv : landedObj.value(q("files")).toArray()) allFiles.append(vv);
+    for (const auto& vv : landedObj.value(q("sidecars")).toArray()) allSidecars.append(vv);
+    const QJsonObject created = landedObj.value(q("created")).toObject();
+    for (const auto& vv : created.value(q("items")).toArray()) allCreatedItems.append(vv);
+    for (const auto& vv : created.value(q("tracks")).toArray()) allCreatedTracks.append(vv);
+  }
+
+  QJsonObject allCreated;
+  if (!allCreatedItems.isEmpty()) allCreated.insert(q("items"), allCreatedItems);
+  if (!allCreatedTracks.isEmpty()) allCreated.insert(q("tracks"), allCreatedTracks);
+
+  return Result::success(QJsonObject{
+    {q("jobId"), lastJobId},
+    {q("seed"), lastSeed},
+    {q("files"), allFiles},
+    {q("created"), allCreated},
+    {q("sidecars"), allSidecars}
+  });
+}
+
+// generate.thumbnail: one 1280x720 still from an image template, with a title burn painted via
+// render::rasterizeItem over the generated PNG. Never touches the timeline.
+Result generateThumbnail(CallContext& c, const QJsonObject& a) {
+  ComfyService& svc = c.engine->comfy();
+  (void)ensureSchema(svc, a);
+
+  const QString templateId = a.value(q("templateId")).toString();
+  if (templateId.isEmpty()) return invalid(QStringLiteral("Argument 'templateId' is required"));
+
+  auto allT = loadAllTemplates();
+  auto itT = allT.find(templateId);
+  if (itT == allT.end()) {
+    return notFound(QStringLiteral("Template '%1' not found").arg(templateId),
+                    QStringLiteral("Call comfy.template.list to see imported templates."));
+  }
+  const TemplateInfo& tmpl = itT->second;
+  if (tmpl.outputKind != QLatin1String("image")) {
+    return invalid(QStringLiteral("Thumbnail requires an image template; '%1' produces %2").arg(templateId, tmpl.outputKind));
+  }
+
+  const TemplateReadiness ready = checkTemplateReadiness(svc, tmpl);
+  if (!ready.ok) {
+    return Result::failure(q("not_ready"), ready.reason,
+                           QStringLiteral("Call comfy.ready for the missing nodes/models of '%1'.").arg(templateId));
+  }
+
+  const int timeoutMs = a.value(q("timeoutMs")).toInt(900000);
+  const QString prompt = a.value(q("prompt")).toString();
+  const qint64 seed = a.contains(q("seed")) ? a.value(q("seed")).toVariant().toLongLong()
+                                            : deriveSeed(templateId, prompt);
+
+  QJsonObject tParams;
+  tParams.insert(q("templateId"), templateId);
+  if (!prompt.isEmpty()) tParams.insert(q("prompt"), prompt);
+  tParams.insert(q("seed"), seed);
+  for (const char* k : {"negative", "width", "height", "steps"}) {
+    if (a.contains(q(k))) tParams.insert(q(k), a.value(q(k)));
+  }
+
+  Result rTmpl = c.engine->call(q("comfy.graph.fromTemplate"), QJsonObject{
+    {q("templateId"), templateId}, {q("params"), tParams}
+  });
+  if (!rTmpl.ok) return rTmpl;
+  const QString graphId = rTmpl.value.toObject().value(q("graphId")).toString();
+
+  QJsonObject runArgs{
+    {q("graphId"), graphId}, {q("wait"), true}, {q("timeoutMs"), timeoutMs},
+    {q("params"), tParams}, {q("seed"), seed}
+  };
+  Result rRun = c.engine->call(q("comfy.run"), runArgs);
+  if (!rRun.ok) return rRun;
+  const QString jobId = rRun.value.toObject().value(q("jobId")).toString();
+
+  auto info = c.engine->jobs().info(jobId);
+  if (info && info->state == jobs::JobState::Failed) {
+    return Result::failure(q("comfy_error"), info->error);
+  }
+  if (!info || info->state != jobs::JobState::Done) {
+    return Result::failure(q("internal"), QStringLiteral("Thumbnail job did not finish"));
+  }
+
+  const QJsonObject res = *c.engine->jobs().result(jobId);
+  const QJsonArray filesArr = res.value(q("files")).toArray();
+  if (filesArr.isEmpty()) {
+    return Result::failure(q("internal"), QStringLiteral("Thumbnail job produced no output"));
+  }
+
+  const QString fPath = filesArr.at(0).toString();
+  QString probeErr;
+  auto mi = sf::probeMedia(fPath, &probeErr);
+  if (!mi || !mi->hasVideo || mi->hasAudio) {
+    return Result::failure(q("internal"), QStringLiteral("Thumbnail output is not a still image: %1").arg(fPath));
+  }
+  const QString ext = QFileInfo(fPath).suffix().toLower();
+  if (ext != QLatin1String("png") && ext != QLatin1String("jpg") && ext != QLatin1String("webp")) {
+    return Result::failure(q("invalid_params"), QStringLiteral("Unexpected thumbnail output extension '%1'").arg(ext));
+  }
+
+  QImage img(fPath);
+  if (img.isNull()) {
+    return Result::failure(q("internal"), QStringLiteral("Could not read thumbnail output %1").arg(fPath));
+  }
+
+  const QSize canvas(1280, 720);
+  QImage base(canvas, QImage::Format_RGBA8888_Premultiplied);
+  base.fill(Qt::black);
+  QImage fit = img.scaled(canvas, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+  QPoint offset((canvas.width() - fit.width()) / 2, (canvas.height() - fit.height()) / 2);
+  {
+    QPainter p(&base);
+    p.drawImage(offset, fit);
+    // Title burn: rasterize a caption text layer over the generated frame.
+    const QString title = a.value(q("name")).toString();
+    TimelineDoc doc;
+    Item titleItem;
+    titleItem.id = newId(q("itm"));
+    titleItem.props = TextProps{title.isEmpty() ? prompt : title};
+    if (auto layer = sf::render::rasterizeItem(doc, titleItem, 0, canvas)) {
+      QPainter p2(&base);
+      p2.drawImage(layer->origin, layer->image);
+    }
+  }
+
+  QString stem = a.value(q("name")).toString();
+  if (stem.isEmpty()) stem = QStringLiteral("%1_thumb_%2").arg(templateId).arg(seed, 0, 16);
+  QDir outDir;
+  if (!c.session->project->path().isEmpty()) {
+    outDir = QDir(QFileInfo(c.session->project->path()).dir());
+    outDir.mkpath(QStringLiteral("generated/thumbs"));
+  } else {
+    outDir = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    outDir.mkpath(QStringLiteral("SplitFrame/generated/thumbs"));
+  }
+  const QString thumbPath = outDir.filePath(stem + QStringLiteral(".png"));
+  if (!base.save(thumbPath, "PNG")) {
+    return Result::failure(q("internal"), QStringLiteral("Could not write thumbnail %1").arg(thumbPath));
+  }
+
+  return Result::success(QJsonObject{
+    {q("templateId"), templateId},
+    {q("seed"), seed},
+    {q("files"), QJsonArray{thumbPath}},
+    {q("sidecars"), QJsonArray{}}
   });
 }
 
@@ -1533,6 +1893,7 @@ void registerComfyCommands(Engine& e) {
                      {q("templateId"), q("prompt")}),
              [](CallContext& c, const QJsonObject& a) {
                ComfyService& svc = c.engine->comfy();
+               (void)ensureSchema(svc, a); // best effort: populate svc.schema so the readiness gate below can run
                const QString templateId = a.value(q("templateId")).toString();
                if (templateId.isEmpty()) return invalid(QStringLiteral("Argument 'templateId' is required"));
                const QString prompt = a.value(q("prompt")).toString();
@@ -1610,19 +1971,8 @@ void registerComfyCommands(Engine& e) {
                if (info && info->state == jobs::JobState::Failed) {
                  return Result::failure(q("comfy_error"), info->error);
                }
-               if (!info || info->state != jobs::JobState::Done) {
-                 return Result::success(QJsonObject{
-                   {q("jobId"), jobId},
-                    {q("seed"), seed},
-                   {q("pending"), true},
-                   {q("hint"), QStringLiteral("call generate.collect")}
-                 });
-               }
-
-               std::optional<Frame> optAtFrame;
-               if (a.contains(q("atFrame"))) optAtFrame = a.value(q("atFrame")).toInteger();
-
-               return collectJobOutputs(c, jobId, seed, a.value(q("trackId")).toString(), optAtFrame);
+               return runGenerate(c, a, QStringLiteral("image"),
+                                  {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("webp")});
              }));
 
   e.add(spec("generate.collect", "", "editor", true,
@@ -1648,6 +1998,125 @@ void registerComfyCommands(Engine& e) {
 
                return collectJobOutputs(c, jobId, seed, a.value(q("trackId")).toString(), optAtFrame);
              }));
+  e.add(spec("generate.video", "", "editor", true,
+             QStringLiteral("Generate a video clip from a ComfyUI workflow template and place outputs on the timeline in one undo step."),
+             js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
+                      {q("prompt"), js::str(QStringLiteral("Prompt text"))},
+                      {q("negative"), js::str(QStringLiteral("Negative prompt"))},
+                      {q("seed"), js::integer(QStringLiteral("Deterministic seed"), 0)},
+                      {q("width"), js::integer(QStringLiteral("Output width"), 64, 4096)},
+                      {q("height"), js::integer(QStringLiteral("Output height"), 64, 4096)},
+                      {q("frames"), js::integer(QStringLiteral("Frame count"), 1, 1000)},
+                      {q("fps"), js::number(QStringLiteral("Frame rate"), 1, 120)},
+                      {q("steps"), js::integer(QStringLiteral("Inference steps"), 1, 200)},
+                      {q("variants"), js::integer(QStringLiteral("Variant count (1-4, default 1)"), 1, 4)},
+                      {q("trackId"), js::str(QStringLiteral("Target track ID"))},
+                      {q("atFrame"), js::integer(QStringLiteral("Start frame on timeline"), 0)},
+                      {q("name"), js::str(QStringLiteral("Output name stem"))},
+                      {q("wait"), js::boolean(QStringLiteral("Wait for completion (default true)"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
+                     {q("templateId"), q("prompt")}),
+             [](CallContext& c, const QJsonObject& a) {
+               return runGenerate(c, a, QStringLiteral("video"),
+                                  {QStringLiteral("mp4"), QStringLiteral("webm"), QStringLiteral("webp"), QStringLiteral("gif"), QStringLiteral("png")});
+             },
+             false));
+
+  e.add(spec("generate.image", "", "editor", true,
+             QStringLiteral("Generate a still image from a ComfyUI workflow template and place it on the timeline in one undo step."),
+             js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
+                      {q("prompt"), js::str(QStringLiteral("Prompt text"))},
+                      {q("negative"), js::str(QStringLiteral("Negative prompt"))},
+                      {q("seed"), js::integer(QStringLiteral("Deterministic seed"), 0)},
+                      {q("width"), js::integer(QStringLiteral("Output width"), 64, 4096)},
+                      {q("height"), js::integer(QStringLiteral("Output height"), 64, 4096)},
+                      {q("steps"), js::integer(QStringLiteral("Inference steps"), 1, 200)},
+                      {q("variants"), js::integer(QStringLiteral("Variant count (1-4, default 1)"), 1, 4)},
+                      {q("trackId"), js::str(QStringLiteral("Target track ID"))},
+                      {q("atFrame"), js::integer(QStringLiteral("Start frame on timeline"), 0)},
+                      {q("name"), js::str(QStringLiteral("Output name stem"))},
+                      {q("wait"), js::boolean(QStringLiteral("Wait for completion (default true)"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
+                     {q("templateId"), q("prompt")}),
+             [](CallContext& c, const QJsonObject& a) {
+               return runGenerate(c, a, QStringLiteral("image"),
+                                  {QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("webp")});
+             },
+             false));
+
+  e.add(spec("generate.speech", "", "editor", true,
+             QStringLiteral("Generate speech audio from a ComfyUI workflow template and place it on the timeline in one undo step."),
+             js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
+                      {q("text"), js::str(QStringLiteral("Text to speak"))},
+                      {q("voiceRef"), js::str(QStringLiteral("Reference voice item id"))},
+                      {q("seed"), js::integer(QStringLiteral("Deterministic seed"), 0)},
+                      {q("variants"), js::integer(QStringLiteral("Variant count (1-4, default 1)"), 1, 4)},
+                      {q("trackId"), js::str(QStringLiteral("Target track ID"))},
+                      {q("atFrame"), js::integer(QStringLiteral("Start frame on timeline"), 0)},
+                      {q("name"), js::str(QStringLiteral("Output name stem"))},
+                      {q("wait"), js::boolean(QStringLiteral("Wait for completion (default true)"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
+                     {q("templateId"), q("text")}),
+             [](CallContext& c, const QJsonObject& a) {
+               return runGenerate(c, a, QStringLiteral("audio"),
+                                  {QStringLiteral("wav"), QStringLiteral("flac"), QStringLiteral("mp3"), QStringLiteral("ogg")});
+             },
+             false));
+
+  e.add(spec("generate.music", "", "editor", true,
+             QStringLiteral("Generate music from a ComfyUI workflow template and place it on the timeline in one undo step."),
+             js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
+                      {q("bpm"), js::number(QStringLiteral("Tempo in beats per minute"))},
+                      {q("lyrics"), js::str(QStringLiteral("Lyrics"))},
+                      {q("tags"), js::str(QStringLiteral("Genre/style tags"))},
+                      {q("durationSec"), js::number(QStringLiteral("Target duration in seconds"))},
+                      {q("seed"), js::integer(QStringLiteral("Deterministic seed"), 0)},
+                      {q("variants"), js::integer(QStringLiteral("Variant count (1-4, default 1)"), 1, 4)},
+                      {q("trackId"), js::str(QStringLiteral("Target track ID"))},
+                      {q("atFrame"), js::integer(QStringLiteral("Start frame on timeline"), 0)},
+                      {q("name"), js::str(QStringLiteral("Output name stem"))},
+                      {q("wait"), js::boolean(QStringLiteral("Wait for completion (default true)"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
+                     {q("templateId")}),
+             [](CallContext& c, const QJsonObject& a) {
+               return runGenerate(c, a, QStringLiteral("audio"),
+                                  {QStringLiteral("wav"), QStringLiteral("flac"), QStringLiteral("mp3"), QStringLiteral("ogg")});
+             },
+             false));
+
+  e.add(spec("generate.thumbnail", "", "editor", true,
+             QStringLiteral("Render a 1280x720 still from an image template with a title burn; returned as a file path, never placed on the timeline."),
+             js::obj({{q("templateId"), js::str(QStringLiteral("Template identifier"))},
+                      {q("prompt"), js::str(QStringLiteral("Prompt text"))},
+                      {q("name"), js::str(QStringLiteral("Output name stem"))},
+                      {q("timeoutMs"), js::integer(QStringLiteral("Timeout in milliseconds (default 900000)"))}},
+                     {q("templateId")}),
+             [](CallContext& c, const QJsonObject& a) {
+               return generateThumbnail(c, a);
+             },
+             false));
+
+  e.add(spec("generate.history", "", "editor", false,
+             QStringLiteral("List past generation records from <project>/generated/provenance.jsonl."),
+             js::obj({}),
+             [](CallContext& c, const QJsonObject&) {
+               QJsonArray arr;
+               if (!c.session->project->path().isEmpty()) {
+                 QFile f(QFileInfo(c.session->project->path()).dir().filePath(QStringLiteral("generated/provenance.jsonl")));
+                 if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                   while (!f.atEnd()) {
+                     QByteArray line = f.readLine().trimmed();
+                     if (line.isEmpty()) continue;
+                     QJsonParseError pe;
+                     QJsonDocument doc = QJsonDocument::fromJson(line, &pe);
+                     if (pe.error == QJsonParseError::NoError && doc.isObject()) arr.append(doc.object());
+                   }
+                 }
+               }
+               return Result::success(QJsonObject{{q("history"), arr}});
+             },
+             false));
+
   e.add(spec("reshoot.variants", "", "generate", false,
              QStringLiteral("Pick a generated clip on the timeline, render N alternatives (new seeds and/or prompt tweaks), and compose a contact sheet."),
              js::obj({{q("itemId"), js::str(QStringLiteral("Target item ID"))},

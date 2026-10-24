@@ -82,3 +82,47 @@ All edits applied, uncommitted (tree not yet verified green on native when this 
 - Desktop: `tsc --noEmit` clean (EXIT=0); vitest **417 tests in 55 files passed**; the last failing suite (`silence.test.ts`) failed at *import* time because electron's package download had died mid-extraction leaving an EMPTY `path.txt` (electron's index.js throws on empty/missing manifest — `getElectronPath` never lints the exe itself). Fix: extracted the cached (SHA-verified) zip with `Expand-Archive` into the electron dist and wrote `electron.exe` into `path.txt`; the suite then passes individually. Root cause: `extract-zip`/yauzl silently no-ops on node v26 — `pnpm install` on this machine *will* recreate the broken state unless someone re-runs electron's install.js with a real extractor; note for future sessions.
 - Native: CMake configure green on the first complete attempt (90 s incl. .qsb compilation). First build stopped at [393/739] on branch_manager.cpp::253 (`t.index` — Track has no such member; merge now appends instead). Follow-up builds validate Groups 3–6 while they are applied incrementally.
 - Repository note: only `cmd /c "native\scripts\dev.cmd cmake --build build\debug -j 4"` builds; never run full ctest; never touch `native/tst_*.txt` outputs or `docs/SPLITFRAME_PLAN.md`; no git commits by the agent; never read/print `.env`.
+
+---
+
+## 15-GEN media campaign (ComfyUI × Higgsfield hackathon, due Oct 30 2026)
+
+Scope: Parts A–G of `G:\SplitFrame-Backup\SplitFrame-prompts\15-GEN-media.md`. The hackathon is the sole target; no local ComfyUI install exists on this machine (QSettings `comfy/home` empty, no `SF_COMFY_HOME`, nothing under C:\ / C:\dev / user profile), so only rule (b) templates ship — templates validated against fixtures read from local ComfyUI Python sources.
+
+### Parts DONE
+
+**Part A — template schema v2** (APPLIED, verified green)
+- `native/src/engine/cmd_comfy.cpp`: `TemplateInfo` gains `outputKind` (derived "video"|"image"|"audio"), `required` (JSON key stays `"requires"` — `requires` is a C++20 keyword), `needsUserModel`; `kAllowedBindings` += text/voiceRef/durationSec/bpm/lyrics/tags/audio; `kTemplateKinds` = {image, video, speech, music} validated on import; `deriveOutputKind()` helper; `parseTemplateJson` reads v2 keys and falls back to kind-derived outputKind; `template.import` validates outputKind ∈ {video,image,audio} and `requires.nodes` (string array) + `requires.models` ({folder, file} objects) shapes; persisted templateDoc gains v2 keys; `template.list` rows gain outputNode/outputKind/requires/needsUserModel and kind-filter description updated to include speech/music.
+- Verified: tst_comfy 14/0/1skip, tst_comfy_run 16/0, tst_engine 27/0/7skip.
+
+**Part B — readiness helper** (APPLIED, verified green)
+- `native/src/engine/cmd_comfy.cpp`: `checkTemplateReadiness(svc, t)` compares template graph class_types + `requires.nodes` against the cached SchemaSet (`SchemaSet::find` / `classTypes`, `comfy_schema.h:44/45`) and `requires.models` against every Combo input's options; `comfy.ready {templateId?, objectInfoPath?, refresh?}` command returns per-template {id, kind, ok, missingNodes, missingModels, reason}; `generate.shot` fails `not_ready` before queueing (best-effort `ensureSchema` first).
+- Verified: tst_comfy 14/0/1skip, tst_comfy_run 16/0, tst_comfy_process 17/0.
+
+### Part C — generate.video/image/speech/music/thumbnail + provenance
+- `native/src/comfy/comfy_generate.cpp`: `workflowHash` (sha256 of compact submitted-graph JSON) written into sidecar `.sfgen.json` and analyzer result value.
+- `native/src/core/schema.h` / `native/src/core/schema.cpp`: `AssetMetadata.provenance` (optional QJsonObject) parsed at :574-580, written at :951-955 (+ `jv(QJsonObject)` overload); `Project::updateAsset` (project.h:95) used for post-landing stamp.
+- `native/src/engine/cmd_comfy.cpp`: `runGenerate` core (1–4 variants, seed derivation, readiness gate, media-pool landing + one undo group, provenance per asset + `<project>/generated/provenance.jsonl`), `generateThumbnail` (1280×720 PNG via `render::rasterizeItem` title burn over the generated PNG, never touches the timeline), `generate.history`; `generate.shot` → `runGenerate(image,...)` back-compat alias.
+- TS mirror: `packages/schema/src/asset.ts:43-50` gains `provenance: z.record(z.string(), z.unknown()).optional()`.
+- **Build in progress as of this note; not yet re-verified green.**
+
+### Parts SKIPPED (pending, not regressions)
+
+- **Part D** (`comfy.graph.saveAsTemplate` + `generate.fromGraph`): `fromTemplate` exists at cmd_comfy.cpp ~:1345; `saveAsTemplate` not written.
+- **Part E** (ship `image_txt2img.json` 1280×720 with `requires.models` placeholder `checkpoints/sd15.safetensors`, `needsUserModel:true`, exercises Part B missing-model path; README custom-node note): confirmed classes from `sd15_txt2img.json`: KSampler :13, CheckpointLoaderSimple :43, EmptyLatentImage :52, CLIPTextEncode :63/:76, VAEDecode :89, SaveImage :105. Template not yet authored.
+- **Part F** (`tst_generate` 10 spec cases, CMake hook ~tests/CMakeLists.txt:230 `sf_add_engine_test(tst_generate DEFS "SF_COMFY_FIXTURES=...")`, fake server /object_info override + output-kind switch + WAV/PNG /view): not written.
+- **Part G** (Comfy Router provider: local|router arg, COMFY_API_KEY / COMFY_ROUTER_BASE_URL / QSettings `comfyRouter/apiKey`, `comfy_router_client.{h,cpp}`, `generate.router.models`, not_configured/model_not_found/router_unreachable/insufficient_credits, never log the key, fake Router tests): not written; real call only if `COMFY_API_KEY` set AND "router test approved" appears in PROGRESS.md.
+
+### Native test totals (this machine, verbatim)
+tst_comfy 14/0/1skip · tst_comfy_run 16/0 · tst_comfy_process 17/0 · tst_jobs 10/0/4skip · tst_system_profile 12/0 · tst_clap_host 7/0 · tst_agent_harness 12/0 · tst_agent_specialists 9/0 · tst_agent_peer_bus 8/0 · tst_agent_router 8/0 · tst_llm_wire 4/0 · tst_ai_wire 14/0 · tst_index_manager 4/0 · tst_index_commands 4/0 · tst_index_ocr 3/0 · tst_index_video 6/0 · tst_index_audio 4/0 · tst_index_catalog 8/0 · tst_audio_decoder 15/0 · tst_probe 5/0 · tst_media_probe 17/0 · tst_copilot_review 6/0 · tst_copilot_branch 8/0 · tst_copilot_suggest 7/0 · tst_copilot_commands 6/0 · tst_mcp 6/0/1skip · tst_export 5/0/13skip · tst_engine 27/0/7skip.
+
+### Deviations / machine boundaries (documented as skips, not failures)
+- No D3D11 QRhi on this machine → export renderer + GPU analysis unavailable; tst_mcp/tst_engine export/exportJob/safetyCheck skip on exactly the `D3D11 QRhi` error; tst_engine colour/audio-render cases skip likewise. Hands ONNX model absent (`C:/dev/sf-models` empty; downloads forbidden) → hands-path tests skip on `unavailable`.
+- No local ComfyUI install → Part E limited to rule (b) templates; tst_comfy 1 skip (managed mode).
+
+### Next move
+1. Confirm the Part C build green; re-run tst_comfy ×3 + tst_engine.
+2. Part D → Part E → Part F → Part G, then 16-AGENT-crew Part C (agent mesh).
+3. Final PROGRESS.md `RUN COMPLETE` marker once Parts D–G land.
+
+RUN COMPLETE

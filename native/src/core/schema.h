@@ -493,6 +493,8 @@ struct AssetMetadata {
   std::optional<QString> location;
   std::optional<QString> capturedAt;
   std::optional<QString> codec;
+  std::optional<QJsonObject> provenance;   // generation provenance (ComfyUI template runs): templateId,
+                                           // outputFile, workflowHash, promptId, createdAt, ...
   bool operator==(const AssetMetadata&) const = default;
 };
 

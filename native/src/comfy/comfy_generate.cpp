@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QUrl>
+#include <QCryptographicHash>
 
 #include <algorithm>
 #include <chrono>
@@ -63,6 +64,13 @@ jobs::AnalyzerResult ComfyGenerateAnalyzer::run(jobs::JobContext& ctx) {
 
   // 3. Poll history
   const qint64 startMs = QDateTime::currentMSecsSinceEpoch();
+
+  // workflowHash: sha256 of the compact graph JSON actually submitted to ComfyUI (after uploads are
+  // spliced in), so every output carries an immutable fingerprint of what ran.
+  const QString workflowHash = QCryptographicHash::hash(
+                                   QJsonDocument(graph).toJson(QJsonDocument::Compact),
+                                   QCryptographicHash::Sha256)
+                                   .toHex();
   qint64 timeoutMs = 900000;
   if (ctx.params.contains(QStringLiteral("timeoutMs"))) {
     timeoutMs = ctx.params.value(QStringLiteral("timeoutMs")).toVariant().toLongLong();
@@ -181,6 +189,7 @@ jobs::AnalyzerResult ComfyGenerateAnalyzer::run(jobs::JobContext& ctx) {
         sidecar.insert(QStringLiteral("outputNode"), out.nodeId);
         sidecar.insert(QStringLiteral("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
         sidecar.insert(QStringLiteral("params"), ctx.params.value(QStringLiteral("params")).toObject());
+        sidecar.insert(QStringLiteral("workflowHash"), workflowHash);
 
         QFile scFile(destFile + QStringLiteral(".sfgen.json"));
         if (scFile.open(QIODevice::WriteOnly)) {
@@ -194,7 +203,8 @@ jobs::AnalyzerResult ComfyGenerateAnalyzer::run(jobs::JobContext& ctx) {
       ctx.report(1.0);
       QJsonObject resVal{
         {QStringLiteral("promptId"), qres.promptId},
-        {QStringLiteral("files"), filesArr}
+        {QStringLiteral("files"), filesArr},
+        {QStringLiteral("workflowHash"), workflowHash}
       };
       if (ctx.params.contains(QStringLiteral("seed"))) {
         resVal.insert(QStringLiteral("seed"), ctx.params.value(QStringLiteral("seed")));

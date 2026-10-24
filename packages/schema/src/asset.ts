@@ -46,6 +46,8 @@ export const assetSchema = z.object({
       capturedAt: z.string().optional(),
       /** video codec reported by ffprobe (lets export use the original when Chromium can decode it) */
       codec: z.string().optional(),
+      /** Generation provenance (ComfyUI template runs): templateId, outputFile, workflowHash, ... */
+      provenance: z.record(z.string(), z.unknown()).optional(),
     })
     .default({}),
   createdAt: z.string(),
