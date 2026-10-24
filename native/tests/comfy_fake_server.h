@@ -35,6 +35,7 @@ class FakeComfyServer {
     int historyCalls = 0;
     QString outputFilename;
     QString outputKind = QStringLiteral("image"); // image | video | audio: history array key + default filename ext
+    QJsonObject objectInfoJson;                       // when set, /object_info serves this JSON in-memory
     QString objectInfoPath;                       // when set, /object_info serves this file instead of the fixture
     bool routerMode = false;   // serve the minimal Comfy Router API surface for 15-GEN Part G tests
     int routerPolls = 0;       // status polls per request id, to make IN_PROGRESS -> COMPLETED deterministic
@@ -119,9 +120,10 @@ class FakeComfyServer {
           QString fixPath;
           {
             std::lock_guard<std::mutex> lk(state_->mu);
-            fixPath = state_->objectInfoPath;
+            if (!state_->objectInfoJson.isEmpty()) { respBody = QJsonDocument(state_->objectInfoJson).toJson(QJsonDocument::Compact); } else { fixPath = state_->objectInfoPath; }
           }
-          if (fixPath.isEmpty()) {
+          if (respBody.isEmpty()) {
+            if (fixPath.isEmpty()) {
 #ifdef SF_COMFY_FIXTURES
             fixPath = QStringLiteral(SF_COMFY_FIXTURES) + QStringLiteral("/object_info_min.json");
 #else
@@ -133,6 +135,7 @@ class FakeComfyServer {
             respBody = f.readAll();
           } else {
             respBody = "{}";
+          }
           }
         } else if (method == QLatin1String("POST") && path == QLatin1String("/prompt")) {
           QJsonDocument promptDoc = QJsonDocument::fromJson(body);
@@ -495,6 +498,12 @@ public:
     state_->outputKind = kind;
   }
 
+  // Serves this object_info QJsonObject in-memory when non-empty.
+  void setObjectInfoJson(const QJsonObject& json) {
+    std::lock_guard<std::mutex> lk(state_->mu);
+    state_->objectInfoJson = json;
+  }
+
   // Serves this object_info JSON instead of the fixture when non-empty.
   void setObjectInfoPath(const QString& path) {
     std::lock_guard<std::mutex> lk(state_->mu);
@@ -533,6 +542,7 @@ public:
     bool empty() const { std::lock_guard<std::mutex> lk(s->mu); return s->queued.empty(); }
     std::vector<QJsonObject> operator()() const { std::lock_guard<std::mutex> lk(s->mu); return s->queued; }
     QJsonObject operator[](size_t idx) const { std::lock_guard<std::mutex> lk(s->mu); return s->queued.at(idx); }
+    QJsonObject back() const { std::lock_guard<std::mutex> lk(s->mu); return s->queued.back(); }
   };
 
   QueuedHelper queued{state_};

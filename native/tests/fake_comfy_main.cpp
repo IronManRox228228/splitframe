@@ -9,10 +9,20 @@ int main(int argc, char* argv[]) {
   QCoreApplication app(argc, argv);
 
   quint16 port = 0;
+  QString objectInfoPath;
+  QString outputKind;
+  QString outputFilename;
+
   for (int i = 1; i < argc; ++i) {
-    if (QString::fromLatin1(argv[i]) == QLatin1String("--port") && i + 1 < argc) {
-      port = static_cast<quint16>(QString::fromLatin1(argv[i + 1]).toUShort());
-      break;
+    const QString arg = QString::fromLatin1(argv[i]);
+    if (arg == QLatin1String("--port") && i + 1 < argc) {
+      port = static_cast<quint16>(QString::fromLatin1(argv[++i]).toUShort());
+    } else if (arg == QLatin1String("--object-info") && i + 1 < argc) {
+      objectInfoPath = QString::fromLatin1(argv[++i]);
+    } else if (arg == QLatin1String("--output-kind") && i + 1 < argc) {
+      outputKind = QString::fromLatin1(argv[++i]);
+    } else if (arg == QLatin1String("--output-filename") && i + 1 < argc) {
+      outputFilename = QString::fromLatin1(argv[++i]);
     }
   }
 
@@ -22,6 +32,25 @@ int main(int argc, char* argv[]) {
   }
 
   const auto env = QProcessEnvironment::systemEnvironment();
+  if (objectInfoPath.isEmpty()) {
+    objectInfoPath = env.value(QStringLiteral("FAKE_COMFY_OBJECT_INFO"));
+  }
+  if (!objectInfoPath.isEmpty()) {
+    server.setObjectInfoPath(objectInfoPath);
+  }
+  if (outputKind.isEmpty()) {
+    outputKind = env.value(QStringLiteral("FAKE_COMFY_OUTPUT_KIND"));
+  }
+  if (!outputKind.isEmpty()) {
+    server.setOutputKind(outputKind);
+  }
+  if (outputFilename.isEmpty()) {
+    outputFilename = env.value(QStringLiteral("FAKE_COMFY_OUTPUT_FILENAME"));
+  }
+  if (!outputFilename.isEmpty()) {
+    server.setOutputFilename(outputFilename);
+  }
+
   if (env.value(QStringLiteral("FAKE_COMFY_HANG_HISTORY")) == QLatin1String("1")) {
     server.setHangHistory(true);
   }
