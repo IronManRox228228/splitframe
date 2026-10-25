@@ -2033,6 +2033,25 @@ private slots:
     QCOMPARE(videoItemCountRestored, 0);
   }
 
+  void storyboardSetAcceptsSceneFields() {
+    const QJsonObject scene{{Q("id"), Q("sc_1")}, {Q("title"), Q("Open")}, {Q("intent"), Q("establish")},
+                            {Q("durationSec"), 4.5}, {Q("shotPrompt"), Q("wide")}, {Q("voText"), Q("vo")},
+                            {Q("musicCue"), Q("intro")}, {Q("colourNote"), Q("teal")}, {Q("status"), Q("ready")},
+                            {Q("assetIds"), QJsonArray{Q("ast_x")}}};
+    const QJsonObject set = ok(Q("storyboard.set"), {{Q("scenes"), QJsonArray{scene}}});
+    QCOMPARE(set.value(Q("count")).toInt(), 1);
+    const QJsonObject got = ok(Q("storyboard.get")).value(Q("scenes")).toArray().at(0).toObject();
+    QCOMPARE(got.value(Q("title")).toString(), Q("Open"));
+    QCOMPARE(got.value(Q("durationSec")).toDouble(), 4.5);
+    QCOMPARE(got.value(Q("assetIds")).toArray().at(0).toString(), Q("ast_x"));
+    ok(Q("storyboard.scene.add"), {{Q("scene"), QJsonObject{{Q("title"), Q("Two")}, {Q("durationSec"), 2.0}}}});
+    ok(Q("storyboard.scene.update"), {{Q("id"), Q("sc_1")}, {Q("patch"), QJsonObject{{Q("title"), Q("Opening")}}}});
+    const QJsonArray all = ok(Q("storyboard.get")).value(Q("scenes")).toArray();
+    QCOMPARE(all.size(), 2);
+    QCOMPARE(all.at(0).toObject().value(Q("title")).toString(), Q("Opening"));
+    QCOMPARE(raw(Q("storyboard.set"), {{Q("scenes"), QJsonArray{QJsonObject{{Q("bogus"), 1}}}}}).error.code, Q("invalid_params"));
+  }
+
   void unknownTextureRejected() {
     const QString item = ok(Q("text.add"), {{Q("text"), Q("T")}, {Q("startFrame"), 0}, {Q("durationFrames"), 20}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
     QVERIFY(!item.isEmpty());

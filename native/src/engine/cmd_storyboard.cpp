@@ -44,6 +44,21 @@ StoryboardScene parseSceneFromArgs(const QJsonObject& a) {
   return s;
 }
 
+// The fields of one scene, shared by storyboard.set, scene.add and scene.update so the validator
+// accepts what parseSceneFromArgs reads.
+QJsonObject sceneSchema() {
+  return js::obj({{q("id"), js::str()},
+                  {q("title"), js::str()},
+                  {q("intent"), js::str()},
+                  {q("durationSec"), js::number()},
+                  {q("shotPrompt"), js::str()},
+                  {q("voText"), js::str()},
+                  {q("musicCue"), js::str()},
+                  {q("colourNote"), js::str()},
+                  {q("status"), js::str()},
+                  {q("assetIds"), js::array(js::str())}});
+}
+
 QJsonArray scenesToJsonArray(const std::vector<StoryboardScene>& scenes) {
   QJsonArray arr;
   for (const auto& s : scenes) {
@@ -71,7 +86,7 @@ void registerStoryboardCommands(Engine& e) {
   // storyboard.set
   e.add(spec("storyboard.set", "setStoryboard", "editor", true,
              QStringLiteral("Replace the entire project storyboard (undoable)."),
-             js::obj({{q("scenes"), js::array(js::obj({}))}}, {q("scenes")}),
+             js::obj({{q("scenes"), js::array(sceneSchema())}, {q("storyboard"), js::array(sceneSchema())}}, {q("scenes")}),
              [](CallContext& c, const QJsonObject& a) {
                QJsonArray arr = a.value(q("scenes")).toArray();
                if (arr.isEmpty() && a.contains(q("storyboard")) && a.value(q("storyboard")).isArray()) {
@@ -106,7 +121,7 @@ void registerStoryboardCommands(Engine& e) {
                       {q("colourNote"), js::str()},
                       {q("status"), js::str()},
                       {q("assetIds"), js::array(js::str())},
-                      {q("scene"), js::obj({})},
+                      {q("scene"), sceneSchema()},
                       {q("index"), js::integer(QStringLiteral("0-based insertion index"))}}),
              [](CallContext& c, const QJsonObject& a) {
                StoryboardScene newScene = parseSceneFromArgs(a);
@@ -142,7 +157,7 @@ void registerStoryboardCommands(Engine& e) {
                       {q("colourNote"), js::str()},
                       {q("status"), js::str()},
                       {q("assetIds"), js::array(js::str())},
-                      {q("patch"), js::obj({})}}, {q("id")}),
+                      {q("patch"), sceneSchema()}}, {q("id")}),
              [](CallContext& c, const QJsonObject& a) {
                const QString id = a.value(q("id")).toString();
                if (id.isEmpty()) return invalid(QStringLiteral("Argument 'id' is required"));
