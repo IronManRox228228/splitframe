@@ -24,6 +24,12 @@
 
 namespace sf::comfy {
 
+// Generation provider: local ComfyUI instance or Comfy Router cloud platform.
+enum class GenProvider {
+  LocalComfy,
+  ComfyRouter
+};
+
 // Raw HTTP facts every Router response carries.
 struct RouterReply {
   int status = 0;        // 0 = transport failure (see `error`)
@@ -43,8 +49,10 @@ struct RouterReply {
 class RouterClient {
 public:
   // Empty base -> COMFY_ROUTER_BASE_URL env -> https://api.comfy.org.
-  explicit RouterClient(QUrl base = {});
+  // Optional apiKey: if provided, uses it; otherwise resolves via resolveApiKey().
+  explicit RouterClient(QUrl base = {}, QString apiKey = {});
   QUrl base() const;
+  QString apiKey() const;
 
   // COMFY_API_KEY env first, then QSettings("comfyRouter/apiKey"). Empty when unconfigured.
   static QString resolveApiKey();
@@ -66,6 +74,7 @@ public:
                           int timeoutMs = 120000);
 
   QUrl base_;
+  QString apiKey_;
 };
 
 } // namespace sf::comfy

@@ -2,6 +2,7 @@
 
 #include "comfy/comfy_client.h"
 #include "comfy/comfy_graph.h"
+#include "comfy/comfy_router_client.h"
 #include "comfy/comfy_schema.h"
 #include "comfy/comfy_validate.h"
 #include "comfy_fake_server.h"
@@ -400,6 +401,76 @@ private slots:
     QVERIFY2(upVal.has_value(), qPrintable(upErr));
     QCOMPARE(*upVal, QStringLiteral("up.png"));
     QCOMPARE(static_cast<int>(fake.uploads), 1);
+  }
+
+  // 14. routerClientBasics
+  void routerClientBasics() {
+    FakeComfyServer fake;
+
+    // 1. Missing-key path (clear error, no crash)
+    {
+      qunsetenv("COMFY_API_KEY");
+      RouterClient clientNoKey(fake.url(), QString());
+      RouterReply rep = clientNoKey.listModels(10, QString());
+      QCOMPARE(rep.status, 0);
+      QVERIFY(rep.transportFailed());
+      QVERIFY(rep.error.contains(QStringLiteral("no API key")));
+    }
+
+    // 2. Success path
+    {
+      const QString validKey = QStringLiteral("valid-key-unit");
+      RouterClient client(fake.url(), validKey);
+      RouterReply repList = client.listModels(10, QString());
+      QCOMPARE(repList.status, 200);
+      QVERIFY(repList.ok());
+      QVERIFY(!repList.transportFailed());
+      QVERIFY(repList.body.contains(QStringLiteral("data")));
+      QCOMPARE(fake.routerApiKey(), validKey);
+
+      RouterReply repModel = client.getModel(QStringLiteral("test/one"));
+      QCOMPARE(repModel.status, 200);
+      QVERIFY(repModel.ok());
+      QCOMPARE(repModel.body.value(QStringLiteral("id")).toString(), QStringLiteral("test/one"));
+
+      RouterReply repSchema = client.getSchema(QStringLiteral("test/s1"), QString());
+      QCOMPARE(repSchema.status, 200);
+      QVERIFY(repSchema.ok());
+
+      RouterReply repSub = client.submitRequest(QStringLiteral("test/one"), QJsonObject{{QStringLiteral("mode"), QStringLiteral("1")}});
+      QCOMPARE(repSub.status, 201);
+      QVERIFY(repSub.ok());
+    }
+
+    // 3. HTTP Auth Error (401)
+    {
+      RouterClient clientBadKey(fake.url(), QStringLiteral("bad-key"));
+      RouterReply repAuth = clientBadKey.listModels(10, QString());
+      QCOMPARE(repAuth.status, 401);
+      QCOMPARE(repAuth.errorType, QStringLiteral("unauthorized"));
+      QVERIFY(!repAuth.ok());
+      QVERIFY(!repAuth.transportFailed());
+    }
+
+    // 4. HTTP 5xx (500)
+    {
+      RouterClient client(fake.url(), QStringLiteral("valid-key-unit"));
+      RouterReply rep500 = client.getModel(QStringLiteral("test/500"));
+      QCOMPARE(rep500.status, 500);
+      QCOMPARE(rep500.errorType, QStringLiteral("internal_server_error"));
+      QVERIFY(!rep500.ok());
+      QVERIFY(!rep500.transportFailed());
+    }
+
+    // 5. Transport failure (unreachable)
+    {
+      RouterClient clientUnreach(QUrl(QStringLiteral("http://127.0.0.1:1")), QStringLiteral("any-key"));
+      RouterReply repUnreach = clientUnreach.listModels(10, QString(), 1000);
+      QCOMPARE(repUnreach.status, 0);
+      QVERIFY(repUnreach.transportFailed());
+      QVERIFY(!repUnreach.error.isEmpty());
+      QVERIFY(!repUnreach.ok());
+    }
   }
 };
 

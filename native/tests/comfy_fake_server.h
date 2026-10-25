@@ -40,6 +40,8 @@ class FakeComfyServer {
     bool routerMode = false;   // serve the minimal Comfy Router API surface for 15-GEN Part G tests
     int routerPolls = 0;       // status polls per request id, to make IN_PROGRESS -> COMPLETED deterministic
     QString routerApiKey;      // X-API-Key value seen on the last router request (for key handling asserts)
+    bool routerAuthFail = false;
+    bool router5xx = false;
     bool hangHistory = false;
     bool emptyQueue = false;
     bool interrupted = false;
@@ -259,7 +261,7 @@ class FakeComfyServer {
             {QStringLiteral("queue_pending"), queuePending}
           };
           respBody = QJsonDocument(qObj).toJson(QJsonDocument::Compact);
-        } else if (method == QLatin1String("GET") && path == QLatin1String("/view")) {
+        } else if (method == QLatin1String("GET") && (path == QLatin1String("/view") || path == QLatin1String("/sample.png"))) {
           const QUrlQuery viewQuery(targetUrl.query());
           const QString viewFn = viewQuery.queryItemValue(QStringLiteral("filename"));
           if (viewFn.endsWith(QStringLiteral(".wav"), Qt::CaseInsensitive)) {
@@ -314,21 +316,43 @@ class FakeComfyServer {
             if (line.toLower().startsWith("if-none-match:")) etagHdr = QString::fromUtf8(line.mid(14).trimmed());
           }
           QString errorHdr;
+          bool rejectAuth = false;
+          bool force500 = false;
           {
             std::lock_guard<std::mutex> lk(state_->mu);
             state_->routerApiKey = apiKey;
+            if (state_->routerAuthFail || apiKey == QLatin1String("bad-key") || apiKey == QLatin1String("invalid")) {
+              rejectAuth = true;
+            }
+            if (state_->router5xx) {
+              force500 = true;
+            }
           }
-          if (apiKey.isEmpty()) {
+          if (force500) {
+            statusCode = 500;
+            statusText = QStringLiteral("Internal Server Error");
+            errorHdr = QStringLiteral("internal_server_error");
+            respBody = QJsonDocument(QJsonObject{
+              {QStringLiteral("detail"), QStringLiteral("Internal server error from Router")}
+            }).toJson(QJsonDocument::Compact);
+          } else if (apiKey.isEmpty() || rejectAuth) {
             statusCode = 401;
             statusText = QStringLiteral("Unauthorized");
             errorHdr = QStringLiteral("unauthorized");
-            respBody = QJsonDocument(QJsonObject{{QStringLiteral("detail"), QStringLiteral("Missing API key")}}).toJson(QJsonDocument::Compact);
+            respBody = QJsonDocument(QJsonObject{{QStringLiteral("detail"), QStringLiteral("Invalid or missing API key")}}).toJson(QJsonDocument::Compact);
           } else {
             QString sub = path.mid(QLatin1String("/v2/models").size()); if (sub.startsWith(QLatin1Char('/'))) sub.remove(0, 1); const QStringList seg = sub.split(QLatin1Char('/'), Qt::SkipEmptyParts);
             const QString modelId = seg.size() >= 2 ? seg.at(0) + QLatin1Char('/') + seg.at(1) : QString();
             const QString suffix = seg.size() >= 3 ? seg.mid(2).join(QLatin1Char('/')) : QString();
 
-            if (suffix == QLatin1String("openapi.json")) {
+            if (modelId == QLatin1String("test/500") || modelId == QLatin1String("test/server-error")) {
+              statusCode = 500;
+              statusText = QStringLiteral("Internal Server Error");
+              errorHdr = QStringLiteral("internal_server_error");
+              respBody = QJsonDocument(QJsonObject{
+                {QStringLiteral("detail"), QStringLiteral("Internal server error from Router")}
+              }).toJson(QJsonDocument::Compact);
+            } else if (suffix == QLatin1String("openapi.json")) {
               extraHeaders += "ETag: \"v1\"\r\n";
               // openapi.json with an ETag; If-None-Match "v1" -> 304 (no body)
               if (etagHdr == QLatin1String("\"v1\"")) {
@@ -377,7 +401,13 @@ class FakeComfyServer {
                 } else {
                   QJsonDocument bodyDoc = QJsonDocument::fromJson(body);
                   QString bmode = bodyDoc.object().value(QStringLiteral("mode")).toString();
-                  if (bmode.isEmpty()) bmode = QStringLiteral("1");
+                  if (bmode.isEmpty()) {
+                    if (bodyDoc.object().contains(QStringLiteral("prompt"))) {
+                      bmode = QStringLiteral("local");
+                    } else {
+                      bmode = QStringLiteral("1");
+                    }
+                  }
                   std::lock_guard<std::mutex> lk(state_->mu);
                   state_->routerPolls = 0;
                   Q_UNUSED(lk);
@@ -431,17 +461,21 @@ class FakeComfyServer {
                   b.open(QIODevice::WriteOnly);
                   img.save(&b, "PNG");
                 } else {
+                  QString sampleUrl = QStringLiteral("https://example.invalid/sample.png");
+                  if (mode == QLatin1String("local") || mode == QLatin1String("dl") || mode.startsWith(QLatin1String("router_"))) {
+                    sampleUrl = QStringLiteral("http://127.0.0.1:%1/sample.png").arg(state_->port);
+                  }
                   respBody = QJsonDocument(QJsonObject{
                     {QStringLiteral("result"), QJsonObject{
-                      {QStringLiteral("sample"), QStringLiteral("https://example.invalid/sample.png")}
+                      {QStringLiteral("sample"), sampleUrl}
                     }}
                   }).toJson(QJsonDocument::Compact);
                 }
               }
             }
-            if (!errorHdr.isEmpty()) extraHeaders += "X-Comfy-Error-Type: " + errorHdr.toUtf8() + "\r\n";
-            if (statusCode == 304 && !extraHeaders.contains("ETag:")) extraHeaders += "ETag: \"v1\"\r\n";
           }
+          if (!errorHdr.isEmpty()) extraHeaders += "X-Comfy-Error-Type: " + errorHdr.toUtf8() + "\r\n";
+          if (statusCode == 304 && !extraHeaders.contains("ETag:")) extraHeaders += "ETag: \"v1\"\r\n";
         } else {
           statusCode = 404;
           statusText = QStringLiteral("Not Found");
@@ -514,6 +548,16 @@ public:
   QString routerApiKey() const {
     std::lock_guard<std::mutex> lk(state_->mu);
     return state_->routerApiKey;
+  }
+
+  void setRouterAuthFail(bool fail) {
+    std::lock_guard<std::mutex> lk(state_->mu);
+    state_->routerAuthFail = fail;
+  }
+
+  void setRouter5xx(bool fail) {
+    std::lock_guard<std::mutex> lk(state_->mu);
+    state_->router5xx = fail;
   }
 
   void setHangHistory(bool hang) {

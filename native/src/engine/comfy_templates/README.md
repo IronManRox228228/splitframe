@@ -109,3 +109,23 @@ Never copy a class name from memory into a template: an unverified `class_type` 
 
 - **`sd15_txt2img`** - classic 512x512 Stable Diffusion 1.5 text-to-image reference workflow.
 - **`image_txt2img`** - 1280x720 text-to-image. The graph is the same shape as `sd15_txt2img`; `requires.models` names `checkpoints/sd15.safetensors` as a **placeholder**, and `needsUserModel: true` marks that the user must have a checkpoint of that name (or bind `ckpt_name`/template import to a different file) before generation can pass the readiness gate on their install.
+
+## Comfy Router Cloud Provider (Comfy Developer Platform)
+
+SplitFrame provides native C++ client integration for the Comfy Developer Platform via **Comfy Router** (`native/src/comfy/comfy_router_client.{h,cpp}`, `sf::comfy::RouterClient`, and engine commands `comfy.router.*`, `generate.router.*`, and `generate.ready` with `provider: "router"`).
+
+### Official Endpoints Implemented
+- Model Catalog: `GET /v2/models?limit&cursor` (cursor-paginated model listing; docs: https://docs.comfy.org/development/comfy-router/quickstart)
+- Model Metadata: `GET /v2/models/{provider}/{model}` (GET single partner model entry)
+- OpenAPI Schema: `GET /v2/models/{provider}/{model}/openapi.json` (model input/output schema with HTTP ETag / 304 Not Modified support)
+- Queue Request: `POST /v2/models/{provider}/{model}/requests` (creates generation job; unique UUID `Idempotency-Key` sent per submit)
+- Poll Request: `GET /v2/models/{provider}/{model}/requests/{requestId}/status` (polls queue position / execution state)
+- Collect Output: `GET /v2/models/{provider}/{model}/requests/{requestId}` (reads native JSON outputs or inline binary assets saved via `saveAs`)
+- Cancel Request: `PUT /v2/models/{provider}/{model}/requests/{requestId}/cancel` (cooperative cancellation)
+
+### Contest Testing Scope & Fake Server
+Per the Comfy contest instructions and project scope rules:
+- **Fake Server Only:** The cloud Router path is implemented in native C++ and tested against a local fake server (`FakeComfyServer` in `native/tests/comfy_fake_server.h`).
+- **Never Called Live:** The cloud Router path is **never called live** in tests or development; there are NO live network requests to `api.comfy.org` and NO real API keys are configured or stored.
+- All test suites (`tst_generate`, `tst_comfy`) verify success, HTTP auth errors (401), HTTP 5xx errors (500), transport failures (connection refused), and missing-key paths (clear error, no crash) strictly against the fake server without credentials or external traffic.
+

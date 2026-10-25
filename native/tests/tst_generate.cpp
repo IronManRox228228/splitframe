@@ -3,6 +3,7 @@
 // Part F comprehensive integration suite. Runs against the fake ComfyUI server.
 
 #include "comfy_fake_server.h"
+#include "comfy/comfy_router_client.h"
 #include "core/schema.h"
 #include "engine/engine.h"
 
@@ -131,6 +132,9 @@ private slots:
       fake_->setOutputFilename(QString());
       fake_->setObjectInfoPath(QString());
       fake_->setObjectInfoJson(QJsonObject());
+      fake_->setRouterAuthFail(false);
+      fake_->setRouter5xx(false);
+      qputenv("COMFY_ROUTER_BASE_URL", fake_->url().toString().toUtf8());
     }
     qunsetenv("COMFY_API_KEY");
     engine_.reset();
@@ -878,6 +882,248 @@ private slots:
         {Q("requestId"), QStringLiteral("req-bin")}, {Q("saveAs"), binPath}});
     QCOMPARE(bin.value(Q("file")).toString(), binPath);
     QVERIFY(QFile(binPath).size() > 100);
+  }
+
+  // Direct RouterClient and provider coverage:
+  // success, HTTP auth error (401), HTTP 5xx (500), transport failure, and missing-key path.
+  void routerClientCoverage() {
+    using namespace sf::comfy;
+
+    // 1. Missing-key path (clear error, no crash)
+    {
+      qunsetenv("COMFY_API_KEY");
+      RouterClient clientNoKey(fake_->url(), QString());
+      QCOMPARE(clientNoKey.apiKey(), QString());
+
+      // Check every client method with no key: none must crash, all must report transport failure
+      RouterReply r1 = clientNoKey.listModels(10, QString());
+      QCOMPARE(r1.status, 0);
+      QVERIFY(r1.transportFailed());
+      QVERIFY(r1.error.contains(QStringLiteral("no API key")));
+
+      RouterReply r2 = clientNoKey.getModel(QStringLiteral("test/one"));
+      QCOMPARE(r2.status, 0);
+      QVERIFY(r2.transportFailed());
+      QVERIFY(r2.error.contains(QStringLiteral("no API key")));
+
+      RouterReply r3 = clientNoKey.getSchema(QStringLiteral("test/one"), QString());
+      QCOMPARE(r3.status, 0);
+      QVERIFY(r3.transportFailed());
+      QVERIFY(r3.error.contains(QStringLiteral("no API key")));
+
+      RouterReply r4 = clientNoKey.submitRequest(QStringLiteral("test/one"), QJsonObject{});
+      QCOMPARE(r4.status, 0);
+      QVERIFY(r4.transportFailed());
+      QVERIFY(r4.error.contains(QStringLiteral("no API key")));
+
+      RouterReply r5 = clientNoKey.requestStatus(QStringLiteral("test/one"), QStringLiteral("req-1"));
+      QCOMPARE(r5.status, 0);
+      QVERIFY(r5.transportFailed());
+      QVERIFY(r5.error.contains(QStringLiteral("no API key")));
+
+      RouterReply r6 = clientNoKey.collectRequest(QStringLiteral("test/one"), QStringLiteral("req-1"));
+      QCOMPARE(r6.status, 0);
+      QVERIFY(r6.transportFailed());
+      QVERIFY(r6.error.contains(QStringLiteral("no API key")));
+
+      RouterReply r7 = clientNoKey.cancelRequest(QStringLiteral("test/one"), QStringLiteral("req-1"));
+      QCOMPARE(r7.status, 0);
+      QVERIFY(r7.transportFailed());
+      QVERIFY(r7.error.contains(QStringLiteral("no API key")));
+
+      // Engine commands with missing key return not_configured
+      Result cmdModelsNoKey = tryCall(Q("generate.router.models"), {});
+      QVERIFY(!cmdModelsNoKey.ok);
+      QCOMPARE(cmdModelsNoKey.error.code, Q("not_configured"));
+
+      Result cmdReadyNoKey = tryCall(Q("generate.ready"), {{Q("provider"), QStringLiteral("router")}, {Q("model"), QStringLiteral("test/one")}});
+      QVERIFY(!cmdReadyNoKey.ok);
+      QCOMPARE(cmdReadyNoKey.error.code, Q("not_configured"));
+    }
+
+    // 2. Success path for RouterClient
+    {
+      const QString validKey = QStringLiteral("valid-test-key");
+      RouterClient client(fake_->url(), validKey);
+      QCOMPARE(client.apiKey(), validKey);
+      QCOMPARE(client.base(), fake_->url());
+
+      // listModels
+      RouterReply repList = client.listModels(10, QString());
+      QCOMPARE(repList.status, 200);
+      QVERIFY(repList.ok());
+      QVERIFY(!repList.transportFailed());
+      QVERIFY(repList.body.contains(QStringLiteral("data")));
+      QCOMPARE(fake_->routerApiKey(), validKey);
+
+      // getModel
+      RouterReply repModel = client.getModel(QStringLiteral("test/one"));
+      QCOMPARE(repModel.status, 200);
+      QVERIFY(repModel.ok());
+      QCOMPARE(repModel.body.value(QStringLiteral("id")).toString(), QStringLiteral("test/one"));
+
+      // getSchema
+      RouterReply repSchema = client.getSchema(QStringLiteral("test/s1"), QString());
+      QCOMPARE(repSchema.status, 200);
+      QVERIFY(repSchema.ok());
+      QCOMPARE(repSchema.etag, QStringLiteral("\"v1\""));
+
+      // submitRequest
+      RouterReply repSub = client.submitRequest(QStringLiteral("test/one"), QJsonObject{{QStringLiteral("mode"), QStringLiteral("1")}});
+      QCOMPARE(repSub.status, 201);
+      QVERIFY(repSub.ok());
+      const QString reqId = repSub.body.value(QStringLiteral("request_id")).toString();
+      QCOMPARE(reqId, QStringLiteral("req-1"));
+
+      // requestStatus (poll until completed)
+      RouterReply repStatus;
+      for (int i = 0; i < 5; ++i) {
+        repStatus = client.requestStatus(QStringLiteral("test/one"), reqId);
+        QCOMPARE(repStatus.status, 200);
+        if (repStatus.body.value(QStringLiteral("status")).toString() == QLatin1String("COMPLETED")) break;
+        QTest::qWait(10);
+      }
+      QCOMPARE(repStatus.body.value(QStringLiteral("status")).toString(), QStringLiteral("COMPLETED"));
+
+      // collectRequest
+      RouterReply repCollect = client.collectRequest(QStringLiteral("test/one"), reqId);
+      QCOMPARE(repCollect.status, 200);
+      QVERIFY(repCollect.ok());
+      const QString sampleUrlStr = repCollect.body.value(QStringLiteral("result")).toObject().value(QStringLiteral("sample")).toString();
+      QVERIFY(!sampleUrlStr.isEmpty());
+
+      // cancelRequest
+      RouterReply repCancel = client.cancelRequest(QStringLiteral("test/one"), reqId);
+      QCOMPARE(repCancel.status, 202);
+      QVERIFY(repCancel.ok());
+
+      // downloadUrl success
+      QTemporaryDir tmp;
+      QVERIFY(tmp.isValid());
+      const QString sampleDlPath = tmp.filePath(QStringLiteral("downloaded_sample.png"));
+      QString dlErr;
+      const QUrl sampleUrl = QUrl(QStringLiteral("http://127.0.0.1:%1/sample.png").arg(fake_->port()));
+      bool dlOk = RouterClient::downloadUrl(sampleUrl, sampleDlPath, &dlErr);
+      QVERIFY2(dlOk, qPrintable(dlErr));
+      QVERIFY(QFile::exists(sampleDlPath));
+      QVERIFY(QFile(sampleDlPath).size() > 50);
+
+      // Provider enum value verification
+      QCOMPARE(static_cast<int>(GenProvider::LocalComfy), 0);
+      QCOMPARE(static_cast<int>(GenProvider::ComfyRouter), 1);
+    }
+
+    // 3. HTTP Auth Error (401)
+    {
+      // RouterClient with invalid key
+      RouterClient clientBadKey(fake_->url(), QStringLiteral("bad-key"));
+      RouterReply repAuth = clientBadKey.listModels(10, QString());
+      QCOMPARE(repAuth.status, 401);
+      QCOMPARE(repAuth.errorType, QStringLiteral("unauthorized"));
+      QVERIFY(!repAuth.ok());
+      QVERIFY(!repAuth.transportFailed());
+      QVERIFY(repAuth.error.isEmpty());
+
+      // fake_->setRouterAuthFail(true)
+      fake_->setRouterAuthFail(true);
+      RouterClient clientReject(fake_->url(), QStringLiteral("valid-looking-key"));
+      RouterReply repReject = clientReject.getModel(QStringLiteral("test/one"));
+      QCOMPARE(repReject.status, 401);
+      QCOMPARE(repReject.errorType, QStringLiteral("unauthorized"));
+      fake_->setRouterAuthFail(false);
+
+      // Engine command layer with bad key
+      qputenv("COMFY_API_KEY", "bad-key");
+      Result rCmdModels = tryCall(Q("generate.router.models"), {});
+      QVERIFY(!rCmdModels.ok);
+      QCOMPARE(rCmdModels.error.code, Q("auth_error"));
+      QCOMPARE(rCmdModels.error.details.toObject().value(Q("status")).toInt(), 401);
+
+      Result rCmdReady = tryCall(Q("generate.ready"), {{Q("provider"), QStringLiteral("router")}, {Q("model"), QStringLiteral("test/one")}});
+      QVERIFY(!rCmdReady.ok);
+      QCOMPARE(rCmdReady.error.code, Q("auth_error"));
+      QCOMPARE(rCmdReady.error.details.toObject().value(Q("status")).toInt(), 401);
+    }
+
+    // 4. HTTP 5xx (500)
+    {
+      const QString validKey = QStringLiteral("valid-test-key");
+      RouterClient client(fake_->url(), validKey);
+
+      // Model test/500 returns HTTP 500
+      RouterReply rep500 = client.getModel(QStringLiteral("test/500"));
+      QCOMPARE(rep500.status, 500);
+      QCOMPARE(rep500.errorType, QStringLiteral("internal_server_error"));
+      QVERIFY(!rep500.ok());
+      QVERIFY(!rep500.transportFailed());
+
+      // fake_->setRouter5xx(true)
+      fake_->setRouter5xx(true);
+      RouterReply repForce500 = client.listModels(10, QString());
+      QCOMPARE(repForce500.status, 500);
+      QCOMPARE(repForce500.errorType, QStringLiteral("internal_server_error"));
+      fake_->setRouter5xx(false);
+
+      // Engine command layer with 500
+      qputenv("COMFY_API_KEY", validKey.toUtf8());
+      Result rCmd500 = tryCall(Q("generate.router.model"), {{Q("modelId"), QStringLiteral("test/500")}});
+      QVERIFY(!rCmd500.ok);
+      QCOMPARE(rCmd500.error.code, Q("router_error"));
+      QCOMPARE(rCmd500.error.details.toObject().value(Q("status")).toInt(), 500);
+      QCOMPARE(rCmd500.error.details.toObject().value(Q("errorType")).toString(), QStringLiteral("internal_server_error"));
+    }
+
+    // 5. Transport failure (connection refused / unreachable)
+    {
+      const QUrl unreachUrl(QStringLiteral("http://127.0.0.1:1"));
+      RouterClient clientUnreach(unreachUrl, QStringLiteral("any-key"));
+
+      RouterReply repUnreach = clientUnreach.listModels(10, QString(), 1000);
+      QCOMPARE(repUnreach.status, 0);
+      QVERIFY(repUnreach.transportFailed());
+      QVERIFY(!repUnreach.error.isEmpty());
+      QVERIFY(!repUnreach.ok());
+
+      // downloadUrl transport failure
+      QTemporaryDir tmp;
+      QVERIFY(tmp.isValid());
+      QString dlErr;
+      bool dlOk = RouterClient::downloadUrl(QUrl(QStringLiteral("http://127.0.0.1:1/nonexistent.png")),
+                                           tmp.filePath(QStringLiteral("bad.png")), &dlErr, 1000);
+      QVERIFY(!dlOk);
+      QVERIFY(!dlErr.isEmpty());
+
+      // Engine command layer with unreachable base URL
+      qputenv("COMFY_ROUTER_BASE_URL", "http://127.0.0.1:1");
+      qputenv("COMFY_API_KEY", "any-key");
+      Result rCmdUnreach = tryCall(Q("generate.router.models"), {});
+      QVERIFY(!rCmdUnreach.ok);
+      QCOMPARE(rCmdUnreach.error.code, Q("router_unreachable"));
+
+      Result rCmdReadyUnreach = tryCall(Q("generate.ready"), {{Q("provider"), QStringLiteral("router")}, {Q("model"), QStringLiteral("test/one")}});
+      QVERIFY(!rCmdReadyUnreach.ok);
+      QCOMPARE(rCmdReadyUnreach.error.code, Q("router_unreachable"));
+
+      // Restore base URL to fake server
+      qputenv("COMFY_ROUTER_BASE_URL", fake_->url().toString().toUtf8());
+    }
+
+    // 6. Security rule: API key is NEVER leaked in logs, traces, or error strings
+    {
+      const QString secretKey = QStringLiteral("secret-token-do-not-leak-998877");
+      qputenv("COMFY_API_KEY", secretKey.toUtf8());
+
+      Result r = tryCall(Q("generate.router.model"), {{Q("modelId"), QStringLiteral("test/500")}});
+      QVERIFY(!r.ok);
+      QVERIFY(!r.error.message.contains(secretKey));
+      QVERIFY(!QJsonDocument(r.error.details.toObject()).toJson().contains(secretKey.toUtf8()));
+
+      const QJsonObject info = ok(Q("comfy.router.info"));
+      QCOMPARE(info.value(Q("keyConfigured")).toBool(), true);
+      QVERIFY(!QJsonDocument(info).toJson().contains(secretKey.toUtf8()));
+
+      qunsetenv("COMFY_API_KEY");
+    }
   }
 };
 

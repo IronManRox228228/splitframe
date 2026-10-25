@@ -476,6 +476,9 @@ Result routerFailure(const comfy::RouterReply& rep) {
     }
     details.insert(q("validation"), msgs);
   }
+  if (rep.status == 401 || rep.errorType == QLatin1String("unauthorized") || rep.errorType == QLatin1String("auth_error")) {
+    return Result::failure(q("auth_error"), message, details);
+  }
   if (rep.errorType == QLatin1String("insufficient_credits") || rep.status == 402) {
     return Result::failure(q("insufficient_credits"), message, details);
   }

@@ -38,10 +38,11 @@ QUrl routerUrl(const QUrl& base, const QString& path, const QUrlQuery& query) {
 // One synchronous request with the standard Router headers. Transport failures set
 // reply->error and leave status 0; HTTP exchanges (any status) fill the response facts.
 RouterReply send(const QUrl& url, const char* verb, const QJsonObject& jsonBody,
-                 const QString& idempotencyKey, const QString& etag, int timeoutMs) {
+                 const QString& idempotencyKey, const QString& etag, int timeoutMs,
+                 const QString& explicitApiKey = {}) {
   RouterReply rep;
 
-  const QString apiKey = RouterClient::resolveApiKey();
+  const QString apiKey = !explicitApiKey.isEmpty() ? explicitApiKey : RouterClient::resolveApiKey();
   if (apiKey.isEmpty()) {
     rep.error = QStringLiteral("no API key: set COMFY_API_KEY (or store comfyRouter/apiKey)");
     return rep;
@@ -116,7 +117,7 @@ RouterReply send(const QUrl& url, const char* verb, const QJsonObject& jsonBody,
 
 } // namespace
 
-RouterClient::RouterClient(QUrl base) {
+RouterClient::RouterClient(QUrl base, QString apiKey) : apiKey_(std::move(apiKey)) {
   if (base.isEmpty()) {
     const QString envUrl = qEnvironmentVariable("COMFY_ROUTER_BASE_URL");
     if (!envUrl.isEmpty()) {
@@ -131,6 +132,10 @@ RouterClient::RouterClient(QUrl base) {
 
 QUrl RouterClient::base() const {
   return base_;
+}
+
+QString RouterClient::apiKey() const {
+  return apiKey_;
 }
 
 QString RouterClient::resolveApiKey() {
@@ -153,45 +158,45 @@ RouterReply RouterClient::listModels(int limit, const QString& cursor, int timeo
   QUrlQuery query;
   if (limit > 0) query.addQueryItem(QStringLiteral("limit"), QString::number(limit));
   if (!cursor.isEmpty()) query.addQueryItem(QStringLiteral("cursor"), cursor);
-  return send(routerUrl(base_, QStringLiteral("v2/models"), query), "GET", {}, {}, {}, timeoutMs);
+  return send(routerUrl(base_, QStringLiteral("v2/models"), query), "GET", {}, {}, {}, timeoutMs, apiKey_);
 }
 
 RouterReply RouterClient::getModel(const QString& modelId, int timeoutMs) {
   return send(routerUrl(base_, QStringLiteral("v2/models/") + modelId, {}), "GET", {}, {}, {},
-              timeoutMs);
+              timeoutMs, apiKey_);
 }
 
 RouterReply RouterClient::getSchema(const QString& modelId, const QString& etag, int timeoutMs) {
   return send(routerUrl(base_, QStringLiteral("v2/models/") + modelId + QStringLiteral("/openapi.json"), {}),
-              "GET", {}, {}, etag, timeoutMs);
+              "GET", {}, {}, etag, timeoutMs, apiKey_);
 }
 
 RouterReply RouterClient::submitRequest(const QString& modelId, const QJsonObject& body,
                                         int timeoutMs) {
   const QString key = QUuid::createUuid().toString(QUuid::WithoutBraces);
   return send(routerUrl(base_, QStringLiteral("v2/models/") + modelId + QStringLiteral("/requests"), {}),
-              "POST", body, key, {}, timeoutMs);
+              "POST", body, key, {}, timeoutMs, apiKey_);
 }
 
 RouterReply RouterClient::requestStatus(const QString& modelId, const QString& requestId,
                                         int timeoutMs) {
   return send(routerUrl(base_, QStringLiteral("v2/models/") + modelId +
                                  QStringLiteral("/requests/") + requestId + QStringLiteral("/status"), {}),
-              "GET", {}, {}, {}, timeoutMs);
+              "GET", {}, {}, {}, timeoutMs, apiKey_);
 }
 
 RouterReply RouterClient::collectRequest(const QString& modelId, const QString& requestId,
                                          int timeoutMs) {
   return send(routerUrl(base_, QStringLiteral("v2/models/") + modelId +
                                  QStringLiteral("/requests/") + requestId, {}),
-              "GET", {}, {}, {}, timeoutMs);
+              "GET", {}, {}, {}, timeoutMs, apiKey_);
 }
 
 RouterReply RouterClient::cancelRequest(const QString& modelId, const QString& requestId,
                                         int timeoutMs) {
   return send(routerUrl(base_, QStringLiteral("v2/models/") + modelId +
                                  QStringLiteral("/requests/") + requestId + QStringLiteral("/cancel"), {}),
-              "PUT", {}, {}, {}, timeoutMs);
+              "PUT", {}, {}, {}, timeoutMs, apiKey_);
 }
 
 bool RouterClient::downloadUrl(const QUrl& url, const QString& destPath, QString* error,
@@ -219,8 +224,11 @@ bool RouterClient::downloadUrl(const QUrl& url, const QString& destPath, QString
   }
   timer.stop();
 
-  if (reply->error() != QNetworkReply::NoError) {
-    if (error) *error = reply->errorString();
+  const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+  if (reply->error() != QNetworkReply::NoError || (status != 0 && (status < 200 || status >= 300))) {
+    if (error) {
+      *error = (reply->error() != QNetworkReply::NoError) ? reply->errorString() : QStringLiteral("HTTP %1").arg(status);
+    }
     reply->deleteLater();
     return false;
   }
