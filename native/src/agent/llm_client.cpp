@@ -1,6 +1,8 @@
 #include "agent/llm_client.h"
 
 #include <QEventLoop>
+#include <QHostAddress>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -141,6 +143,12 @@ QJsonArray wireToolCalls(const QJsonArray& calls, QString (*rename)(const QStrin
 
 } // namespace
 
+bool isLoopbackEndpoint(const QString& endpoint) {
+  const QString host = QUrl(endpoint.trimmed()).host();
+  if (host.compare(QLatin1String("localhost"), Qt::CaseInsensitive) == 0) return true;
+  return QHostAddress(host).isLoopback();
+}
+
 bool probeHttpEndpoint(const QString& endpoint, int timeoutMs, QString* error) {
   const QString trimmed = endpoint.trimmed();
   if (trimmed.isEmpty() || trimmed.compare(QLatin1String("mock"), Qt::CaseInsensitive) == 0) return true;
@@ -205,7 +213,8 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
     req.insert(QStringLiteral("tools"), wireTools);
   }
 
-  if (slotId >= 0) {
+  // slot_id is a llama-server extension; hosted APIs (Gemini, OpenAI) reject unknown fields with HTTP 400
+  if (slotId >= 0 && isLoopbackEndpoint(endpoint_)) {
     req.insert(QStringLiteral("slot_id"), slotId);
   }
 
@@ -272,7 +281,9 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
   }
 
   const QJsonDocument doc = QJsonDocument::fromJson(respData);
-  const QJsonObject body = doc.isObject() ? doc.object() : QJsonObject();
+  // Gemini wraps its error object in a one-element array
+  const QJsonObject body = doc.isObject() ? doc.object()
+                         : (doc.isArray() && doc.array().first().isObject()) ? doc.array().first().toObject() : QJsonObject();
 
   // Check for error in response body or HTTP error status
   if (body.contains(QStringLiteral("error"))) {
@@ -283,6 +294,7 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
       const QJsonObject bo = berr.toObject();
       bodyCode = bo.value(QStringLiteral("code")).toString();
       if (bodyCode.isEmpty()) bodyCode = bo.value(QStringLiteral("type")).toString();
+      if (bodyCode.isEmpty()) bodyCode = bo.value(QStringLiteral("status")).toString(); // Google: "INVALID_ARGUMENT", "NOT_FOUND"
       bodyMsg = bo.value(QStringLiteral("message")).toString();
     } else {
       bodyCode = berr.toString();
@@ -306,7 +318,7 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
       code = QStringLiteral("model_not_found");
     } else if (status >= 500) {
       code = QStringLiteral("provider_error");
-    } else if (status == 0 || !transportError.isEmpty()) {
+    } else if (status == 0) { // an HTTP error status also sets transportError, but the server did answer
       code = QStringLiteral("provider_unreachable");
     } else {
       code = QStringLiteral("provider_error");

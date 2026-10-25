@@ -169,5 +169,7 @@ private:
 
 // TCP connect to host:port of an OpenAI-style URL. True for empty/"mock".
 bool probeHttpEndpoint(const QString& endpoint, int timeoutMs, QString* error = nullptr);
+// True for localhost / 127.0.0.1 / ::1, where llama-server extensions such as slot_id are understood.
+bool isLoopbackEndpoint(const QString& endpoint);
 
 } // namespace sf::agent
