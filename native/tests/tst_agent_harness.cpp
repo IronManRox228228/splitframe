@@ -286,6 +286,20 @@ private slots:
     QVERIFY(inner->cancelRequested());
   }
 
+  void everySpecialistOffersEachToolNameOnce() {
+    // hosted APIs (Gemini) reject a request whose tool list repeats a function name
+    for (SpecialistKind kind : {SpecialistKind::Director, SpecialistKind::Editor, SpecialistKind::Colourist, SpecialistKind::Audio}) {
+      Specialist* sp = harness_->specialist(kind);
+      QVERIFY(sp);
+      QSet<QString> seen;
+      for (const QJsonValue& t : sp->availableTools()) {
+        const QString name = t.toObject().value(QStringLiteral("name")).toString();
+        QVERIFY2(!seen.contains(name), qPrintable(QStringLiteral("duplicate tool: %1").arg(name)));
+        seen.insert(name);
+      }
+    }
+  }
+
   void stopEndsAfterTheCurrentToolCallAndCommitsOneStep() {
     harness_->setMode(AgentMode::Auto);
     // one reply asks for two markers; Stop arrives once the first call has run

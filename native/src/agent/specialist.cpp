@@ -242,6 +242,9 @@ QJsonArray Specialist::availableTools() const {
 
   QJsonArray tools;
   for (const auto& cmd : engine_->commands()) {
+    // the Director's agent.assign is the peer-bus tool appended below; listing the engine command too
+    // sends a duplicate function name, which hosted APIs (Gemini) reject with HTTP 400
+    if (kind_ == SpecialistKind::Director && cmd->name == QStringLiteral("agent.assign")) continue;
     if (allowsCommand(*cmd)) {
       tools.append(QJsonObject{
         {QStringLiteral("name"), cmd->name},
