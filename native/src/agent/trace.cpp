@@ -56,6 +56,7 @@ QJsonObject AgentTraceRecord::toJson() const {
     {QStringLiteral("run_id"), sanitizeTraceString(runId)},
     {QStringLiteral("agent_name"), sanitizeTraceString(agentName)},
     {QStringLiteral("role"), sanitizeTraceString(role)},
+    {QStringLiteral("lane"), sanitizeTraceString(lane.isEmpty() ? QStringLiteral("fast") : lane)},
     {QStringLiteral("action"), sanitizeTraceString(action)},
     {QStringLiteral("input_summary"), sanitizeTraceString(inputSummary)},
     {QStringLiteral("output_summary"), sanitizeTraceString(outputSummary)},
@@ -64,7 +65,8 @@ QJsonObject AgentTraceRecord::toJson() const {
     {QStringLiteral("model"), sanitizeTraceString(model)},
     {QStringLiteral("status"), normalizeStatus(status)},
     {QStringLiteral("retry_count"), retryCount},
-    {QStringLiteral("error"), sanitizeTraceString(error)}
+    {QStringLiteral("error"), sanitizeTraceString(error)},
+    {QStringLiteral("service"), sanitizeTraceString(service.isEmpty() ? QStringLiteral("none") : service)}
   };
 }
 
@@ -74,6 +76,7 @@ AgentTraceRecord AgentTraceRecord::fromJson(const QJsonObject& o) {
   r.runId = o.value(QStringLiteral("run_id")).toString();
   r.agentName = o.value(QStringLiteral("agent_name")).toString();
   r.role = o.value(QStringLiteral("role")).toString();
+  r.lane = o.value(QStringLiteral("lane")).toString();
   r.action = o.value(QStringLiteral("action")).toString();
   r.inputSummary = o.value(QStringLiteral("input_summary")).toString();
   r.outputSummary = o.value(QStringLiteral("output_summary")).toString();
@@ -83,6 +86,7 @@ AgentTraceRecord AgentTraceRecord::fromJson(const QJsonObject& o) {
   r.status = o.value(QStringLiteral("status")).toString();
   r.retryCount = o.value(QStringLiteral("retry_count")).toInt();
   r.error = o.value(QStringLiteral("error")).toString();
+  r.service = o.value(QStringLiteral("service")).toString();
   return r;
 }
 

@@ -237,15 +237,22 @@ PeerResponse PeerBus::send(PeerRequest req) {
     traceStatus = QStringLiteral("error");
   }
 
+  QString traceModel = currentModel_;
+  if (res.outputs.contains(QStringLiteral("model"))) {
+    traceModel = res.outputs.value(QStringLiteral("model")).toString();
+  }
+
   logAgentTrace(AgentTraceRecord{
     .runId = runId,
     .agentName = specialistName(req.from),
     .role = QStringLiteral("peer"),
+    .lane = isCritique ? QStringLiteral("judge") : QStringLiteral("fast"),
     .action = action,
     .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
     .outputSummary = res.note,
     .targetAgent = specialistName(req.to),
     .tool = req.kind,
+    .model = traceModel,
     .status = traceStatus,
     .retryCount = req.depth,
     .error = (traceStatus == QStringLiteral("error")) ? res.note : QString()

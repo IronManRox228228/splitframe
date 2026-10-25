@@ -77,13 +77,15 @@ void MockLlmClient::enqueueResponse(QJsonObject response) {
 QJsonObject MockLlmClient::complete(const QString& systemPrompt,
                                     const std::vector<ChatMessage>& messages,
                                     const QJsonArray& tools,
-                                    int slotId) {
+                                    int slotId,
+                                    Lane lane) {
+  lastLaneCalled_ = lane;
   calls_.push_back(CallRecord{
     .systemPrompt = systemPrompt,
     .messages = messages,
     .tools = tools,
     .slotId = slotId,
-    .lane = laneOverride_
+    .lane = (laneOverride_ != Lane::Fast) ? laneOverride_ : lane
   });
 
   auto processResp = [this](QJsonObject r) -> QJsonObject {
@@ -169,9 +171,12 @@ bool HttpLlmClient::reachable(QString* error) const {
 QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
                                     const std::vector<ChatMessage>& messages,
                                     const QJsonArray& tools,
-                                    int slotId) {
+                                    int slotId,
+                                    Lane lane) {
+  lastLaneCalled_ = lane;
+  const QString activeModel = modelForLane(lane);
   QJsonObject req;
-  req.insert(QStringLiteral("model"), model_);
+  req.insert(QStringLiteral("model"), activeModel);
 
   QJsonArray msgArr;
   if (!systemPrompt.isEmpty()) {
@@ -321,7 +326,7 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
   if (docObj.contains(QStringLiteral("model"))) {
     lastObservedModel_ = docObj.value(QStringLiteral("model")).toString();
   } else {
-    lastObservedModel_ = model_;
+    lastObservedModel_ = activeModel;
   }
 
   QJsonArray choices = docObj.value(QStringLiteral("choices")).toArray();

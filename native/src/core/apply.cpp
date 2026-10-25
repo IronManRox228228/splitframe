@@ -150,6 +150,11 @@ Inverse run(TimelineDoc& next, const TimelineDoc& doc, const TransitionsSet& o) 
   return {TransitionsSet{doc.transitions}};
 }
 
+Inverse run(TimelineDoc& next, const TimelineDoc& doc, const StoryboardSet& o) {
+  next.storyboard = o.storyboard;
+  return {StoryboardSet{doc.storyboard}};
+}
+
 Inverse run(TimelineDoc& next, const TimelineDoc& doc, const ProjectSetReference& o) {
   // references are metadata, not timeline items: the tool layer validates them against assets
   next.project.referenceAssetId = o.assetId;

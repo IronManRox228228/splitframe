@@ -477,6 +477,20 @@ struct Mixer {
   bool operator==(const Mixer&) const = default;
 };
 
+struct StoryboardScene {
+  QString id;
+  QString title;
+  QString intent;
+  double durationSec = 5.0;
+  std::optional<QString> shotPrompt;
+  std::optional<QString> voText;
+  std::optional<QString> musicCue;
+  std::optional<QString> colourNote;
+  QString status = QStringLiteral("planned");
+  std::vector<QString> assetIds;
+  bool operator==(const StoryboardScene&) const = default;
+};
+
 struct TimelineDoc {
   Project project;
   std::vector<Track> tracks;
@@ -484,6 +498,7 @@ struct TimelineDoc {
   std::vector<Marker> markers;
   std::optional<Mixer> mixer; // native-only
   std::vector<FxTransition> transitions; // native-only, never written when empty
+  std::vector<StoryboardScene> storyboard; // native-only storyboard scenes
   bool operator==(const TimelineDoc&) const = default;
 };
 
@@ -618,6 +633,7 @@ ItemPatch parseItemPatch(const Rd& r);
 TimelineDoc parseTimelineDoc(const Rd& r);
 Asset parseAsset(const Rd& r);
 Transcript parseTranscript(const Rd& r);
+StoryboardScene parseStoryboardScene(const Rd& r);
 Scene parseScene(const Rd& r);
 BeatMap parseBeatMap(const Rd& r);
 BranchRecord parseBranchRecord(const Rd& r);
@@ -649,6 +665,7 @@ Mixer parseMixer(const Rd& r);       // core/mixer.cpp
 QJsonObject toJson(const Mixer&);
 QJsonObject toJson(const Asset&);
 QJsonObject toJson(const Transcript&);
+QJsonObject toJson(const StoryboardScene&);
 QJsonObject toJson(const Scene&);
 QJsonObject toJson(const BeatMap&);
 QJsonObject toJson(const BranchRecord&);

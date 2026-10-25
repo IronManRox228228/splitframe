@@ -3,6 +3,7 @@
 #include "core/error.h"
 #include "engine/cmd_util.h"
 #include "engine/cmd_comfy.h"
+#include "engine/cmd_storyboard.h"
 #include "jobs/builtin_analyzers.h"
 #include "comfy/comfy_generate.h"
 
@@ -42,6 +43,7 @@ Engine::Engine(QObject* parent) : QObject(parent) {
   registerAssembleCommands(*this);
   registerRecipesCommands(*this);
   registerTitleCommands(*this);
+  registerStoryboardCommands(*this);
 
   add(spec("engine.ping", "", "engine", false, QStringLiteral("Liveness and version: engine version, sessions, command count."), js::obj({}),
            [](CallContext& c, const QJsonObject&) {

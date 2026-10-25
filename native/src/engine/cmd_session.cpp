@@ -214,6 +214,30 @@ void registerSessionCommands(Engine& e) {
                return Result::success(projectInfo(*c.session));
              },
              true, false)); // not undoable (no core op for colour management): MCP destructiveHint reflects that
+
+  e.add(spec("session.group.begin", "", "engine", false,
+             QStringLiteral("Begin an undo group on the session project."),
+             js::obj({{q("label"), js::str()}}),
+             [](CallContext& c, const QJsonObject& a) {
+               c.session->project->beginGroup(a.value(q("label")).toString(), c.actor());
+               return Result::success(QJsonObject{{q("ok"), true}});
+             }));
+
+  e.add(spec("session.group.end", "", "engine", false,
+             QStringLiteral("End the current undo group on the session project."),
+             js::obj({{q("label"), js::str()}}),
+             [](CallContext& c, const QJsonObject&) {
+               c.session->project->endGroup();
+               return Result::success(QJsonObject{{q("ok"), true}});
+             }));
+
+  e.add(spec("session.group.rollback", "", "engine", false,
+             QStringLiteral("Rollback the current undo group on the session project."),
+             js::obj({{q("label"), js::str()}}),
+             [](CallContext& c, const QJsonObject&) {
+               c.session->project->rollbackGroup();
+               return Result::success(QJsonObject{{q("ok"), true}});
+             }));
 }
 
 } // namespace sf::engine

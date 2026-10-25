@@ -46,7 +46,10 @@ public:
   virtual QJsonObject complete(const QString& systemPrompt,
                                const std::vector<ChatMessage>& messages,
                                const QJsonArray& tools = {},
-                               int slotId = -1) = 0;
+                               int slotId = -1,
+                               Lane lane = Lane::Fast) = 0;
+
+  virtual Lane lastLane() const { return Lane::Fast; }
 
   // Reachability of this client (TCP to its endpoint, or always true for mock/offline).
   virtual bool reachable(QString* error = nullptr) const {
@@ -79,11 +82,12 @@ public:
   QJsonObject complete(const QString& systemPrompt,
                        const std::vector<ChatMessage>& messages,
                        const QJsonArray& tools = {},
-                       int slotId = -1) override;
+                       int slotId = -1,
+                       Lane lane = Lane::Fast) override;
 
   // Records the lane the caller asked for so tests can assert lane selection (agent mesh).
   void setLane(Lane lane) { laneOverride_ = lane; }
-  Lane lastLane() const { return laneOverride_; }
+  Lane lastLane() const override { return (laneOverride_ != Lane::Fast) ? laneOverride_ : lastLaneCalled_; }
 
   void setLastObservedModel(QString model) { lastObservedModel_ = std::move(model); }
   QString lastObservedModel() const override { return lastObservedModel_; }
@@ -93,6 +97,7 @@ public:
 
 private:
   Lane laneOverride_ = Lane::Fast;
+  Lane lastLaneCalled_ = Lane::Fast;
   std::map<QString, QJsonObject> scripted_;
   std::vector<QJsonObject> queued_;
   QJsonObject defaultResponse_{
@@ -109,10 +114,28 @@ public:
                          QString model = QStringLiteral("qwythos-9b-v2"));
   ~HttpLlmClient() override = default;
 
+  void setLaneModels(QString fast, QString deep, QString judge) {
+    modelFast_ = std::move(fast);
+    modelDeep_ = std::move(deep);
+    modelJudge_ = std::move(judge);
+  }
+
+  QString modelForLane(Lane lane) const {
+    switch (lane) {
+      case Lane::Fast: return !modelFast_.isEmpty() ? modelFast_ : model_;
+      case Lane::Deep: return !modelDeep_.isEmpty() ? modelDeep_ : model_;
+      case Lane::Judge: return !modelJudge_.isEmpty() ? modelJudge_ : model_;
+    }
+    return model_;
+  }
+
   QJsonObject complete(const QString& systemPrompt,
                        const std::vector<ChatMessage>& messages,
                        const QJsonArray& tools = {},
-                       int slotId = -1) override;
+                       int slotId = -1,
+                       Lane lane = Lane::Fast) override;
+
+  Lane lastLane() const override { return lastLaneCalled_; }
 
   void setTimeoutMs(int ms) { timeoutMs_ = ms; }
   const QString& endpoint() const { return endpoint_; }
@@ -126,9 +149,13 @@ public:
 private:
   QString endpoint_;
   QString model_;
+  QString modelFast_;
+  QString modelDeep_;
+  QString modelJudge_;
   QString apiKey_;
   int timeoutMs_ = 30000;
   QString lastObservedModel_;
+  Lane lastLaneCalled_ = Lane::Fast;
 };
 
 // TCP connect to host:port of an OpenAI-style URL. True for empty/"mock".

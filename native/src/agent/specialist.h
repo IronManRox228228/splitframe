@@ -50,6 +50,9 @@ public:
     projectDir_ = std::move(projectDir);
   }
 
+  bool peerReviewEnabled() const { return peerReviewEnabled_; }
+  void setPeerReviewEnabled(bool enabled) { peerReviewEnabled_ = enabled; }
+
   // Produces the specialist's scoped view of the project state.
   QJsonObject scopedViewJson(const QString& sessionId = {}) const;
 
@@ -78,7 +81,11 @@ public:
 
   // Executes a full user turn directed to this specialist (bounded tool loop).
   virtual QJsonObject processTurn(const QString& userMessage, const QString& sessionId = {},
-                                  TurnPolicy policy = TurnPolicy::Execute);
+                                  TurnPolicy policy = TurnPolicy::Execute,
+                                  Lane lane = Lane::Fast);
+
+signals:
+  void agentEvent(const QJsonObject& event);
 
 private:
   SpecialistKind kind_;
@@ -89,6 +96,7 @@ private:
   std::vector<ChatMessage> history_;
   QString currentRunId_;
   QString projectDir_;
+  bool peerReviewEnabled_ = false;
 };
 
 } // namespace sf::agent

@@ -12,6 +12,7 @@ struct AgentTraceRecord {
   QString runId;
   QString agentName;
   QString role;
+  QString lane;
   QString action;        // plan, tool_call, handoff, critique, retry, escalate, message, error
   QString inputSummary;
   QString outputSummary;
@@ -21,6 +22,7 @@ struct AgentTraceRecord {
   QString status;        // success | needs_revision | error
   int retryCount = 0;
   QString error;
+  QString service;
 
   QJsonObject toJson() const;
   static AgentTraceRecord fromJson(const QJsonObject& o);

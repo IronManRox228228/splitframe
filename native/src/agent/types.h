@@ -14,6 +14,7 @@ namespace sf::agent {
 
 // Three specialists with strict domain ownership.
 enum class SpecialistKind {
+  Director,  // Owns storyboard, plan, chat, assignments
   Editor,    // Owns timeline structure: cuts, trims, speed, order, clips, captions, titles, canvas, export
   Colourist, // Owns colour grading, LUTs, colour spaces, OCIO
   Audio      // Owns audio tracks, music, ducking, volume/pan, audio effects, mixer, CLAP plugins, beats
@@ -21,6 +22,7 @@ enum class SpecialistKind {
 
 inline QString specialistName(SpecialistKind k) {
   switch (k) {
+    case SpecialistKind::Director: return QStringLiteral("director");
     case SpecialistKind::Editor: return QStringLiteral("editor");
     case SpecialistKind::Colourist: return QStringLiteral("colourist");
     case SpecialistKind::Audio: return QStringLiteral("audio");
@@ -30,6 +32,9 @@ inline QString specialistName(SpecialistKind k) {
 
 inline std::optional<SpecialistKind> parseSpecialistKind(const QString& s) {
   const QString l = s.trimmed().toLower();
+
+
+  if (l == QStringLiteral("director") || l == QStringLiteral("storyboard") || l == QStringLiteral("plan")) return SpecialistKind::Director;
   if (l == QStringLiteral("editor")) return SpecialistKind::Editor;
   if (l == QStringLiteral("colourist") || l == QStringLiteral("colorist") || l == QStringLiteral("colour") || l == QStringLiteral("color")) {
     return SpecialistKind::Colourist;
@@ -66,6 +71,8 @@ enum class TurnPolicy {
 
 inline std::optional<AgentMode> parseAgentMode(const QString& s) {
   const QString l = s.trimmed().toLower();
+
+
   if (l == QStringLiteral("plan")) return AgentMode::Plan;
   if (l == QStringLiteral("ask")) return AgentMode::Ask;
   if (l == QStringLiteral("default")) return AgentMode::Default;

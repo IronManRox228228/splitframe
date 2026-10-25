@@ -1777,6 +1777,7 @@ void registerComfyCommands(Engine& e) {
     ensureSchema(svc, a); // best effort: without a schema every row reports why it cannot check
     auto allTemplates = loadAllTemplates();
     const QString one = a.value(q("templateId")).toString();
+    const QString kindFilter = a.value(q("kind")).toString();
     if (!one.isEmpty() && !allTemplates.contains(one)) {
       return notFound(QStringLiteral("Template '%1' not found").arg(one),
                       QStringLiteral("Call comfy.template.list to see imported templates."));
@@ -1784,6 +1785,7 @@ void registerComfyCommands(Engine& e) {
     QJsonArray rows;
     for (const auto& [tid, t] : allTemplates) {
       if (!one.isEmpty() && tid != one) continue;
+      if (!kindFilter.isEmpty() && t.kind != kindFilter) continue;
       const TemplateReadiness r = checkTemplateReadiness(svc, t);
       rows.append(QJsonObject{
         {q("id"), t.id},
@@ -1801,6 +1803,7 @@ void registerComfyCommands(Engine& e) {
   e.add(spec("comfy.ready", "", "comfy", false,
              QStringLiteral("Report which generation templates can run on the configured ComfyUI: per template, the missing node classes and model files, from the cached /object_info."),
              js::obj({{q("templateId"), js::str(QStringLiteral("Check a single template instead of every one"))},
+                      {q("kind"), js::str(QStringLiteral("Filter templates by media kind ('image', 'video', 'speech', 'music')"))},
                       {q("objectInfoPath"), js::str(QStringLiteral("Path to an object_info.json to use instead of the live server"))},
                       {q("refresh"), js::boolean(QStringLiteral("Re-fetch the schema even when a copy is cached (default false)"))},
                       {q("provider"), js::str(QStringLiteral("Generation provider: 'local' (default) or 'router'"))},
@@ -1811,6 +1814,7 @@ void registerComfyCommands(Engine& e) {
   e.add(spec("generate.ready", "", "comfy", false,
              QStringLiteral("Check readiness for generation: reports missing nodes and models per template, or router provider readiness."),
              js::obj({{q("templateId"), js::str(QStringLiteral("Check a single template instead of every one"))},
+                      {q("kind"), js::str(QStringLiteral("Filter templates by media kind ('image', 'video', 'speech', 'music')"))},
                       {q("objectInfoPath"), js::str(QStringLiteral("Path to an object_info.json to use instead of the live server"))},
                       {q("refresh"), js::boolean(QStringLiteral("Re-fetch the schema even when a copy is cached (default false)"))},
                       {q("provider"), js::str(QStringLiteral("Generation provider: 'local' (default) or 'router'"))},

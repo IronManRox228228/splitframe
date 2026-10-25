@@ -43,10 +43,19 @@ public:
   void clearLog();
 
   // Set the current run ID and project dir for trace logging.
-  void setCurrentRun(QString runId, QString projectDir = QString()) {
+  void setCurrentRun(QString runId, QString projectDir = QString(), QString model = QString()) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     currentRunId_ = std::move(runId);
     projectDir_ = std::move(projectDir);
+    if (!model.isEmpty()) currentModel_ = std::move(model);
+  }
+  void setCurrentModel(QString model) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    currentModel_ = std::move(model);
+  }
+  QString currentModel() const {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    return currentModel_;
   }
 
 signals:
@@ -60,6 +69,7 @@ private:
   std::vector<PeerLogEntry> log_;
   QString currentRunId_;
   QString projectDir_;
+  QString currentModel_;
 };
 
 } // namespace sf::agent

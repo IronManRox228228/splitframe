@@ -81,6 +81,7 @@ QString Op::type() const {
           [](const BatchOp&) { return q("batch"); },
           [](const MixerSet&) { return q("mixer.set"); },
           [](const TransitionsSet&) { return q("transitions.set"); },
+          [](const StoryboardSet&) { return q("storyboard.set"); },
       },
       body);
 }
@@ -155,6 +156,11 @@ Op parseOp(const Rd& r) {
   if (type == q("transitions.set")) {
     TransitionsSet o;
     o.transitions = f("transitions").list(parseFxTransition);
+    return o;
+  }
+  if (type == q("storyboard.set")) {
+    StoryboardSet o;
+    o.storyboard = f("storyboard").list(parseStoryboardScene);
     return o;
   }
   if (type == q("track.remove")) {
@@ -436,6 +442,11 @@ QJsonObject toJson(const Op& op) {
             QJsonArray list;
             for (const FxTransition& t : o.transitions) list.append(toJson(t));
             return tagged("transitions.set", {{q("transitions"), list}});
+          },
+          [](const StoryboardSet& o) {
+            QJsonArray list;
+            for (const StoryboardScene& s : o.storyboard) list.append(toJson(s));
+            return tagged("storyboard.set", {{q("storyboard"), list}});
           },
           [](const BatchOp& o) {
             QJsonArray ops;

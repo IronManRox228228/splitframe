@@ -13,16 +13,18 @@ Specialist::Specialist(SpecialistKind kind,
                        std::shared_ptr<LlmClient> llm,
                        QObject* parent)
   : QObject(parent), kind_(kind), engine_(engine), bus_(bus), llm_(std::move(llm)) {
-  // Set default warm slot IDs per specialist (0=editor, 1=colourist, 2=audio)
+  // Set default warm slot IDs per specialist (0=editor, 1=colourist, 2=audio, 3=director)
   switch (kind_) {
     case SpecialistKind::Editor: slotId_ = 0; break;
     case SpecialistKind::Colourist: slotId_ = 1; break;
     case SpecialistKind::Audio: slotId_ = 2; break;
+    case SpecialistKind::Director: slotId_ = 3; break;
   }
 }
 
 QString Specialist::domain() const {
   switch (kind_) {
+    case SpecialistKind::Director: return QStringLiteral("director");
     case SpecialistKind::Editor: return QStringLiteral("editor");
     case SpecialistKind::Colourist: return QStringLiteral("colour");
     case SpecialistKind::Audio: return QStringLiteral("audio");
@@ -32,26 +34,42 @@ QString Specialist::domain() const {
 
 QString Specialist::systemPrompt() const {
   switch (kind_) {
+    case SpecialistKind::Director:
+      return QStringLiteral(
+        "You are the SplitFrame Director.\n"
+        "You talk with the user, write storyboards and timeline plans, write prompts for video/image/speech/music generation, and assign work to specialists via agent.assign.\n"
+        "Prompt craft: Write generation prompts focused on scene intent, narrative arc, mood, emotional beats, and visual metaphors on Lane deep.\n"
+        "Before calling any generate.* tool, you MUST call generate.ready. If generate.ready reports not_ready, do NOT retry blindly; inform the user what is missing."
+      );
     case SpecialistKind::Editor:
       return QStringLiteral(
         "You are the SplitFrame Video Editor specialist.\n"
         "You own timeline structure: cuts, trims, clip ordering, ripple editing, captions, titles, canvas format, and export.\n"
-        "You collaborate with the Colourist and Audio specialists via the Peer Bus.\n"
-        "You DO NOT directly modify mixer nodes or grades; ask the Audio or Colourist specialist instead."
+        "You collaborate with the Director, Colourist and Audio specialists via the Peer Bus.\n"
+        "You DO NOT directly modify mixer nodes or grades; ask the Audio or Colourist specialist instead.\n"
+        "Prompt craft: Write generation prompts using precise shot language (camera angles, movement, composition, pacing, B-roll framing) on Lane deep.\n"
+        "Before calling any generate.* tool, you MUST call generate.ready. If generate.ready reports not_ready, do NOT retry blindly; inform the user what is missing.\n"
+        "Workflow building: Build workflows via comfy.graph.fromTemplate or comfy.graph.new, apply ops with comfy.graph.op, validate with comfy.graph.validate, and run with generate.fromGraph. On validation failure, inspect errors, fix with ops, and retry at most 3 times."
       );
     case SpecialistKind::Colourist:
       return QStringLiteral(
         "You are the SplitFrame Colourist specialist.\n"
         "You own colour grading, LUTs, exposure, saturation, lift/gamma/gain, and OpenColorIO colour spaces.\n"
-        "You collaborate with the Video Editor and Audio specialists via the Peer Bus.\n"
-        "You DO NOT cut or move timeline clips directly; ask the Video Editor instead."
+        "You collaborate with the Director, Video Editor and Audio specialists via the Peer Bus.\n"
+        "You DO NOT cut or move timeline clips directly; ask the Video Editor instead.\n"
+        "Prompt craft: Write generation prompts specifying look, lighting ratios, color temperature, palette, film stock, and atmosphere on Lane deep.\n"
+        "Before calling any generate.* tool, you MUST call generate.ready. If generate.ready reports not_ready, do NOT retry blindly; inform the user what is missing.\n"
+        "You review edits and generated clips for flash, safety, continuity, and legibility."
       );
     case SpecialistKind::Audio:
       return QStringLiteral(
         "You are the SplitFrame Audio specialist.\n"
         "You own audio tracks, background music, ducking, volume/pan, audio effects, CLAP plugins, and beat synchronization.\n"
-        "You collaborate with the Video Editor and Colourist specialists via the Peer Bus.\n"
-        "You DO NOT change timeline clip edits directly; ask the Video Editor instead."
+        "You collaborate with the Director, Video Editor and Colourist specialists via the Peer Bus.\n"
+        "You DO NOT change timeline clip edits directly; ask the Video Editor instead.\n"
+        "Prompt craft: Write generation prompts describing voice character, cadence, style, acoustic environment, instrumentation, BPM, and mood on Lane deep.\n"
+        "Before calling any generate.* tool, you MUST call generate.ready. If generate.ready reports not_ready, do NOT retry blindly; inform the user what is missing.\n"
+        "You review cuts and mixes for clipped words and loudness compliance."
       );
   }
   return {};
@@ -65,6 +83,19 @@ QJsonObject Specialist::scopedViewJson(const QString& sessionId) const {
   if (!sessionId.isEmpty()) sessArg.insert(QStringLiteral("session"), sessionId);
 
   switch (kind_) {
+    case SpecialistKind::Director: {
+      engine::Result sbRes = engine_->call(QStringLiteral("storyboard.get"), sessArg);
+      if (sbRes.ok) view.insert(QStringLiteral("storyboard"), sbRes.value.toObject().value(QStringLiteral("scenes")));
+
+      QJsonObject tlArg = sessArg;
+      tlArg.insert(QStringLiteral("mode"), QStringLiteral("summary"));
+      engine::Result tlRes = engine_->call(QStringLiteral("timeline.get"), tlArg);
+      if (tlRes.ok) view.insert(QStringLiteral("timeline"), tlRes.value);
+
+      engine::Result projRes = engine_->call(QStringLiteral("project.info"), sessArg);
+      if (projRes.ok) view.insert(QStringLiteral("project"), projRes.value);
+      break;
+    }
     case SpecialistKind::Editor: {
       QJsonObject tlArg = sessArg;
       tlArg.insert(QStringLiteral("mode"), QStringLiteral("summary"));
@@ -135,6 +166,11 @@ QJsonObject Specialist::scopedViewJson(const QString& sessionId) const {
 }
 
 bool Specialist::allowsCommand(const engine::CommandSpec& spec) const {
+  if (kind_ == SpecialistKind::Director) {
+    if (spec.domain == QStringLiteral("director")) return true;
+    if (spec.name == QStringLiteral("agent.assign") || spec.name == QStringLiteral("agent.chat")) return true;
+    if (spec.name.startsWith(QStringLiteral("storyboard."))) return true;
+  }
   if (spec.domain == domain() || spec.domain == QStringLiteral("engine")) return true;
   if (!spec.mutates) return true;
   if (spec.domain == QStringLiteral("comfy")) return true;
@@ -159,13 +195,29 @@ QJsonArray Specialist::availableTools() const {
   }
 
   // Peer Bus tool for cross-domain collaboration
+  if (kind_ == SpecialistKind::Director) {
+    tools.append(QJsonObject{
+      {QStringLiteral("name"), QStringLiteral("agent.assign")},
+      {QStringLiteral("description"), QStringLiteral("Assign a task to a specialist (editor, colourist, audio) via the peer bus, running their real tool loop.")},
+      {QStringLiteral("parameters"), QJsonObject{
+        {QStringLiteral("type"), QStringLiteral("object")},
+        {QStringLiteral("properties"), QJsonObject{
+          {QStringLiteral("to"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("enum"), QJsonArray{QStringLiteral("editor"), QStringLiteral("colourist"), QStringLiteral("audio")}}}},
+          {QStringLiteral("task"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+          {QStringLiteral("sceneId"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}
+        }},
+        {QStringLiteral("required"), QJsonArray{QStringLiteral("to"), QStringLiteral("task")}}
+      }}
+    });
+  }
+
   tools.append(QJsonObject{
     {QStringLiteral("name"), QStringLiteral("peer_request")},
     {QStringLiteral("description"), QStringLiteral("Send a typed request to another specialist (editor, colourist, audio) across the Peer Bus.")},
     {QStringLiteral("parameters"), QJsonObject{
       {QStringLiteral("type"), QStringLiteral("object")},
       {QStringLiteral("properties"), QJsonObject{
-        {QStringLiteral("to"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("enum"), QJsonArray{QStringLiteral("editor"), QStringLiteral("colourist"), QStringLiteral("audio")}}}},
+        {QStringLiteral("to"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("enum"), QJsonArray{QStringLiteral("director"), QStringLiteral("editor"), QStringLiteral("colourist"), QStringLiteral("audio")}}}},
         {QStringLiteral("kind"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
         {QStringLiteral("args"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}}},
         {QStringLiteral("constraints"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}}},
@@ -262,6 +314,61 @@ PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString
   PeerResponse res;
   res.requestId = req.id;
 
+  if (req.kind == QStringLiteral("assign") || req.kind == QStringLiteral("task")) {
+    setPeerReviewEnabled(true);
+    QString task = req.args.value(QStringLiteral("task")).toString();
+    if (task.isEmpty()) task = req.reason;
+    QJsonObject turnRes = processTurn(task, sessionId, TurnPolicy::Execute, Lane::Fast);
+    res.outputs = turnRes;
+    const bool ok = (turnRes.value(QStringLiteral("status")).toString() == QStringLiteral("ok"));
+    res.status = ok ? QStringLiteral("done") : QStringLiteral("declined");
+    res.ops = turnRes.value(QStringLiteral("tool_results")).toArray();
+    res.note = turnRes.value(QStringLiteral("content")).toString();
+    if (res.note.isEmpty() && !ok) res.note = turnRes.value(QStringLiteral("error")).toString();
+    return res;
+  }
+
+  if (req.kind == QStringLiteral("review") || req.kind == QStringLiteral("critique") || req.kind == QStringLiteral("peer_review")) {
+    QString reviewPrompt = QStringLiteral("You are performing a peer critique/review of changes made by another specialist on Lane judge.\n");
+    reviewPrompt += QStringLiteral("Request reason: ") + req.reason + QStringLiteral("\nDetails: ") + QString::fromUtf8(QJsonDocument(req.args).toJson(QJsonDocument::Compact));
+    reviewPrompt += QStringLiteral("\nProvide your verdict: return 'approve' or 'revise {reason, suggestedFix}'. If there is a flash safety or clipping issue, flag it for revision.");
+
+    std::vector<ChatMessage> msgs;
+    msgs.push_back(ChatMessage{.role = QStringLiteral("user"), .content = reviewPrompt});
+
+    QJsonObject resp;
+    if (llm_) {
+      resp = llm_->complete(systemPrompt(), msgs, {}, slotId_, Lane::Judge);
+    } else {
+      resp = QJsonObject{{QStringLiteral("content"), QStringLiteral("approve")}};
+    }
+    QString content = resp.value(QStringLiteral("content")).toString().trimmed();
+    if (content.isEmpty()) content = QStringLiteral("approve");
+
+    const bool needsRevision = content.contains(QStringLiteral("revise"), Qt::CaseInsensitive) ||
+                               content.contains(QStringLiteral("flash"), Qt::CaseInsensitive) ||
+                               content.contains(QStringLiteral("clipping"), Qt::CaseInsensitive) ||
+                               content.contains(QStringLiteral("risk"), Qt::CaseInsensitive) ||
+                               content.contains(QStringLiteral("rejected"), Qt::CaseInsensitive);
+
+    res.outputs = QJsonObject{
+      {QStringLiteral("content"), content},
+      {QStringLiteral("model"), llm_ ? llm_->lastObservedModel() : QString()},
+      {QStringLiteral("lane"), QStringLiteral("judge")}
+    };
+
+    if (needsRevision) {
+      res.status = QStringLiteral("needs_revision");
+      res.note = content;
+      res.outputs.insert(QStringLiteral("reason"), content);
+      res.outputs.insert(QStringLiteral("suggestedFix"), QStringLiteral("Revise clip or adjustment to eliminate issue"));
+    } else {
+      res.status = QStringLiteral("done");
+      res.note = content.isEmpty() ? QStringLiteral("approved") : content;
+    }
+    return res;
+  }
+
   const QString cmdName = peerKindToCommand(req.kind);
   const engine::CommandSpec* spec = engine_ ? engine_->find(cmdName) : nullptr;
   if (!spec) {
@@ -285,11 +392,18 @@ PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString
   return res;
 }
 
-QJsonObject Specialist::processTurn(const QString& userMessage, const QString& sessionId, TurnPolicy policy) {
+QJsonObject Specialist::processTurn(const QString& userMessage, const QString& sessionId, TurnPolicy policy, Lane lane) {
   QJsonObject result;
   result.insert(QStringLiteral("specialist"), name());
 
   const QString runId = !currentRunId_.isEmpty() ? currentRunId_ : QUuid::createUuid().toString(QUuid::WithoutBraces);
+
+  emit agentEvent(QJsonObject{
+    {QStringLiteral("agent"), name()},
+    {QStringLiteral("lane"), laneName(lane)},
+    {QStringLiteral("kind"), QStringLiteral("think")},
+    {QStringLiteral("text"), QStringLiteral("Thinking...")}
+  });
 
   addMessage(ChatMessage{
     .role = QStringLiteral("user"),
@@ -304,6 +418,7 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       .runId = runId,
       .agentName = name(),
       .role = domain(),
+      .lane = laneName(lane),
       .action = QStringLiteral("error"),
       .inputSummary = userMessage,
       .status = QStringLiteral("error"),
@@ -322,6 +437,7 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
   QString respContent;
   QString status = QStringLiteral("ok");
   bool hitCap = false;
+  int revisionCount = 0;
 
   for (int round = 0; round < kMaxToolRounds; ++round) {
     if (round > 0) {
@@ -329,6 +445,7 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
         .runId = runId,
         .agentName = name(),
         .role = domain(),
+        .lane = laneName(lane),
         .action = QStringLiteral("retry"),
         .inputSummary = QStringLiteral("Turn round %1").arg(round),
         .model = llm_->lastObservedModel(),
@@ -337,7 +454,7 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       }, projectDir_);
     }
 
-    QJsonObject llmResp = llm_->complete(enrichedPrompt, history_, availableTools(), slotId_);
+    QJsonObject llmResp = llm_->complete(enrichedPrompt, history_, availableTools(), slotId_, lane);
     const QJsonValue errVal = llmResp.value(QStringLiteral("error"));
     QJsonArray toolCalls = llmResp.value(QStringLiteral("tool_calls")).toArray();
     respContent = llmResp.value(QStringLiteral("content")).toString();
@@ -351,6 +468,7 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
         .runId = runId,
         .agentName = name(),
         .role = domain(),
+        .lane = laneName(lane),
         .action = QStringLiteral("error"),
         .inputSummary = userMessage,
         .model = llm_->lastObservedModel(),
@@ -369,20 +487,40 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
 
     if (toolCalls.isEmpty()) {
       if (!respContent.isEmpty()) {
+        const QString act = (kind_ == SpecialistKind::Director &&
+                             (lane == Lane::Deep || userMessage.contains(QStringLiteral("plan"), Qt::CaseInsensitive) ||
+                              userMessage.contains(QStringLiteral("brief"), Qt::CaseInsensitive) ||
+                              userMessage.contains(QStringLiteral("storyboard"), Qt::CaseInsensitive)))
+                          ? QStringLiteral("plan")
+                          : QStringLiteral("message");
         logAgentTrace(AgentTraceRecord{
           .runId = runId,
           .agentName = name(),
           .role = domain(),
-          .action = QStringLiteral("message"),
+          .lane = laneName(lane),
+          .action = act,
           .inputSummary = userMessage,
           .outputSummary = respContent,
           .model = llm_->lastObservedModel(),
           .status = QStringLiteral("success"),
           .retryCount = round
         }, projectDir_);
+
+        emit agentEvent(QJsonObject{
+          {QStringLiteral("agent"), name()},
+          {QStringLiteral("lane"), laneName(lane)},
+          {QStringLiteral("kind"), QStringLiteral("message")},
+          {QStringLiteral("text"), respContent},
+          {QStringLiteral("ok"), true}
+        });
       }
       break;
     }
+
+    bool roundMutated = false;
+    QString lastMutatingTool;
+    QJsonObject lastMutatingArgs;
+    QJsonObject lastMutatingResult;
 
     for (const auto& tcVal : toolCalls) {
       QJsonObject tc = tcVal.toObject();
@@ -391,9 +529,18 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       QString fnName = fn.value(QStringLiteral("name")).toString();
       QJsonObject fnArgs = parseToolArgs(fn.value(QStringLiteral("arguments")));
 
+      emit agentEvent(QJsonObject{
+        {QStringLiteral("agent"), name()},
+        {QStringLiteral("lane"), laneName(lane)},
+        {QStringLiteral("kind"), QStringLiteral("tool")},
+        {QStringLiteral("text"), fnName},
+        {QStringLiteral("tool"), fnName},
+        {QStringLiteral("args"), fnArgs}
+      });
+
       QJsonObject toolResult;
       bool mutating = false;
-      if (fnName == QStringLiteral("peer_request")) {
+      if (fnName == QStringLiteral("peer_request") || fnName == QStringLiteral("agent.assign")) {
         mutating = true;
       } else if (engine_) {
         const engine::CommandSpec* spec = engine_->find(fnName);
@@ -411,6 +558,17 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
           {QStringLiteral("deferred"), true},
           {QStringLiteral("reason"), QStringLiteral("ask mode: waiting for agent.plan.run")}
         };
+      } else if (fnName == QStringLiteral("agent.assign")) {
+        SpecialistKind target = parseSpecialistKind(fnArgs.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
+        PeerResponse pr = sendPeerRequest(
+          target,
+          QStringLiteral("assign"),
+          fnArgs,
+          {},
+          fnArgs.value(QStringLiteral("task")).toString(),
+          true
+        );
+        toolResult = pr.toJson();
       } else if (fnName == QStringLiteral("peer_request")) {
         SpecialistKind target = parseSpecialistKind(fnArgs.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
         PeerResponse pr = sendPeerRequest(
@@ -426,15 +584,33 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
         toolResult = executeCommand(fnName, fnArgs, sessionId).toJson();
       }
 
-      const bool isPeer = (fnName == QStringLiteral("peer_request"));
+      const bool isPeer = (fnName == QStringLiteral("peer_request") || fnName == QStringLiteral("agent.assign"));
       const QString targetAgent = isPeer ? fnArgs.value(QStringLiteral("to")).toString() : QString();
       const bool ok = toolResult.value(QStringLiteral("ok")).toBool(true);
       const QString toolStatus = (policy == TurnPolicy::Propose && mutating) ? QStringLiteral("needs_revision") : (ok ? QStringLiteral("success") : QStringLiteral("error"));
+
+      if (ok && mutating && fnName != QStringLiteral("peer_request") && fnName != QStringLiteral("agent.assign")) {
+        roundMutated = true;
+        lastMutatingTool = fnName;
+        lastMutatingArgs = fnArgs;
+        lastMutatingResult = toolResult;
+      }
+
+      emit agentEvent(QJsonObject{
+        {QStringLiteral("agent"), name()},
+        {QStringLiteral("lane"), laneName(lane)},
+        {QStringLiteral("kind"), QStringLiteral("result")},
+        {QStringLiteral("text"), QString::fromUtf8(QJsonDocument(toolResult).toJson(QJsonDocument::Compact))},
+        {QStringLiteral("tool"), fnName},
+        {QStringLiteral("ok"), ok}
+      });
+
       logAgentTrace(AgentTraceRecord{
         .runId = runId,
         .agentName = name(),
         .role = domain(),
-        .action = QStringLiteral("tool_call"),
+        .lane = laneName(lane),
+        .action = (fnName == QStringLiteral("agent.assign")) ? QStringLiteral("handoff") : QStringLiteral("tool_call"),
         .inputSummary = QString::fromUtf8(QJsonDocument(fnArgs).toJson(QJsonDocument::Compact)),
         .outputSummary = QString::fromUtf8(QJsonDocument(toolResult).toJson(QJsonDocument::Compact)),
         .targetAgent = targetAgent,
@@ -461,6 +637,47 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       });
     }
 
+    // Review loop: After any mutating step, run peer review on Lane judge
+    if (peerReviewEnabled_ && roundMutated && policy == TurnPolicy::Execute &&
+        bus_ && revisionCount < 2) {
+      SpecialistKind reviewer = SpecialistKind::Editor;
+      if (kind_ == SpecialistKind::Editor) {
+        reviewer = SpecialistKind::Colourist;
+      } else if (kind_ == SpecialistKind::Colourist || kind_ == SpecialistKind::Audio || kind_ == SpecialistKind::Director) {
+        reviewer = SpecialistKind::Editor;
+      }
+
+      PeerResponse revResp = sendPeerRequest(
+        reviewer,
+        QStringLiteral("review"),
+        QJsonObject{
+          {QStringLiteral("tool"), lastMutatingTool},
+          {QStringLiteral("arguments"), lastMutatingArgs},
+          {QStringLiteral("result"), lastMutatingResult}
+        },
+        {},
+        QStringLiteral("Review %1 changes").arg(lastMutatingTool),
+        true
+      );
+
+      emit agentEvent(QJsonObject{
+        {QStringLiteral("agent"), specialistName(reviewer)},
+        {QStringLiteral("lane"), QStringLiteral("judge")},
+        {QStringLiteral("kind"), QStringLiteral("review")},
+        {QStringLiteral("text"), revResp.note},
+        {QStringLiteral("ok"), revResp.status != QStringLiteral("needs_revision")}
+      });
+
+      if (revResp.status == QStringLiteral("needs_revision")) {
+        ++revisionCount;
+        addMessage(ChatMessage{
+          .role = QStringLiteral("user"),
+          .content = QStringLiteral("Peer review from %1 requested revision: %2. Please revise.")
+                       .arg(specialistName(reviewer), revResp.note)
+        });
+      }
+    }
+
     if (round + 1 == kMaxToolRounds) hitCap = true;
   }
 
@@ -471,12 +688,28 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       .runId = runId,
       .agentName = name(),
       .role = domain(),
+      .lane = laneName(lane),
       .action = QStringLiteral("error"),
       .inputSummary = userMessage,
       .model = llm_ ? llm_->lastObservedModel() : QString(),
       .status = QStringLiteral("error"),
       .retryCount = kMaxToolRounds,
       .error = QStringLiteral("tool_loop_limit")
+    }, projectDir_);
+  }
+
+  if (kind_ == SpecialistKind::Director && lane == Lane::Deep) {
+    logAgentTrace(AgentTraceRecord{
+      .runId = runId,
+      .agentName = name(),
+      .role = domain(),
+      .lane = QStringLiteral("deep"),
+      .action = QStringLiteral("plan"),
+      .inputSummary = userMessage,
+      .outputSummary = respContent.isEmpty() ? QStringLiteral("Director storyboard plan") : respContent,
+      .model = llm_ ? llm_->lastObservedModel() : QString(),
+      .status = QStringLiteral("success"),
+      .retryCount = 0
     }, projectDir_);
   }
 

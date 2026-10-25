@@ -280,6 +280,8 @@ sf_add_agent_test(tst_agent_specialists)
 # fake_llm_server.h holds a Q_OBJECT class: list it as a source so AUTOMOC mocs it.
 sf_add_agent_test(tst_agent_harness SOURCES fake_llm_server.h)
 sf_add_agent_test(tst_agent_trace SOURCES fake_llm_server.h)
+sf_add_agent_test(tst_agent_crew SOURCES fake_llm_server.h DEFS "SF_COMFY_FIXTURES=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/comfy\"")
+target_link_libraries(tst_agent_crew PRIVATE sf_comfy sf_editor sf_media sf_core)
 sf_add_agent_test(tst_llm_wire)
 
 # Footage understanding and indexing tests (M6)

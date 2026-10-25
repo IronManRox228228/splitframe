@@ -41,6 +41,9 @@ public:
   // Process a user turn across the router and specialists.
   QJsonObject executeTurn(const QString& userMessage, const QString& sessionId = {});
 
+  // Direct chat with the Director agent (Part C item 7).
+  QJsonObject chat(const QString& userMessage, const QString& sessionId = {});
+
   QJsonObject runPending(const QString& sessionId = {});
   QJsonObject skipPending();
   bool hasPending() const { return pending_.kind != PendingKind::None; }
@@ -52,6 +55,7 @@ public:
 
 signals:
   void turnCompleted(const QJsonObject& turnResult);
+  void agentEvent(const QJsonObject& event);
 
 private:
   enum class PendingKind { None, Plan, Ask };

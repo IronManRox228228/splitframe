@@ -14,17 +14,23 @@ AgentHarness::AgentHarness(engine::Engine* engine,
   bus_ = std::make_unique<PeerBus>(this);
   router_ = std::make_unique<Router>();
 
-  // Create the three specialists
+  // Create the four specialists (Editor slot 0, Colourist slot 1, Audio slot 2, Director slot 3)
   specialists_[SpecialistKind::Editor] = std::make_unique<Specialist>(SpecialistKind::Editor, engine_, bus_.get(), llm_, this);
+  specialists_[SpecialistKind::Editor]->setSlotId(0);
   specialists_[SpecialistKind::Colourist] = std::make_unique<Specialist>(SpecialistKind::Colourist, engine_, bus_.get(), llm_, this);
+  specialists_[SpecialistKind::Colourist]->setSlotId(1);
   specialists_[SpecialistKind::Audio] = std::make_unique<Specialist>(SpecialistKind::Audio, engine_, bus_.get(), llm_, this);
+  specialists_[SpecialistKind::Audio]->setSlotId(2);
+  specialists_[SpecialistKind::Director] = std::make_unique<Specialist>(SpecialistKind::Director, engine_, bus_.get(), llm_, this);
+  specialists_[SpecialistKind::Director]->setSlotId(3);
 
-  // Set default peer handlers on bus to delegate to recipient specialists
+  // Set default peer handlers on bus to delegate to recipient specialists, and forward agent events
   for (auto& [kind, sp] : specialists_) {
     Specialist* ptr = sp.get();
     bus_->setDefaultHandler(kind, [ptr, this](const PeerRequest& req) {
       return ptr->handlePeerRequest(req, lastSessionId_);
     });
+    connect(ptr, &Specialist::agentEvent, this, &AgentHarness::agentEvent);
   }
 }
 
@@ -107,7 +113,10 @@ QJsonObject AgentHarness::runPending(const QString& sessionId) {
   const QString runId = QUuid::createUuid().toString(QUuid::WithoutBraces);
   const QString projDir = currentProjectDir();
   bus_->setCurrentRun(runId, projDir);
-  for (auto& [k, sp] : specialists_) sp->setCurrentRun(runId, projDir);
+  for (auto& [k, sp] : specialists_) {
+    sp->setCurrentRun(runId, projDir);
+    sp->setPeerReviewEnabled(true);
+  }
 
   if (pending_.kind == PendingKind::None) {
     out.insert(QStringLiteral("ok"), false);
@@ -354,7 +363,106 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
   return out;
 }
 
+QJsonObject AgentHarness::chat(const QString& userMessage, const QString& sessionId) {
+  lastSessionId_ = sessionId;
+  const QString runId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+  const QString projDir = currentProjectDir();
+  bus_->setCurrentRun(runId, projDir);
+  for (auto& [k, sp] : specialists_) {
+    sp->setCurrentRun(runId, projDir);
+    sp->setPeerReviewEnabled(true);
+  }
+
+  Specialist* director = specialist(SpecialistKind::Director);
+  if (!director) director = specialist(SpecialistKind::Editor);
+
+  QJsonObject groupArgs;
+  if (!sessionId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessionId);
+  groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(userMessage));
+
+  if (engine_) {
+    engine_->call(QStringLiteral("session.group.begin"), groupArgs);
+  }
+
+  QJsonObject turnRes = director->processTurn(userMessage, sessionId, TurnPolicy::Execute, Lane::Deep);
+
+  if (engine_) {
+    engine_->call(QStringLiteral("session.group.end"), groupArgs);
+  }
+
+  QJsonObject out;
+  out.insert(QStringLiteral("ok"), turnRes.value(QStringLiteral("status")).toString() != QStringLiteral("error"));
+  out.insert(QStringLiteral("response"), turnRes.value(QStringLiteral("content")));
+  out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
+  out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
+  if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
+  out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
+
+  emit turnCompleted(out);
+  return out;
+}
+
 void AgentHarness::registerCommands(engine::Engine& engine) {
+  // agent.chat: Send chat message to Director (Part C item 7)
+  engine.add(engine::CommandSpec{
+    .name = QStringLiteral("agent.chat"),
+    .alias = QStringLiteral("agentChat"),
+    .description = QStringLiteral("Chat with the Director agent. Director plans, executes, or assigns work and streams progress events."),
+    .domain = QStringLiteral("engine"),
+    .mutates = true,
+    .needsSession = false,
+    .inputSchema = QJsonObject{
+      {QStringLiteral("type"), QStringLiteral("object")},
+      {QStringLiteral("properties"), QJsonObject{
+        {QStringLiteral("message"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}
+      }},
+      {QStringLiteral("required"), QJsonArray{QStringLiteral("message")}}
+    },
+    .handler = [this](engine::CallContext& c, const QJsonObject& a) {
+      QString sessId = c.session ? c.session->id : QString();
+      QJsonObject res = chat(a.value(QStringLiteral("message")).toString(), sessId);
+      return engine::Result::success(res);
+    }
+  });
+
+  // agent.assign: Assign work to a specialist (Part C item 3)
+  engine.add(engine::CommandSpec{
+    .name = QStringLiteral("agent.assign"),
+    .alias = QStringLiteral("agentAssign"),
+    .description = QStringLiteral("Assign a task to a specialist agent (editor, colourist, audio) via the peer bus."),
+    .domain = QStringLiteral("engine"),
+    .mutates = true,
+    .needsSession = false,
+    .inputSchema = QJsonObject{
+      {QStringLiteral("type"), QStringLiteral("object")},
+      {QStringLiteral("properties"), QJsonObject{
+        {QStringLiteral("to"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("enum"), QJsonArray{QStringLiteral("editor"), QStringLiteral("colourist"), QStringLiteral("audio")}}}},
+        {QStringLiteral("task"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+        {QStringLiteral("sceneId"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}
+      }},
+      {QStringLiteral("required"), QJsonArray{QStringLiteral("to"), QStringLiteral("task")}}
+    },
+    .handler = [this](engine::CallContext& c, const QJsonObject& a) {
+      QString sessId = c.session ? c.session->id : QString();
+      SpecialistKind target = parseSpecialistKind(a.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
+      Specialist* dir = specialist(SpecialistKind::Director);
+      PeerResponse pr;
+      if (dir) {
+        pr = dir->sendPeerRequest(target, QStringLiteral("assign"), a, {}, a.value(QStringLiteral("task")).toString(), true);
+      } else {
+        pr = bus_->send(PeerRequest{
+          .from = SpecialistKind::Director,
+          .to = target,
+          .kind = QStringLiteral("assign"),
+          .args = a,
+          .reason = a.value(QStringLiteral("task")).toString(),
+          .await = true
+        });
+      }
+      return engine::Result::success(pr.toJson());
+    }
+  });
+
   // agent.turn: Execute a user turn
   engine.add(engine::CommandSpec{
     .name = QStringLiteral("agent.turn"),
@@ -470,14 +578,16 @@ void AgentHarness::registerCommands(engine::Engine& engine) {
   engine.add(engine::CommandSpec{
     .name = QStringLiteral("agent.specialists"),
     .alias = QStringLiteral("getSpecialists"),
-    .description = QStringLiteral("List the three specialist agents (editor, colourist, audio) with their domain ownership and slot IDs."),
+    .description = QStringLiteral("List the specialist agents with their domain ownership and slot IDs."),
     .domain = QStringLiteral("engine"),
     .mutates = false,
     .needsSession = false,
     .inputSchema = QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}},
-    .handler = [this](engine::CallContext&, const QJsonObject&) {
+    .handler = [this](engine::CallContext&, const QJsonObject& a) {
       QJsonArray list;
+      const bool includeDirector = a.value(QStringLiteral("all")).toBool(false);
       for (const auto& [kind, sp] : specialists_) {
+        if (!includeDirector && kind == SpecialistKind::Director) continue;
         list.append(QJsonObject{
           {QStringLiteral("name"), sp->name()},
           {QStringLiteral("domain"), sp->domain()},

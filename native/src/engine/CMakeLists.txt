@@ -6,6 +6,7 @@ add_library(sf_engine STATIC
   engine.h engine.cpp
   cmd_util.h cmd_util.cpp
   cmd_session.cpp
+  cmd_storyboard.h cmd_storyboard.cpp
   cmd_read.cpp
   cmd_edit.cpp
   cmd_media.cpp

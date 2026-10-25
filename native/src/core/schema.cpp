@@ -547,6 +547,7 @@ TimelineDoc parseTimelineDoc(const Rd& r) {
   d.markers = r.field(QStringLiteral("markers")).list(parseMarker);
   d.mixer = r.field(QStringLiteral("mixer")).opt(parseMixer);
   d.transitions = r.field(QStringLiteral("transitions")).listOr(parseFxTransition);
+  d.storyboard = r.field(QStringLiteral("storyboard")).listOr(parseStoryboardScene);
   return d;
 }
 
@@ -596,6 +597,27 @@ Transcript parseTranscript(const Rd& r) {
   t.language = r.field(QStringLiteral("language")).strOr(QStringLiteral("en"));
   t.words = r.field(QStringLiteral("words")).list(parseWord);
   return t;
+}
+
+StoryboardScene parseStoryboardScene(const Rd& r) {
+  r.requireObject();
+  StoryboardScene s;
+  s.id = r.field(QStringLiteral("id")).str();
+  s.title = r.field(QStringLiteral("title")).str();
+  s.intent = r.field(QStringLiteral("intent")).str();
+  const Rd dur = r.field(QStringLiteral("durationSec"));
+  if (!dur.missing()) s.durationSec = dur.num({.min = 0.05, .max = 36000.0});
+  s.shotPrompt = r.field(QStringLiteral("shotPrompt")).optStr();
+  s.voText = r.field(QStringLiteral("voText")).optStr();
+  s.musicCue = r.field(QStringLiteral("musicCue")).optStr();
+  s.colourNote = r.field(QStringLiteral("colourNote")).optStr();
+  const Rd st = r.field(QStringLiteral("status"));
+  if (!st.missing()) s.status = st.str();
+  const Rd aids = r.field(QStringLiteral("assetIds"));
+  if (!aids.missing()) {
+    s.assetIds = aids.list([](const Rd& item) { return item.str(); });
+  }
+  return s;
 }
 
 Scene parseScene(const Rd& r) {
@@ -929,6 +951,7 @@ QJsonObject toJson(const TimelineDoc& d) {
                 {QStringLiteral("markers"), arr(d.markers, [](const Marker& m) { return toJson(m); })}};
   if (d.mixer) o.insert(QStringLiteral("mixer"), toJson(*d.mixer));
   if (!d.transitions.empty()) o.insert(QStringLiteral("transitions"), arr(d.transitions, [](const FxTransition& t) { return toJson(t); }));
+  if (!d.storyboard.empty()) o.insert(QStringLiteral("storyboard"), arr(d.storyboard, [](const StoryboardScene& s) { return toJson(s); }));
   return o;
 }
 
@@ -967,6 +990,24 @@ QJsonObject toJson(const Transcript& t) {
   return {{QStringLiteral("assetId"), t.assetId},
           {QStringLiteral("language"), t.language},
           {QStringLiteral("words"), arr(t.words, wordJson)}};
+}
+
+QJsonObject toJson(const StoryboardScene& s) {
+  QJsonObject o{
+    {QStringLiteral("id"), s.id},
+    {QStringLiteral("title"), s.title},
+    {QStringLiteral("intent"), s.intent},
+    {QStringLiteral("durationSec"), s.durationSec},
+    {QStringLiteral("status"), s.status}
+  };
+  if (s.shotPrompt) o.insert(QStringLiteral("shotPrompt"), *s.shotPrompt);
+  if (s.voText) o.insert(QStringLiteral("voText"), *s.voText);
+  if (s.musicCue) o.insert(QStringLiteral("musicCue"), *s.musicCue);
+  if (s.colourNote) o.insert(QStringLiteral("colourNote"), *s.colourNote);
+  QJsonArray aids;
+  for (const QString& aid : s.assetIds) aids.append(aid);
+  o.insert(QStringLiteral("assetIds"), aids);
+  return o;
 }
 
 QJsonObject toJson(const Scene& s) {

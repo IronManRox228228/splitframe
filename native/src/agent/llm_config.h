@@ -21,6 +21,9 @@ struct LlmConfig {
 
   QString endpoint = QString::fromLatin1(kDefaultEndpoint);
   QString model = QString::fromLatin1(kDefaultModel);
+  QString modelFast;  // defaults to SF_LLM_MODEL
+  QString modelDeep;  // defaults to SF_LLM_MODEL
+  QString modelJudge; // defaults to SF_LLM_MODEL
   QString apiKey;         // Bearer for local providers that enforce a key (SF_LLM_API_KEY)
   int timeoutMs = 60000;  // one completion request, bounded so nothing hangs
   int probeMs = 2000;     // reachability check before a turn starts
@@ -37,9 +40,10 @@ struct LlmConfig {
 class RecordingLlmClient : public LlmClient {
 public:
   explicit RecordingLlmClient(std::shared_ptr<LlmClient> inner) : inner_(std::move(inner)) {}
-  QJsonObject complete(const QString& systemPrompt, const std::vector<ChatMessage>& messages, const QJsonArray& tools = {}, int slotId = -1) override;
+  QJsonObject complete(const QString& systemPrompt, const std::vector<ChatMessage>& messages, const QJsonArray& tools = {}, int slotId = -1, Lane lane = Lane::Fast) override;
   bool reachable(QString* error = nullptr) const override;
   QString lastObservedModel() const override { return inner_ ? inner_->lastObservedModel() : QString(); }
+  Lane lastLane() const override { return inner_ ? inner_->lastLane() : Lane::Fast; }
   void clearError() { lastError_.clear(); }
   const QString& lastError() const { return lastError_; }
   const std::shared_ptr<LlmClient>& inner() const { return inner_; }
