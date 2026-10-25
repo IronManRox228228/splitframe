@@ -64,8 +64,6 @@ public:
   // Tools available to this specialist: own domain, engine, reads, generate/comfy.
   QJsonArray availableTools() const;
 
-  static constexpr int kMaxToolRounds = 8;
-
   bool allowsCommand(const engine::CommandSpec& spec) const;
 
   // Executes an engine command with strict domain check and origin tag.

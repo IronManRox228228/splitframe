@@ -23,8 +23,6 @@ class PeerBus : public QObject {
   Q_OBJECT
 
 public:
-  static constexpr int kMaxChainDepth = 3;
-
   explicit PeerBus(QObject* parent = nullptr);
   ~PeerBus() override = default;
 

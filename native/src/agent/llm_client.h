@@ -162,7 +162,7 @@ private:
   QString modelDeep_;
   QString modelJudge_;
   QString apiKey_;
-  int timeoutMs_ = 30000;
+  int timeoutMs_ = 0; // 0: no limit, Stop still aborts
   QString lastObservedModel_;
   Lane lastLaneCalled_ = Lane::Fast;
 };

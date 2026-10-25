@@ -25,7 +25,7 @@ struct LlmConfig {
   QString modelDeep;  // defaults to SF_LLM_MODEL
   QString modelJudge; // defaults to SF_LLM_MODEL
   QString apiKey;         // Bearer for local providers that enforce a key (SF_LLM_API_KEY)
-  int timeoutMs = 60000;  // one completion request, bounded so nothing hangs
+  int timeoutMs = 0;  // one completion request; 0 = no limit (Stop still aborts it). SF_LLM_TIMEOUT_MS sets one
   int probeMs = 2000;     // reachability check before a turn starts
   QString mockScript;     // mock only: JSON file scripting the replies (see loadMockScript)
 

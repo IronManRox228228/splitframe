@@ -277,10 +277,11 @@ private slots:
     QCOMPARE(rows.at(0).toObject().value(QStringLiteral("result")).toObject().value(QStringLiteral("ok")).toBool(), true);
   }
 
-  // ---- the tool loop is bounded: constant tool calls stop with tool_loop_limit ----
-  void toolLoopHitsCap() {
+  // ---- the tool loop has no round cap: it runs until the model stops calling tools ----
+  void toolLoopRunsUntilModelStops() {
+    constexpr int kRounds = 20; // well past the old cap of 8
     auto mock = std::make_shared<MockLlmClient>();
-    for (int i = 0; i < Specialist::kMaxToolRounds; ++i) {
+    for (int i = 0; i < kRounds; ++i) {
       mock->enqueueResponse(QJsonObject{
         {QStringLiteral("content"), QString()},
         {QStringLiteral("tool_calls"), QJsonArray{QJsonObject{
@@ -292,14 +293,14 @@ private slots:
         }}}
       });
     }
+    mock->enqueueResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Done.")}});
 
     Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get(), mock);
-    QJsonObject turn = editor.processTurn(QStringLiteral("never stops calling tools"));
+    QJsonObject turn = editor.processTurn(QStringLiteral("keeps calling tools, then answers"));
 
-    QCOMPARE(turn.value(QStringLiteral("status")).toString(), QStringLiteral("error"));
-    QCOMPARE(turn.value(QStringLiteral("error")).toString(), QStringLiteral("tool_loop_limit"));
-    // Exactly kMaxToolRounds model calls happened, then the loop stopped.
-    QCOMPARE(mock->calls().size(), static_cast<size_t>(Specialist::kMaxToolRounds));
+    QCOMPARE(turn.value(QStringLiteral("status")).toString(), QStringLiteral("ok"));
+    QVERIFY(!turn.contains(QStringLiteral("error")));
+    QCOMPARE(mock->calls().size(), static_cast<size_t>(kRounds + 1));
   }
 };
 

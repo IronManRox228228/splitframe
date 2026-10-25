@@ -437,8 +437,8 @@ private slots:
     harness_->chat(QStringLiteral("what do I have"));
     const QString sys = mockLlm_->calls().front().systemPrompt;
     QVERIFY(sys.contains(QStringLiteral("clip_39.mp4")));
-    QVERIFY(!sys.contains(QStringLiteral("clip_40.mp4")));
-    QVERIFY(sys.contains(QStringLiteral("+5 more")));
+    QVERIFY(sys.contains(QStringLiteral("clip_44.mp4"))); // every asset is listed, no cap
+    QVERIFY(!sys.contains(QStringLiteral(" more")));
   }
 
   void projectSummaryEmptyProject() {

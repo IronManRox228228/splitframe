@@ -57,46 +57,6 @@ PeerResponse PeerBus::send(PeerRequest req) {
     return res;
   }
 
-  // 2. Guard against chain depth explosion (>= 3 hops)
-  if (req.depth >= kMaxChainDepth) {
-    PeerResponse res{
-      .requestId = req.id,
-      .status = QStringLiteral("declined"),
-      .ops = {},
-      .outputs = {},
-      .note = QStringLiteral("max chain depth (%1) exceeded").arg(kMaxChainDepth)
-    };
-    log_.push_back(PeerLogEntry{
-      .timestampMs = QDateTime::currentMSecsSinceEpoch(),
-      .requestId = req.id,
-      .from = req.from,
-      .to = req.to,
-      .kind = req.kind,
-      .reason = req.reason,
-      .args = req.args,
-      .status = res.status,
-      .note = res.note,
-      .outputs = res.outputs
-    });
-    emit messageLogged(log_.back());
-
-    logAgentTrace(AgentTraceRecord{
-      .runId = runId,
-      .agentName = specialistName(req.from),
-      .role = QStringLiteral("peer"),
-      .action = QStringLiteral("escalate"),
-      .inputSummary = QStringLiteral("%1: %2").arg(req.kind, req.reason),
-      .outputSummary = res.note,
-      .targetAgent = specialistName(req.to),
-      .tool = req.kind,
-      .status = QStringLiteral("error"),
-      .retryCount = req.depth,
-      .error = res.note
-    }, projectDir_);
-
-    return res;
-  }
-
   // 3. Cycle detection: if recipient is already in current active call chain
   if (std::find(activeStack_.begin(), activeStack_.end(), req.to) != activeStack_.end()) {
     PeerResponse res{

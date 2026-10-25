@@ -61,22 +61,6 @@ private slots:
     QVERIFY(resp.note.contains(QStringLiteral("self-request")));
   }
 
-  // ---- chain depth limit ----
-  void chainDepthLimit() {
-    PeerBus bus;
-    PeerRequest req{
-      .from = SpecialistKind::Editor,
-      .to = SpecialistKind::Audio,
-      .kind = QStringLiteral("deep_call"),
-      .reason = QStringLiteral("test"),
-      .depth = 4 // Exceeds kMaxChainDepth = 3
-    };
-
-    PeerResponse resp = bus.send(req);
-    QCOMPARE(resp.status, QStringLiteral("declined"));
-    QVERIFY(resp.note.contains(QStringLiteral("max chain depth")));
-  }
-
   // ---- cycle detection ----
   void cycleDetection() {
     PeerBus bus;
@@ -170,35 +154,20 @@ private slots:
     QCOMPARE(bus.teamThreadJson().size(), 0);
   }
 
-  // ---- chain depth boundary: hop 3 is the first declined depth ----
-  void chainDepthBoundary() {
+  // ---- no chain depth cap: a deep hop is forwarded like any other ----
+  void deepChainIsForwarded() {
     PeerBus bus;
     bus.registerHandler(SpecialistKind::Audio, QStringLiteral("hop"), [](const PeerRequest&) {
       return PeerResponse{.status = QStringLiteral("done")};
     });
-
-    // depth 2 is still allowed (guard rejects only when depth >= kMaxChainDepth)
-    PeerRequest shallow{
-      .from = SpecialistKind::Editor,
-      .to = SpecialistKind::Audio,
-      .kind = QStringLiteral("hop"),
-      .reason = QStringLiteral("still allowed"),
-      .depth = 2
-    };
-    PeerResponse shallowResp = bus.send(shallow);
-    QCOMPARE(shallowResp.status, QStringLiteral("done"));
-
-    // depth 3 (== kMaxChainDepth) is declined instead of forwarded
     PeerRequest deep{
       .from = SpecialistKind::Editor,
       .to = SpecialistKind::Audio,
       .kind = QStringLiteral("hop"),
-      .reason = QStringLiteral("at the limit"),
-      .depth = 3
+      .reason = QStringLiteral("deep hop"),
+      .depth = 12
     };
-    PeerResponse deepResp = bus.send(deep);
-    QCOMPARE(deepResp.status, QStringLiteral("declined"));
-    QVERIFY(deepResp.note.contains(QStringLiteral("max chain depth")));
+    QCOMPARE(bus.send(deep).status, QStringLiteral("done"));
   }
 };
 

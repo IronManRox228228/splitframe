@@ -241,7 +241,7 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
   });
   cancelPoll.start(100);
 
-  timer.start(timeoutMs_);
+  if (timeoutMs_ > 0) timer.start(timeoutMs_);
   loop.exec();
   cancelPoll.stop();
 
@@ -262,10 +262,9 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
     reply->deleteLater();
     return errorOut(QStringLiteral("cancelled"), QStringLiteral("Stopped by the user"));
   }
-  if (timer.isActive()) {
-    timer.stop();
-  } else {
-    // Timeout
+  timer.stop();
+  if (!reply->isFinished()) {
+    // Timeout (only reachable when timeoutMs_ > 0 started the timer)
     reply->abort();
     reply->deleteLater();
     return errorOut(QStringLiteral("provider_unreachable"), QStringLiteral("Request timed out"));

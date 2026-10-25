@@ -80,7 +80,6 @@ namespace {
 // Deterministic "what is in the project" text, built from the same read commands the model can call
 // (assets.list, timeline.get, storyboard.get), so the model never has to guess or ask first.
 QString projectSummaryText(engine::Engine* engine, const QString& sessionId) {
-  constexpr int kMaxAssets = 40;
   QJsonObject sessArg;
   if (!sessionId.isEmpty()) sessArg.insert(QStringLiteral("session"), sessionId);
 
@@ -93,9 +92,7 @@ QString projectSummaryText(engine::Engine* engine, const QString& sessionId) {
     out += QStringLiteral("Project has no media yet.\n");
   } else {
     out += QStringLiteral("Assets (%1):\n").arg(assets.size());
-    int shown = 0;
     for (const auto& v : assets) {
-      if (shown++ >= kMaxAssets) break;
       const QJsonObject a = v.toObject();
       QString line = QStringLiteral("- %1 | %2 | %3 | %4s")
         .arg(a.value(QStringLiteral("id")).toString(), a.value(QStringLiteral("name")).toString(),
@@ -108,7 +105,6 @@ QString projectSummaryText(engine::Engine* engine, const QString& sessionId) {
       if (!status.isEmpty() && status != QLatin1String("ready")) line += QStringLiteral(" | status=%1").arg(status);
       out += line + QLatin1Char('\n');
     }
-    if (assets.size() > kMaxAssets) out += QStringLiteral("+%1 more\n").arg(assets.size() - kMaxAssets);
   }
 
   QJsonObject tlArg = sessArg;
@@ -761,10 +757,10 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
   QJsonArray proposed;
   QString respContent;
   QString status = QStringLiteral("ok");
-  bool hitCap = false;
   int revisionCount = 0;
 
-  for (int round = 0; round < kMaxToolRounds; ++round) {
+  // No round cap: the turn runs until the model stops calling tools or the user presses Stop.
+  for (int round = 0;; ++round) {
     if (round > 0) {
       logAgentTrace(AgentTraceRecord{
         .runId = runId,
@@ -1009,7 +1005,7 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
 
     // Review loop: After any mutating step, run peer review on Lane judge
     if (peerReviewEnabled_ && roundMutated && policy == TurnPolicy::Execute &&
-        bus_ && revisionCount < 2) {
+        bus_) {
       SpecialistKind reviewer = SpecialistKind::Editor;
       if (kind_ == SpecialistKind::Editor) {
         reviewer = SpecialistKind::Colourist;
@@ -1048,24 +1044,6 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       }
     }
 
-    if (round + 1 == kMaxToolRounds) hitCap = true;
-  }
-
-  if (hitCap && status == QStringLiteral("ok")) {
-    status = QStringLiteral("error");
-    result.insert(QStringLiteral("error"), QStringLiteral("tool_loop_limit"));
-    logAgentTrace(AgentTraceRecord{
-      .runId = runId,
-      .agentName = name(),
-      .role = domain(),
-      .lane = laneName(lane),
-      .action = QStringLiteral("error"),
-      .inputSummary = userMessage,
-      .model = llm_ ? llm_->lastObservedModel() : QString(),
-      .status = QStringLiteral("error"),
-      .retryCount = kMaxToolRounds,
-      .error = QStringLiteral("tool_loop_limit")
-    }, projectDir_);
   }
 
   if (kind_ == SpecialistKind::Director && lane == Lane::Deep) {
