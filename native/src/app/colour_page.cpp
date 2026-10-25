@@ -347,6 +347,12 @@ void ColourPage::editProject(const std::function<void(ColorManagement&)>& change
   const ColorManagement before = cm;
   change(cm);
   if (cm == before) return;
+  // colour management bypasses Project::apply, so it needs its own copilot-lock check
+  if (project_.agentLocked()) {
+    emit project_.editRejected(project_.agentBusyMessage());
+    emit projectChanged(); // the bound controls snap back to the unchanged values
+    return;
+  }
   // all defaults is the same as no block at all
   project_.setColorManagement(cm == ColorManagement{} ? std::nullopt : std::optional<ColorManagement>(cm));
   emit projectChanged();

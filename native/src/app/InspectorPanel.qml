@@ -236,6 +236,9 @@ GlassPanel {
         ColumnLayout {
             width: scroll.availableWidth
             spacing: 8
+            // the agent holds the project: every field here is an edit, so none of them takes input (the view still scrolls)
+            enabled: !appEditor.agentBusy
+            opacity: appEditor.agentBusy ? 0.5 : 1
 
             // ======== a clip is selected ========
             ColumnLayout {

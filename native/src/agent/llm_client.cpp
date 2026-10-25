@@ -226,8 +226,15 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
   QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
   QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
 
+  QTimer cancelPoll; // Stop must not wait out a slow model: poll the harness's flag while the reply is pending
+  QObject::connect(&cancelPoll, &QTimer::timeout, &loop, [this, &loop] {
+    if (cancelRequested()) loop.quit();
+  });
+  cancelPoll.start(100);
+
   timer.start(timeoutMs_);
   loop.exec();
+  cancelPoll.stop();
 
   const auto errorOut = [this](const QString& code, const QString& message) {
     lastObservedModel_.clear();
@@ -240,6 +247,12 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
     };
   };
 
+  if (cancelRequested() && !reply->isFinished()) {
+    timer.stop();
+    reply->abort();
+    reply->deleteLater();
+    return errorOut(QStringLiteral("cancelled"), QStringLiteral("Stopped by the user"));
+  }
   if (timer.isActive()) {
     timer.stop();
   } else {

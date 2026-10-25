@@ -13,6 +13,7 @@
 #include <QJsonObject>
 #include <QString>
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -49,6 +50,10 @@ public:
     currentRunId_ = std::move(runId);
     projectDir_ = std::move(projectDir);
   }
+
+  // Stop: the harness's flag; processTurn stops after the tool call it is on (status "cancelled").
+  void setCancelFlag(const std::atomic_bool* flag) { cancel_ = flag; }
+  bool cancelled() const { return cancel_ && cancel_->load(); }
 
   bool peerReviewEnabled() const { return peerReviewEnabled_; }
   void setPeerReviewEnabled(bool enabled) { peerReviewEnabled_ = enabled; }
@@ -95,6 +100,7 @@ private:
   int slotId_ = -1;
   std::vector<ChatMessage> history_;
   QString currentRunId_;
+  const std::atomic_bool* cancel_ = nullptr;
   QString projectDir_;
   bool peerReviewEnabled_ = false;
 };

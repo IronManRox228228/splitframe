@@ -62,6 +62,11 @@ bool Project::apply(const std::vector<Op>& ops, const QString& label) { return a
 
 bool Project::apply(const std::vector<Op>& ops, const QString& label, const QString& actor) {
   if (ops.empty()) return true;
+  if (agentLocked() && !isAgentActor(actor)) {
+    lastError_ = agentBusyMessage();
+    emit editRejected(lastError_);
+    return false;
+  }
   try {
     ApplyResult r = applyOps(bundle_.doc, ops);
     bundle_.doc = std::move(r.doc);
@@ -93,6 +98,7 @@ void Project::beginGroup(const QString& label, const QString& actor) {
     groupCheckpoints_.push_back({bundle_.doc, history_.openGroupOpsCount(), history_.openGroupInversesCount()});
   }
   ++groupDepth_;
+  syncAgentLock();
 }
 
 void Project::endGroup() {
@@ -106,6 +112,7 @@ void Project::endGroup() {
     groupOpen_ = false;
     emit historyChanged();
   }
+  syncAgentLock();
 }
 
 void Project::rollbackGroup() {
@@ -130,9 +137,15 @@ void Project::rollbackGroup() {
       groupOpen_ = false;
     }
   }
+  syncAgentLock();
 }
 
 bool Project::undo() {
+  if (agentLocked()) {
+    lastError_ = agentBusyMessage();
+    emit editRejected(lastError_);
+    return false;
+  }
   groupDepth_ = 0;
   groupOpen_ = false; // History::undo closes an open group itself
   groupCheckpoints_.clear();
@@ -151,6 +164,11 @@ bool Project::undo() {
 }
 
 bool Project::redo() {
+  if (agentLocked()) {
+    lastError_ = agentBusyMessage();
+    emit editRejected(lastError_);
+    return false;
+  }
   try {
     const auto r = history_.redoWith([&](const UndoGroup& g) { return applyOps(bundle_.doc, g.ops, {.enforceLocks = false}); });
     if (!r) return false;
@@ -230,6 +248,7 @@ void Project::load(ProjectBundle bundle, const QString& path, bool dirty) {
   groupDepth_ = 0;
   groupOpen_ = false;
   groupCheckpoints_.clear();
+  history_.discardOpenGroup();
   bundle_ = std::move(bundle);
   saved_ = bundle_;
   forceDirty_ = dirty;
@@ -245,6 +264,7 @@ void Project::load(ProjectBundle bundle, const QString& path, bool dirty) {
   emit assetsChanged();
   emit docChanged();
   emit historyChanged();
+  syncAgentLock();
   emit loaded();
 }
 
@@ -401,6 +421,50 @@ bool Project::openRecovery(const RecoveryEntry& entry, QString* error) {
 void Project::discardRecovery(const RecoveryEntry& entry) const {
   QFile::remove(entry.autosavePath);
   QFile::remove(entry.autosavePath + QStringLiteral(".meta"));
+}
+
+// ---------- agent lock ----------
+
+QString Project::agentLockOwner() const {
+  if (!agentReservation_.isEmpty()) return agentReservation_;
+  if (groupDepth_ > 0) {
+    const auto actor = history_.openGroupActor();
+    if (actor && isAgentActor(*actor)) return *actor;
+  }
+  return {};
+}
+
+QString Project::agentDisplayName(const QString& actor) {
+  QString n = actor.startsWith(QLatin1String("agent:")) ? actor.mid(6) : actor;
+  if (n.isEmpty()) n = QStringLiteral("agent");
+  n[0] = n[0].toUpper();
+  return n;
+}
+
+QString Project::agentBusyMessage() const {
+  return QStringLiteral("%1 is editing. Wait for it to finish or press Stop.").arg(agentDisplayName(agentLockOwner()));
+}
+
+void Project::setAgentReservation(const QString& actor) {
+  agentReservation_ = actor;
+  syncAgentLock();
+}
+
+void Project::forceEndAgentGroup() {
+  agentReservation_.clear();
+  if (groupDepth_ > 0 && history_.openGroupActor() && isAgentActor(*history_.openGroupActor())) {
+    groupDepth_ = 1; // nested levels belong to the dead run too
+    groupCheckpoints_.resize(1);
+    endGroup();
+  }
+  syncAgentLock();
+}
+
+void Project::syncAgentLock() {
+  const QString now = agentLockOwner();
+  if (now == lastLockOwner_) return;
+  lastLockOwner_ = now;
+  emit agentLockChanged();
 }
 
 } // namespace sf::editor

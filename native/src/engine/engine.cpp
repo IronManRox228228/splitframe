@@ -218,6 +218,26 @@ QJsonArray Engine::describe(const QString& domain) const {
 
 // ---------- calls ----------
 
+// The copilot lock: while an agent holds a session's project (an open "agent:*" undo group, or the GUI's run reservation),
+// every other caller's mutating command is refused with `agent_busy`. The one place all transports (GUI, API, MCP, CLI) pass through.
+std::optional<Result> Engine::agentBusyRefusal(const CommandSpec& cmd, const CallContext& ctx, const QJsonObject& args) {
+  // mutates, plus the undo-group commands (they would close or roll back the agent's group) and the project replacements
+  const bool groupCmd = cmd.name.startsWith(QLatin1String("session.group."));
+  const bool replaces = cmd.name == QLatin1String("project.new") || cmd.name == QLatin1String("project.open") || cmd.name == QLatin1String("project.close");
+  if (!cmd.mutates && !groupCmd && !replaces) return std::nullopt;
+  Session* target = ctx.session;
+  if (!target) {
+    if (args.contains(q("session"))) target = session(args.value(q("session")).toString());
+    else if (!replaces) target = session(); // agent.chat & co act on the current session
+  }
+  if (!target || !target->project) return std::nullopt;
+  const editor::Project& p = *target->project;
+  if (!p.agentLocked()) return std::nullopt;
+  const QString actor = groupCmd && args.contains(q("actor")) ? args.value(q("actor")).toString() : ctx.actor();
+  if (editor::Project::isAgentActor(actor)) return std::nullopt;
+  return Result::failure(q("agent_busy"), p.agentBusyMessage(), QJsonObject{{q("agent"), p.agentLockOwner()}, {q("command"), cmd.name}});
+}
+
 Result Engine::call(const QString& name, const QJsonObject& args) {
   const CommandSpec* cmd = find(name);
   if (!cmd) {
@@ -241,6 +261,7 @@ Result Engine::call(const QString& name, const QJsonObject& args) {
       return Result::failure(q("no_session"), sid.isEmpty() ? QStringLiteral("No project is open. Call project.new or project.open first.")
                                                               : QStringLiteral("No session \"%1\".").arg(sid));
   }
+  if (const auto busy = agentBusyRefusal(*cmd, ctx, args)) return *busy;
   try {
     return cmd->handler(ctx, args);
   } catch (const SchemaError& e) {

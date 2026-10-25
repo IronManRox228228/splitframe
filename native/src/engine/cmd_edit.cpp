@@ -257,6 +257,8 @@ Result addCaptions(CallContext& c, const QJsonObject& a) {
 
 Result historyStep(CallContext& c, const QJsonObject& a, bool undo) {
   editor::Project& p = *c.session->project;
+  if (p.agentLocked()) // only an agent reaches here (the engine refuses everyone else): its run is one undo step afterwards
+    return Result::failure(q("unsupported"), QStringLiteral("Undo is not available inside an agent run: the run becomes one undo step when it ends."));
   const int steps = a.value(q("steps")).toInt(1);
   QJsonArray done;
   for (int i = 0; i < steps; ++i) {

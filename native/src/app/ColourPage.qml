@@ -277,6 +277,8 @@ Item {
                     id: body
                     width: parent.width
                     spacing: 8
+                    enabled: !appEditor.agentBusy // the agent holds the project (every control here is an edit)
+                    opacity: appEditor.agentBusy ? 0.5 : 1
 
                     Text {
                         text: "Colour"

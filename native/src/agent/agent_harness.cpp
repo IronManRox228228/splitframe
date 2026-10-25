@@ -5,6 +5,8 @@
 #include <QJsonArray>
 #include <QUuid>
 
+#include <optional>
+
 namespace sf::agent {
 
 AgentHarness::AgentHarness(engine::Engine* engine,
@@ -33,11 +35,51 @@ AgentHarness::AgentHarness(engine::Engine* engine,
       return ptr->handlePeerRequest(req, sid);
     });
     connect(ptr, &Specialist::agentEvent, this, &AgentHarness::agentEvent);
+    ptr->setCancelFlag(&cancel_);
   }
+  if (llm_) llm_->setCancelFlag(&cancel_);
 }
+
+namespace {
+
+// An agent turn's undo group, closed on every way out (return, exception, provider error, Stop): the destructor ends it, which
+// commits what was done as one undo step and releases the project lock.
+class AgentGroupScope {
+public:
+  AgentGroupScope(engine::Engine* engine, QJsonObject args) : engine_(engine), args_(std::move(args)) {
+    if (!engine_) return;
+    const engine::Result r = engine_->call(QStringLiteral("session.group.begin"), args_);
+    opened_ = r.ok;
+    if (!r.ok) refusal_ = r;
+  }
+  ~AgentGroupScope() {
+    if (opened_) engine_->call(QStringLiteral("session.group.end"), args_);
+  }
+  AgentGroupScope(const AgentGroupScope&) = delete;
+  AgentGroupScope& operator=(const AgentGroupScope&) = delete;
+  // True when another agent holds the project (nothing may run), false for no engine / no session (runs ungrouped as before).
+  bool busy() const { return refusal_ && refusal_->error.code == QLatin1String("agent_busy"); }
+  QString busyMessage() const { return refusal_ ? refusal_->error.message : QString(); }
+
+private:
+  engine::Engine* engine_ = nullptr;
+  QJsonObject args_;
+  bool opened_ = false;
+  std::optional<engine::Result> refusal_;
+};
+
+QJsonObject busyTurn(const AgentGroupScope& g) {
+  return QJsonObject{{QStringLiteral("ok"), false},
+                     {QStringLiteral("status"), QStringLiteral("error")},
+                     {QStringLiteral("error"), QStringLiteral("agent_busy")},
+                     {QStringLiteral("response"), g.busyMessage()}};
+}
+
+} // namespace
 
 void AgentHarness::setLlmClient(std::shared_ptr<LlmClient> llm) {
   llm_ = std::move(llm);
+  if (llm_) llm_->setCancelFlag(&cancel_);
   for (auto& [kind, sp] : specialists_) {
     sp->setLlmClient(llm_);
   }
@@ -152,9 +194,14 @@ QJsonObject AgentHarness::runPending(const QString& sessionId) {
     QJsonObject groupArgs;
     if (!sess.isEmpty()) groupArgs.insert(QStringLiteral("session"), sess);
     groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(pending_.message));
-    if (engine_) engine_->call(QStringLiteral("session.group.begin"), groupArgs);
-    QJsonArray toolResults = applyProposed(sp, pending_.proposed, sess);
-    if (engine_) engine_->call(QStringLiteral("session.group.end"), groupArgs);
+    groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(sp ? sp->name() : QStringLiteral("agent")));
+    QJsonArray toolResults;
+    {
+      AgentGroupScope group(engine_, groupArgs);
+      if (group.busy()) return busyTurn(group);
+      cancel_.store(false);
+      toolResults = applyProposed(sp, pending_.proposed, sess);
+    }
 
     logAgentTrace(AgentTraceRecord{
       .runId = runId,
@@ -330,14 +377,12 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
   groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(agentCap, userMessage));
   groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(agentName));
 
-  if (engine_) {
-    engine_->call(QStringLiteral("session.group.begin"), groupArgs);
-  }
-
-  QJsonObject turnRes = primary->processTurn(userMessage, sessionId, TurnPolicy::Execute);
-
-  if (engine_) {
-    engine_->call(QStringLiteral("session.group.end"), groupArgs);
+  QJsonObject turnRes;
+  {
+    AgentGroupScope group(engine_, groupArgs);
+    if (group.busy()) return busyTurn(group);
+    cancel_.store(false);
+    turnRes = primary->processTurn(userMessage, sessionId, TurnPolicy::Execute);
   }
 
   out.insert(QStringLiteral("response"), turnRes.value(QStringLiteral("content")));
@@ -399,14 +444,12 @@ QJsonObject AgentHarness::chat(const QString& userMessage, const QString& sessio
   groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(dirCap, userMessage));
   groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(dirName));
 
-  if (engine_) {
-    engine_->call(QStringLiteral("session.group.begin"), groupArgs);
-  }
-
-  QJsonObject turnRes = director->processTurn(userMessage, sessionId, TurnPolicy::Execute, Lane::Deep);
-
-  if (engine_) {
-    engine_->call(QStringLiteral("session.group.end"), groupArgs);
+  QJsonObject turnRes;
+  {
+    AgentGroupScope group(engine_, groupArgs);
+    if (group.busy()) return busyTurn(group);
+    cancel_.store(false);
+    turnRes = director->processTurn(userMessage, sessionId, TurnPolicy::Execute, Lane::Deep);
   }
 
   QJsonObject out;
@@ -488,27 +531,23 @@ void AgentHarness::registerCommands(engine::Engine& engine) {
       groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(targetCap, task));
       groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(targetName));
 
-      if (engine_) {
-        engine_->call(QStringLiteral("session.group.begin"), groupArgs);
-      }
-
-      Specialist* dir = specialist(SpecialistKind::Director);
       PeerResponse pr;
-      if (dir) {
-        pr = dir->sendPeerRequest(target, QStringLiteral("assign"), requestArgs, {}, task, true);
-      } else {
-        pr = bus_->send(PeerRequest{
-          .from = SpecialistKind::Director,
-          .to = target,
-          .kind = QStringLiteral("assign"),
-          .args = requestArgs,
-          .reason = task,
-          .await = true
-        });
-      }
-
-      if (engine_) {
-        engine_->call(QStringLiteral("session.group.end"), groupArgs);
+      {
+        AgentGroupScope group(engine_, groupArgs);
+        if (group.busy()) return engine::Result::failure(QStringLiteral("agent_busy"), group.busyMessage());
+        Specialist* dir = specialist(SpecialistKind::Director);
+        if (dir) {
+          pr = dir->sendPeerRequest(target, QStringLiteral("assign"), requestArgs, {}, task, true);
+        } else {
+          pr = bus_->send(PeerRequest{
+            .from = SpecialistKind::Director,
+            .to = target,
+            .kind = QStringLiteral("assign"),
+            .args = requestArgs,
+            .reason = task,
+            .await = true
+          });
+        }
       }
 
       return engine::Result::success(pr.toJson());

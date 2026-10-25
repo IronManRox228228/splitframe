@@ -10,6 +10,7 @@
 
 #include <functional>
 #include <map>
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -51,6 +52,10 @@ public:
 
   virtual Lane lastLane() const { return Lane::Fast; }
 
+  // Stop: the harness's flag. A client that waits on a network reply stops waiting once it is set.
+  void setCancelFlag(const std::atomic_bool* flag) { cancel_ = flag; }
+  bool cancelRequested() const { return cancel_ && cancel_->load(); }
+
   // Reachability of this client (TCP to its endpoint, or always true for mock/offline).
   virtual bool reachable(QString* error = nullptr) const {
     if (error) error->clear();
@@ -59,6 +64,9 @@ public:
 
   // Observed model id from the response (differs from requested when substituted by the provider).
   virtual QString lastObservedModel() const { return {}; }
+
+ private:
+  const std::atomic_bool* cancel_ = nullptr;
 };
 
 // Mock LLM client for deterministic unit testing.

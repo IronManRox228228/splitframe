@@ -82,6 +82,8 @@ class History {
   // For UI labels: "Split clip" etc.
   std::optional<QString> undoLabel() const;
 
+  // Who opened the group that is open now (nullopt when none, or it has no actor).
+  std::optional<QString> openGroupActor() const { return openGroup_ ? openGroup_->actor : std::nullopt; }
   std::size_t openGroupOpsCount() const { return openGroup_ ? openGroup_->ops.size() : 0; }
   std::size_t openGroupInversesCount() const { return openGroup_ ? openGroup_->inverses.size() : 0; }
   void discardOpenGroup() { openGroup_.reset(); }

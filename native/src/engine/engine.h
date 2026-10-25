@@ -26,6 +26,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace sf::engine {
@@ -136,6 +137,7 @@ signals:
 
 private:
   void wire(Session& s);
+  std::optional<Result> agentBusyRefusal(const CommandSpec& cmd, const CallContext& ctx, const QJsonObject& args);
 
   std::vector<std::unique_ptr<Session>> sessions_;
   QString current_;

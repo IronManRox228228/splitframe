@@ -234,7 +234,7 @@ void registerSessionCommands(Engine& e) {
 
   e.add(spec("session.group.rollback", "", "engine", false,
              QStringLiteral("Rollback the current undo group on the session project."),
-             js::obj({{q("label"), js::str()}}),
+             js::obj({{q("label"), js::str()}, {q("actor"), js::str()}}),
              [](CallContext& c, const QJsonObject&) {
                c.session->project->rollbackGroup();
                return Result::success(QJsonObject{{q("ok"), true}});

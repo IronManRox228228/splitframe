@@ -237,6 +237,72 @@ private slots:
     QVERIFY(!harness_->hasPending());
   }
 
+  // ---- copilot lock: however a run ends, the undo group closes and the project unlocks ----
+  int markerCount() {
+    return engine_->call(QStringLiteral("project.info")).value.toObject().value(QStringLiteral("markers")).toInt();
+  }
+  bool humanCanEdit() {
+    return engine_->call(QStringLiteral("marker.add"), QJsonObject{{QStringLiteral("frame"), 1}, {QStringLiteral("label"), QStringLiteral("human")}}).ok;
+  }
+  static QJsonObject markerCall(const QString& id, int frame) {
+    return QJsonObject{{QStringLiteral("id"), id},
+                       {QStringLiteral("function"), QJsonObject{{QStringLiteral("name"), QStringLiteral("marker.add")},
+                                                                {QStringLiteral("arguments"), QStringLiteral("{\"frame\":%1,\"label\":\"agent\"}").arg(frame)}}}};
+  }
+
+  void providerErrorReleasesTheLock() {
+    harness_->setMode(AgentMode::Auto);
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("error"), QStringLiteral("provider_unreachable")}});
+    const QJsonObject res = harness_->executeTurn(QStringLiteral("add a marker at frame 3"));
+    QCOMPARE(res.value(QStringLiteral("status")).toString(), QStringLiteral("error"));
+    QVERIFY(humanCanEdit());
+    QCOMPARE(markerCount(), 1);
+  }
+
+  void aThrowingTurnReleasesTheLock() {
+    class ThrowingLlm : public LlmClient {
+    public:
+      QJsonObject complete(const QString&, const std::vector<ChatMessage>&, const QJsonArray&, int, Lane) override {
+        throw std::runtime_error("model client blew up");
+      }
+    };
+    harness_->setLlmClient(std::make_shared<ThrowingLlm>());
+    harness_->setMode(AgentMode::Auto);
+    const Result r = engine_->call(QStringLiteral("agent.turn"), QJsonObject{{QStringLiteral("message"), QStringLiteral("add a marker at frame 3")}});
+    QVERIFY(!r.ok); // the engine turns the exception into an error value
+    QVERIFY(humanCanEdit());
+  }
+
+  void stopEndsAfterTheCurrentToolCallAndCommitsOneStep() {
+    harness_->setMode(AgentMode::Auto);
+    // one reply asks for two markers; Stop arrives once the first call has run
+    mockLlm_->enqueueResponse(QJsonObject{{QStringLiteral("content"), QString()},
+                                          {QStringLiteral("tool_calls"), QJsonArray{markerCall(QStringLiteral("c1"), 5), markerCall(QStringLiteral("c2"), 6)}}});
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Done.")}});
+    int humanRefusals = 0;
+    connect(harness_.get(), &AgentHarness::agentEvent, this, [&](const QJsonObject& ev) {
+      if (ev.value(QStringLiteral("kind")).toString() != QStringLiteral("result")) return;
+      // mid-run the human is locked out
+      const Result human = engine_->call(QStringLiteral("marker.add"), QJsonObject{{QStringLiteral("frame"), 9}, {QStringLiteral("label"), QStringLiteral("human")}});
+      if (!human.ok && human.error.code == QStringLiteral("agent_busy")) ++humanRefusals;
+      harness_->requestCancel();
+    });
+    const QJsonObject res = harness_->executeTurn(QStringLiteral("add two markers"));
+    QCOMPARE(res.value(QStringLiteral("status")).toString(), QStringLiteral("cancelled"));
+    QCOMPARE(humanRefusals, 1);
+    QCOMPARE(markerCount(), 1); // the second call never ran; the first stays (commit, not rollback)
+    // the lock released and the run is exactly one undo step
+    QVERIFY(humanCanEdit());
+    QCOMPARE(markerCount(), 2);
+    QCOMPARE(engine_->call(QStringLiteral("history.undo")).value.toObject().value(QStringLiteral("steps")).toInt(), 1);
+    QCOMPARE(markerCount(), 1);
+    QCOMPARE(engine_->call(QStringLiteral("history.undo")).value.toObject().value(QStringLiteral("steps")).toInt(), 1);
+    QCOMPARE(markerCount(), 0);
+    // a cancelled run does not poison the next one
+    const QJsonObject next = harness_->executeTurn(QStringLiteral("add a marker at frame 3"));
+    QVERIFY(next.value(QStringLiteral("status")).toString() != QStringLiteral("cancelled"));
+  }
+
   // ---- the whole agent loop over HTTP against an OpenAI-compatible fake server ----
   void agentLoopOverHttp() {
     sf::test::FakeLlmServer fake;

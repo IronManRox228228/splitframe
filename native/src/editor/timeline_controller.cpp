@@ -71,6 +71,7 @@ bool TimelineController::fail(const QString& text) {
 
 // The selection side of pressing on a clip (Timeline.tsx startDrag). Returns whether a drag begins.
 bool TimelineController::start(const QString& itemId, bool shift, DragKind kind, std::vector<QString>* group) {
+  if (project_.agentLocked()) return fail(project_.agentBusyMessage()); // no drag while the agent edits
   const TimelineDoc& doc = project_.doc();
   const Item* item = findItem(doc, itemId);
   if (!item) return false;

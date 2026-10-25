@@ -115,6 +115,7 @@ Editor::Editor(Player& player, const Options& options, QObject* parent)
   connect(&project_, &Project::docChanged, this, &Editor::pushDocument);
   connect(&project_, &Project::assetsChanged, this, &Editor::pushAssets);
   connect(&project_, &Project::historyChanged, this, &Editor::historyChanged);
+  connect(&project_, &Project::agentLockChanged, this, &Editor::agentBusyChanged);
   connect(&project_, &Project::selectionChanged, this, &Editor::selectionChanged);
   connect(&project_, &Project::dirtyChanged, this, &Editor::titleChanged);
   connect(&project_, &Project::pathChanged, this, &Editor::titleChanged);
@@ -180,11 +181,19 @@ void Editor::rememberRecent() {
 
 // ---------- lifecycle ----------
 
+bool Editor::refusedWhileAgent() {
+  if (!project_.agentLocked()) return false;
+  emit toastRequested(project_.agentBusyMessage(), QStringLiteral("info"));
+  return true;
+}
+
 void Editor::newProject(const QString& name, int width, int height, int fps) {
+  if (refusedWhileAgent()) return;
   project_.newProject(name.trimmed().isEmpty() ? QStringLiteral("Untitled video") : name.trimmed(), width, height, fps);
 }
 
 bool Editor::wrapMedia(const QString& path) {
+  if (refusedWhileAgent()) return false;
   const QFileInfo fi(path);
   if (!fi.isFile()) {
     emit toastRequested(QStringLiteral("No such file: %1").arg(path), QStringLiteral("error"));
@@ -239,6 +248,7 @@ bool Editor::wrapMedia(const QString& path) {
 }
 
 bool Editor::openPath(const QString& pathOrUrl) {
+  if (refusedWhileAgent()) return false;
   const QString path = toLocalPath(pathOrUrl);
   if (QFileInfo(path).suffix().compare(QLatin1String("json"), Qt::CaseInsensitive) == 0) {
     QString err;
@@ -292,6 +302,7 @@ QVariantList Editor::recoveries() const {
 }
 
 bool Editor::restoreRecovery(const QString& autosavePath) {
+  if (refusedWhileAgent()) return false;
   for (const RecoveryEntry& e : project_.recoveries()) {
     if (e.autosavePath != autosavePath) continue;
     QString err;
@@ -316,16 +327,19 @@ QString Editor::recoveryFor(const QString& path) const {
 // ---------- media and editing ----------
 
 void Editor::importFiles(const QVariantList& pathsOrUrls) {
+  if (refusedWhileAgent()) return;
   QStringList paths;
   for (const QVariant& v : pathsOrUrls) paths << toLocalPath(v.toString());
   if (!paths.isEmpty()) pool_.import(paths);
 }
 
 void Editor::undo() {
+  if (refusedWhileAgent()) return;
   if (!project_.undo()) emit toastRequested(QStringLiteral("Nothing to undo"), QStringLiteral("info"));
 }
 
 void Editor::redo() {
+  if (refusedWhileAgent()) return;
   if (!project_.redo()) emit toastRequested(QStringLiteral("Nothing to redo"), QStringLiteral("info"));
 }
 
@@ -378,20 +392,49 @@ void Editor::onEngineEvent(const QString& name, const QJsonObject& data) {
   }
 }
 
+QString Editor::agentBusyName() const {
+  const QString owner = project_.agentLockOwner();
+  return owner.isEmpty() ? QString() : Project::agentDisplayName(owner);
+}
+
 void Editor::agentChat(const QString& message) {
   const QString text = message.trimmed();
-  if (text.isEmpty() || agentBusy_) return;
+  if (text.isEmpty() || agentBusy()) return;
   agentBusy_ = true;
+  stopRequested_ = false;
+  // the lock from this moment, not from when the run opens its undo group: no human edit slips into the gap
+  project_.setAgentReservation(QStringLiteral("agent:director"));
   emit agentBusyChanged();
   QTimer::singleShot(0, this, [this, text] { runAgent(text); });
 }
 
+// Every end of a run (done, failed, stopped) comes through here: the lock always releases.
+void Editor::finishAgentRun(const QVariantMap& out) {
+  agentBusy_ = false;
+  stopRequested_ = false;
+  project_.setAgentReservation({});
+  emit agentBusyChanged();
+  emit agentTurnFinished(out);
+  emit storyboardChanged();
+}
+
 void Editor::runAgent(const QString& message) {
   engine::Engine* e = engine();
-  e->call(QStringLiteral("agent.mode.set"), QJsonObject{{QStringLiteral("mode"), agentMode_}});
-  const bool held = agentMode_ == QLatin1String("plan") || agentMode_ == QLatin1String("ask");
-  const engine::Result r = e->call(held ? QStringLiteral("agent.turn") : QStringLiteral("agent.chat"), QJsonObject{{QStringLiteral("message"), message}});
   QVariantMap out;
+  if (stopRequested_) { // Stop was pressed before the run began
+    out = QVariantMap{{QStringLiteral("ok"), true}, {QStringLiteral("status"), QStringLiteral("cancelled")}};
+    finishAgentRun(out);
+    return;
+  }
+  engine::Result r;
+  try {
+    e->call(QStringLiteral("agent.mode.set"), QJsonObject{{QStringLiteral("mode"), agentMode_}});
+    const bool held = agentMode_ == QLatin1String("plan") || agentMode_ == QLatin1String("ask");
+    r = e->call(held ? QStringLiteral("agent.turn") : QStringLiteral("agent.chat"),
+                QJsonObject{{QStringLiteral("message"), message}, {QStringLiteral("origin"), QStringLiteral("agent:director")}});
+  } catch (...) {
+    r = engine::Result::failure(QStringLiteral("internal"), QStringLiteral("The assistant stopped unexpectedly."));
+  }
   if (r.ok) {
     out = r.value.toObject().toVariantMap();
   } else {
@@ -399,18 +442,23 @@ void Editor::runAgent(const QString& message) {
     out.insert(QStringLiteral("error"), r.error.code == QLatin1String("unavailable") ? QStringLiteral("provider_unreachable") : r.error.code);
     out.insert(QStringLiteral("errorMessage"), r.error.message);
   }
-  agentBusy_ = false;
-  emit agentBusyChanged();
-  emit agentTurnFinished(out);
-  emit storyboardChanged();
+  finishAgentRun(out);
 }
 
 void Editor::agentDecide(bool apply) {
-  if (agentBusy_) return;
+  if (agentBusy()) return;
   agentBusy_ = true;
+  stopRequested_ = false;
+  project_.setAgentReservation(QStringLiteral("agent:director"));
   emit agentBusyChanged();
   QTimer::singleShot(0, this, [this, apply] {
-    const engine::Result r = engine()->call(apply ? QStringLiteral("agent.plan.run") : QStringLiteral("agent.plan.skip"));
+    engine::Result r;
+    try {
+      r = engine()->call(apply ? QStringLiteral("agent.plan.run") : QStringLiteral("agent.plan.skip"),
+                         apply ? QJsonObject{{QStringLiteral("origin"), QStringLiteral("agent:director")}} : QJsonObject{});
+    } catch (...) {
+      r = engine::Result::failure(QStringLiteral("internal"), QStringLiteral("The assistant stopped unexpectedly."));
+    }
     QVariantMap out;
     if (r.ok) {
       out = r.value.toObject().toVariantMap();
@@ -420,11 +468,19 @@ void Editor::agentDecide(bool apply) {
       out.insert(QStringLiteral("errorMessage"), r.error.message);
     }
     out.insert(QStringLiteral("decision"), apply ? QStringLiteral("apply") : QStringLiteral("skip"));
-    agentBusy_ = false;
-    emit agentBusyChanged();
-    emit agentTurnFinished(out);
-    emit storyboardChanged();
+    finishAgentRun(out);
   });
+}
+
+void Editor::agentStop() {
+  if (agentBusy_) {
+    stopRequested_ = true;
+    if (auto* h = ai() ? ai()->harness() : nullptr) h->requestCancel();
+  } else if (project_.agentLocked()) {
+    // an agent outside the window (API, MCP) left its undo group open: the human can always take the project back
+    project_.forceEndAgentGroup();
+    emit toastRequested(QStringLiteral("Stopped. Its edits so far are one undo step."), QStringLiteral("info"));
+  }
 }
 
 QVariantList Editor::storyboard() {

@@ -406,6 +406,58 @@ private slots:
     QCOMPARE(ok(Q("timeline.get"), {{Q("mode"), Q("detail")}}), before);
   }
 
+  // ---- copilot lock: while an agent's undo group is open, nobody else edits ----
+  int markerCount() { return ok(Q("project.info")).value(Q("markers")).toInt(); }
+
+  void agentGroupRefusesEveryoneElse() {
+    ok(Q("session.group.begin"), {{Q("label"), Q("Editor: tidy")}, {Q("actor"), Q("agent:editor")}});
+    // a human edit (no origin, or a non-agent origin) is refused with agent_busy and changes nothing
+    for (const QJsonObject& who : {QJsonObject{}, QJsonObject{{Q("origin"), Q("user")}}}) {
+      QJsonObject args{{Q("frame"), 5}, {Q("label"), Q("human")}};
+      for (auto it = who.begin(); it != who.end(); ++it) args.insert(it.key(), it.value());
+      const Result r = raw(Q("marker.add"), args);
+      QVERIFY(!r.ok);
+      QCOMPARE(r.error.code, Q("agent_busy"));
+      QVERIFY2(r.error.message.contains(Q("Editor is editing")), qPrintable(r.error.message));
+      QVERIFY(r.error.message.contains(Q("press Stop")));
+    }
+    QCOMPARE(markerCount(), 0);
+    // undo / redo, closing the agent's group or starting another, and replacing the project are edits too
+    QCOMPARE(raw(Q("history.undo")).error.code, Q("agent_busy"));
+    QCOMPARE(raw(Q("history.redo")).error.code, Q("agent_busy"));
+    QCOMPARE(raw(Q("session.group.end")).error.code, Q("agent_busy"));
+    QCOMPARE(raw(Q("session.group.begin"), {{Q("label"), Q("mine")}}).error.code, Q("agent_busy"));
+    QCOMPARE(raw(Q("project.settings.set"), {{Q("fps"), 30}}).error.code, Q("agent_busy"));
+    // reads and the agent itself keep working
+    QVERIFY(raw(Q("timeline.get")).ok);
+    QVERIFY(raw(Q("history.list")).ok);
+    QVERIFY(raw(Q("marker.add"), {{Q("frame"), 6}, {Q("label"), Q("agent")}, {Q("origin"), Q("agent:editor")}}).ok);
+    QCOMPARE(markerCount(), 1);
+    // an agent cannot undo inside its own run either (it would destroy the group): explained, not silent
+    QVERIFY(!raw(Q("history.undo"), {{Q("origin"), Q("agent:editor")}}).ok);
+    QCOMPARE(markerCount(), 1);
+    ok(Q("session.group.end"), {{Q("actor"), Q("agent:editor")}});
+    // the lock is gone: the same human command works
+    QVERIFY(raw(Q("marker.add"), {{Q("frame"), 5}, {Q("label"), Q("human")}}).ok);
+    QCOMPARE(markerCount(), 2);
+  }
+
+  void agentRunIsOneUndoStepAndNothingElse() {
+    ok(Q("marker.add"), {{Q("frame"), 1}, {Q("label"), Q("before the agent")}}); // a human step made earlier
+    ok(Q("session.group.begin"), {{Q("label"), Q("Editor: two markers")}, {Q("actor"), Q("agent:editor")}});
+    ok(Q("marker.add"), {{Q("frame"), 2}, {Q("label"), Q("a")}, {Q("origin"), Q("agent:editor")}});
+    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("b")}, {Q("origin"), Q("agent:editor")}});
+    QCOMPARE(raw(Q("history.undo")).error.code, Q("agent_busy"));
+    QCOMPARE(markerCount(), 3);
+    ok(Q("session.group.end"), {{Q("actor"), Q("agent:editor")}});
+    QCOMPARE(ok(Q("history.list")).value(Q("total")).toInt(), 2); // the human step + ONE agent step
+    const QJsonObject u = ok(Q("history.undo"));
+    QCOMPARE(u.value(Q("steps")).toInt(), 1);
+    QCOMPARE(u.value(Q("undone")).toArray().at(0).toObject().value(Q("actor")).toString(), Q("agent:editor"));
+    QCOMPARE(markerCount(), 1); // both agent markers gone, the human's is still there
+    QVERIFY(ok(Q("history.list")).value(Q("canUndo")).toBool()); // the earlier human step is still undoable
+  }
+
   void undoRedoAndOrigin() {
     ok(Q("marker.add"), {{Q("frame"), 1}, {Q("label"), Q("user-ish")}});
     ok(Q("ops.apply"), {{Q("ops"), QJsonArray{QJsonObject{{Q("type"), Q("project.rename")}, {Q("name"), Q("By agent")}}}}, {Q("label"), Q("rename")}, {Q("origin"), Q("agent:editor")}});

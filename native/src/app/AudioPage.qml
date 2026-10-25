@@ -39,7 +39,8 @@ Item {
         property real holdR: -60
 
         implicitWidth: master ? 150 : 124
-        opacity: dimmed ? 0.5 : 1
+        enabled: !appEditor.agentBusy // the agent holds the project: faders, mute, solo and inserts are edits
+        opacity: appEditor.agentBusy ? 0.5 : (dimmed ? 0.5 : 1)
         border.color: master ? Theme.lineStrong : Theme.glassBorder
 
         ColumnLayout {

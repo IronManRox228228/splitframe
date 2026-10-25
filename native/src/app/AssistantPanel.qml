@@ -65,6 +65,7 @@ Item {
         appEditor.agentChat(t)
     }
     function stop() {
+        appEditor.agentStop() // cancels the run: it ends after the tool call it is on and the project unlocks
         userStopped = true
         addRow({ kind: "stopped" })
     }

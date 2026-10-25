@@ -14,6 +14,7 @@
 #include <QJsonObject>
 #include <QObject>
 
+#include <atomic>
 #include <map>
 #include <memory>
 
@@ -48,6 +49,11 @@ public:
   QJsonObject skipPending();
   bool hasPending() const { return pending_.kind != PendingKind::None; }
 
+  // Stop: the running turn ends after the tool call it is on (or at once while it waits for the model); the undo group it holds is
+  // committed with what was done and the project lock released. Cleared when the next turn starts.
+  void requestCancel() { cancel_.store(true); }
+  bool cancelRequested() const { return cancel_.load(); }
+
   QString currentProjectDir() const;
 
   // Register agent commands into the engine (agent.turn, agent.mode.get/set, agent.team_thread, etc.)
@@ -78,6 +84,7 @@ private:
   AgentMode mode_ = AgentMode::Default;
   PendingTurn pending_;
   QString lastSessionId_;
+  std::atomic_bool cancel_{false};
 };
 
 } // namespace sf::agent

@@ -57,7 +57,10 @@ class Editor : public QObject {
   Q_PROPERTY(bool apiEnabled READ apiEnabled WRITE setApiEnabled NOTIFY apiChanged)
   Q_PROPERTY(QString apiStatus READ apiStatus NOTIFY apiChanged)
   // The Assistant (Director crew). `agentMode` is the engine's mode: plan | ask | default | auto.
+  // True from the moment a run is requested until it ends (and while any other agent holds the project's undo group): the
+  // copilot lock. Edits by anyone but the agent are refused meanwhile (error agent_busy); play, scrub, zoom and selection work.
   Q_PROPERTY(bool agentBusy READ agentBusy NOTIFY agentBusyChanged)
+  Q_PROPERTY(QString agentBusyName READ agentBusyName NOTIFY agentBusyChanged)
   Q_PROPERTY(QString agentMode READ agentMode WRITE setAgentMode NOTIFY agentModeChanged)
   // Demo mode hook: while on, the Assistant replaces its text input with one clickable block per entry of `demoBlocks`
   // ([{id, label, hint?}]) and emits demoBlockClicked(id). The demo task fills the list and does the replay.
@@ -99,7 +102,9 @@ public:
   void setApiEnabled(bool on);
   void setApiPort(quint16 port) { apiPort_ = port; } // before enabling; 0 = any free port
   QString apiStatus() const;
-  bool agentBusy() const { return agentBusy_; }
+  bool agentBusy() const { return agentBusy_ || project_.agentLocked(); }
+  // "Director", "Editor"...: who holds the lock (empty when nobody)
+  QString agentBusyName() const;
   QString agentMode() const { return agentMode_; }
   void setAgentMode(const QString& mode);
   bool demoMode() const { return demoMode_; }
@@ -145,6 +150,9 @@ public:
   Q_INVOKABLE void agentChat(const QString& message);
   // Run (apply = true) or discard the plan / proposed edits a plan or ask turn is holding (agent.plan.run / agent.plan.skip).
   Q_INVOKABLE void agentDecide(bool apply);
+  // Stop: the run ends after the tool call it is on, its undo group is committed (one undo step, what was done stays) and the lock
+  // releases. A group an outside agent left open is closed the same way.
+  Q_INVOKABLE void agentStop();
   // storyboard.get as a list of {id, title, intent, durationSec, status, shotPrompt, voText, ...}
   Q_INVOKABLE QVariantList storyboard();
   // ---- AI settings (QSettings; the same keys agent/llm_config.cpp and the Comfy client read) ----
@@ -195,6 +203,9 @@ private:
   void pushAssets();
   void rememberRecent();
   void runAgent(const QString& message);
+  void finishAgentRun(const QVariantMap& out);
+  // True (with the busy toast) while an agent holds the project: for the Editor's own edits (lifecycle, import, undo)
+  bool refusedWhileAgent();
   void onEngineEvent(const QString& name, const QJsonObject& data);
   render::AssetTable assetTable() const;
   bool wrapMedia(const QString& path);
@@ -219,6 +230,7 @@ private:
   quint16 apiPort_ = 0;
   ai::AiOptions aiOptions_;
   bool agentBusy_ = false;
+  bool stopRequested_ = false;
   QString agentMode_ = QStringLiteral("default");
   bool demoMode_ = false;
   QVariantList demoBlocks_;

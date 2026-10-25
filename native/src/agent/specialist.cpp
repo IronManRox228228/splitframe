@@ -715,7 +715,15 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       }, projectDir_);
     }
 
+    if (cancelled()) {
+      status = QStringLiteral("cancelled");
+      break;
+    }
     QJsonObject llmResp = llm_->complete(enrichedPrompt, history_, availableTools(), slotId_, lane);
+    if (cancelled() && llmResp.value(QStringLiteral("tool_calls")).toArray().isEmpty()) {
+      status = QStringLiteral("cancelled");
+      break;
+    }
     const QJsonValue errVal = llmResp.value(QStringLiteral("error"));
     QJsonArray toolCalls = llmResp.value(QStringLiteral("tool_calls")).toArray();
     respContent = llmResp.value(QStringLiteral("content")).toString();
@@ -789,6 +797,18 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       QJsonObject fn = tc.value(QStringLiteral("function")).toObject();
       QString fnName = fn.value(QStringLiteral("name")).toString();
       QJsonObject fnArgs = parseToolArgs(fn.value(QStringLiteral("arguments")));
+
+      if (cancelled()) {
+        // Stop: the call the model asked for is not run; the history still needs an answer for it
+        addMessage(ChatMessage{
+          .role = QStringLiteral("tool"),
+          .content = QStringLiteral("{\"ok\":false,\"error\":\"cancelled\",\"message\":\"Stopped by the user before this call ran.\"}"),
+          .name = fnName,
+          .toolCallId = callId
+        });
+        status = QStringLiteral("cancelled");
+        continue;
+      }
 
       emit agentEvent(QJsonObject{
         {QStringLiteral("agent"), name()},
@@ -916,6 +936,11 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
         .name = fnName,
         .toolCallId = callId
       });
+    }
+
+    if (cancelled()) {
+      status = QStringLiteral("cancelled");
+      break;
     }
 
     // Review loop: After any mutating step, run peer review on Lane judge

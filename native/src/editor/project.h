@@ -65,6 +65,23 @@ public:
   bool groupOpen() const { return groupOpen_; }
   int groupDepth() const { return groupDepth_; }
 
+  // ---- agent lock (copilot model) ----
+  // While an agent edits (an open undo group whose actor is "agent:*", or a reservation the app holds for the
+  // whole run) only agent actors may change the project: apply() from anyone else, and undo/redo, are refused
+  // with lastError() = agentBusyMessage(). The agent's work is one undo step once its group closes.
+  // "" when nobody holds the lock, else the holder's actor ("agent:editor").
+  QString agentLockOwner() const;
+  bool agentLocked() const { return !agentLockOwner().isEmpty(); }
+  // "Editor is editing. Wait for it to finish or press Stop."
+  QString agentBusyMessage() const;
+  static bool isAgentActor(const QString& actor) { return actor.startsWith(QLatin1String("agent:")); }
+  // "agent:editor" -> "Editor"
+  static QString agentDisplayName(const QString& actor);
+  // Held by the app from the moment a run is requested until it ends (covers the gap before the group opens).
+  void setAgentReservation(const QString& actor);
+  // Human override: drop a stuck agent group (an external agent that never closed it) as one undo step.
+  void forceEndAgentGroup();
+
   bool undo();
   bool redo();
   bool canUndo() const { return history_.canUndo(); }
@@ -137,10 +154,12 @@ signals:
   void dirtyChanged();
   void pathChanged();
   void loaded(); // new/open/recover replaced the whole project
+  void agentLockChanged(); // agentLockOwner() differs
 
 private:
   void changed(bool docTouched);
   void refreshDirty();
+  void syncAgentLock();
   void pruneSelection();
   bool writeTo(const QString& path, QString* error);
   QString recoveryPathFor(const QString& projectId) const;
@@ -161,6 +180,8 @@ private:
   QString lastError_;
   std::vector<Op> lastInverse_;
   QString lastActor_;
+  QString agentReservation_;
+  QString lastLockOwner_;
   bool dirty_ = false;
   bool forceDirty_ = false;
   QString recoveryDir_;

@@ -37,14 +37,15 @@ GlassPanel {
                 anchors.rightMargin: 10
                 spacing: 6
 
-                Btn { text: "Split"; tip: "Split at playhead (S)"; onClicked: root.splitRequested() }
-                Btn { text: "Delete"; enabled: appEditor.hasSelection; tip: "Delete (Del)"; onClicked: root.deleteRequested() }
-                Btn { text: "Clone"; enabled: appEditor.hasSelection; tip: "Clone (Ctrl+D)"; onClicked: root.cloneRequested() }
+                Btn { text: "Split"; enabled: !appEditor.agentBusy; tip: "Split at playhead (S)"; onClicked: root.splitRequested() }
+                Btn { text: "Delete"; enabled: appEditor.hasSelection && !appEditor.agentBusy; tip: "Delete (Del)"; onClicked: root.deleteRequested() }
+                Btn { text: "Clone"; enabled: appEditor.hasSelection && !appEditor.agentBusy; tip: "Clone (Ctrl+D)"; onClicked: root.cloneRequested() }
                 Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 18; color: Theme.lineStrong }
-                Btn { text: "Text"; tip: "Add a title at the playhead"; onClicked: root.controller.addText() }
-                Btn { text: "Shape"; tip: "Add a shape at the playhead"; onClicked: root.controller.addShape() }
+                Btn { text: "Text"; enabled: !appEditor.agentBusy; tip: "Add a title at the playhead"; onClicked: root.controller.addText() }
+                Btn { text: "Shape"; enabled: !appEditor.agentBusy; tip: "Add a shape at the playhead"; onClicked: root.controller.addShape() }
                 Btn {
                     text: "+ Track"
+                    enabled: !appEditor.agentBusy
                     tip: "Add a track"
                     onClicked: addTrackMenu.popup()
                     Menu {
@@ -215,6 +216,7 @@ GlassPanel {
                                     MouseArea {
                                         id: hov
                                         anchors.fill: parent
+                                        enabled: !appEditor.agentBusy
                                         hoverEnabled: true
                                         onClicked: {
                                             root.controller.setTrackFlag(head.index, modelData.flag, !modelData.on)
@@ -230,6 +232,7 @@ GlassPanel {
                         MouseArea {
                             anchors.fill: parent
                             z: -1
+                            enabled: !appEditor.agentBusy
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             onDoubleClicked: {
                                 renameField.text = head.name
@@ -280,6 +283,40 @@ GlassPanel {
                 onInteracted: root.focusReleased()
                 onContextMenuRequested: (itemId, x, y) => clipMenu.popup(view, x, y)
                 Component.onCompleted: controller.snapThresholdFrames = Math.round(8 / pxPerFrame)
+            }
+
+            // the copilot lock: while the agent edits, the timeline is read-only (play, scrub and zoom still work)
+            GlassPanel {
+                id: busyBar
+                visible: appEditor.agentBusy
+                strong: true
+                z: 5
+                anchors.horizontalCenter: view.horizontalCenter
+                y: view.rulerHeight + 8
+                width: Math.min(view.width - 24, busyRow.implicitWidth + 28)
+                height: 40
+                radius: 20
+                Row {
+                    id: busyRow
+                    anchors.centerIn: parent
+                    spacing: 12
+                    Spinner { anchors.verticalCenter: parent.verticalCenter; size: 16 }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: appEditor.agentBusyName + " is editing…"
+                        color: Theme.text
+                        font.pixelSize: 13
+                    }
+                    GButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        small: true
+                        variant: "danger"
+                        iconName: "stop"
+                        text: "Stop"
+                        tip: "Stop the agent; what it did stays as one undo step"
+                        onClicked: appEditor.agentStop()
+                    }
+                }
             }
 
             // playhead: a QML overlay, so playback never repaints the clips
