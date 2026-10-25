@@ -183,13 +183,7 @@ private slots:
       }}
     });
 
-    // Review by Editor on Lane Judge for storyboard additions
-    fakeLlm.enqueueChat(QJsonObject{
-      {QStringLiteral("role"), QStringLiteral("assistant")},
-      {QStringLiteral("content"), QStringLiteral("approve: storyboard scene structure approved")}
-    });
-
-    // Round 1: Director calls storyboard.toTimeline
+    // Round 1: Director calls storyboard.toTimeline (the Editor reviewer has no measurements, so it approves without a model call)
     fakeLlm.enqueueChat(QJsonObject{
       {QStringLiteral("role"), QStringLiteral("assistant")},
       {QStringLiteral("content"), QString()},
@@ -203,12 +197,6 @@ private slots:
           }}
         }
       }}
-    });
-
-    // Review by Editor on Lane Judge for timeline layout
-    fakeLlm.enqueueChat(QJsonObject{
-      {QStringLiteral("role"), QStringLiteral("assistant")},
-      {QStringLiteral("content"), QStringLiteral("approve: timeline slots and markers verified")}
     });
 
     // Round 2: Assistant completion message

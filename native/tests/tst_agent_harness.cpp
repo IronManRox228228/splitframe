@@ -300,6 +300,23 @@ private slots:
     }
   }
 
+  void agentToolListsKeepFilesAndUndoGroupsOut() {
+    for (SpecialistKind kind : {SpecialistKind::Director, SpecialistKind::Editor, SpecialistKind::Colourist, SpecialistKind::Audio}) {
+      QSet<QString> names;
+      for (const QJsonValue& t : harness_->specialist(kind)->availableTools()) names.insert(t.toObject().value(QStringLiteral("name")).toString());
+      for (const char* banned : {"project.new", "project.open", "project.save", "project.saveAs", "project.close",
+                                 "session.group.begin", "session.group.end", "session.group.rollback"})
+        QVERIFY2(!names.contains(QString::fromLatin1(banned)), banned);
+    }
+    QSet<QString> director;
+    for (const QJsonValue& t : harness_->specialist(SpecialistKind::Director)->availableTools()) director.insert(t.toObject().value(QStringLiteral("name")).toString());
+    // the film fast path, one hand-off tool
+    QVERIFY(director.contains(QStringLiteral("edit.assemble")));
+    QVERIFY(director.contains(QStringLiteral("audio.add")));
+    QVERIFY(director.contains(QStringLiteral("agent.assign")));
+    QVERIFY(!director.contains(QStringLiteral("peer_request")));
+  }
+
   void stopEndsAfterTheCurrentToolCallAndCommitsOneStep() {
     harness_->setMode(AgentMode::Auto);
     // one reply asks for two markers; Stop arrives once the first call has run

@@ -38,6 +38,14 @@ QString Specialist::systemPrompt() const {
       return QStringLiteral(
         "You are the SplitFrame Director.\n"
         "You talk with the user, write storyboards and timeline plans, write prompts for video/image/speech/music generation, and assign work to specialists via agent.assign.\n"
+        "A request to make a film, cut, edit or video from the project's media is only done when the clips are on the timeline. A storyboard alone is not a film.\n"
+        "Recipe for making a film from imported clips and music:\n"
+        "1. Read the project summary below (call assets.list only if you need paths). Call music.structure on the music asset for its beats and sections.\n"
+        "2. Write the whole storyboard in ONE storyboard.set call. Every scene names at least one video clip in assetIds. Music is not a scene.\n"
+        "3. Put the film on the timeline. Fast path: audio.add the music (returns the music item id), then edit.assemble with assetIds = the clips in storyboard order, "
+        "musicItemId = that item, pacing = one of music-video, trailer, documentary, interview, social-short, and apply = true. "
+        "Or call agent.assign to the editor with a task that lists the clip ids in order and the music asset.\n"
+        "4. Only after the timeline holds the film, reply to the user with a short summary.\n"
         "Prompt craft: Write generation prompts focused on scene intent, narrative arc, mood, emotional beats, and visual metaphors on Lane deep.\n"
         "Before calling any generate.* tool, you MUST call generate.ready. If generate.ready reports not_ready, do NOT retry blindly; inform the user what is missing."
       );
@@ -221,7 +229,14 @@ QJsonObject Specialist::scopedViewJson(const QString& sessionId) const {
 }
 
 bool Specialist::allowsCommand(const engine::CommandSpec& spec) const {
+  // Project files and undo grouping belong to the user and the harness: the harness already wraps an
+  // agent run in one undo group, and saving / opening / closing files is never an agent's call.
+  static const QStringList kNeverForAgents{
+    QStringLiteral("project.new"), QStringLiteral("project.open"), QStringLiteral("project.save"),
+    QStringLiteral("project.saveAs"), QStringLiteral("project.close")};
+  if (kNeverForAgents.contains(spec.name) || spec.name.startsWith(QStringLiteral("session.group."))) return false;
   if (kind_ == SpecialistKind::Director) {
+    if (spec.name == QStringLiteral("edit.assemble") || spec.name == QStringLiteral("audio.add")) return true;
     if (spec.domain == QStringLiteral("director")) return true;
     if (spec.name == QStringLiteral("agent.assign") || spec.name == QStringLiteral("agent.chat")) return true;
     if (spec.name.startsWith(QStringLiteral("storyboard."))) return true;
@@ -269,7 +284,8 @@ QJsonArray Specialist::availableTools() const {
     });
   }
 
-  tools.append(QJsonObject{
+  // The Director hands off with agent.assign only; two near-identical hand-off tools confuse small models.
+  if (kind_ != SpecialistKind::Director) tools.append(QJsonObject{
     {QStringLiteral("name"), QStringLiteral("peer_request")},
     {QStringLiteral("description"), QStringLiteral("Send a typed request to another specialist (editor, colourist, audio) across the Peer Bus.")},
     {QStringLiteral("parameters"), QJsonObject{
@@ -562,13 +578,38 @@ PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString
       }
     }
 
+    if (kind_ != SpecialistKind::Colourist && kind_ != SpecialistKind::Audio) {
+      // Only the Colourist (safety.check) and Audio (audio.analyze) have measurements to review against.
+      // Any other reviewer has nothing to ground a revision in, so it approves without asking the model
+      // (a model asked anyway invents rules).
+      res.status = QStringLiteral("done");
+      res.note = QStringLiteral("approved: no measurements to check in the %1 domain").arg(domain());
+      res.outputs = QJsonObject{
+        {QStringLiteral("verdict"), QStringLiteral("approve")},
+        {QStringLiteral("reason"), res.note},
+        {QStringLiteral("lane"), QStringLiteral("judge")}
+      };
+      logAgentTrace(AgentTraceRecord{
+        .runId = currentRunId_.isEmpty() ? req.id : currentRunId_,
+        .agentName = name(),
+        .role = domain(),
+        .lane = QStringLiteral("judge"),
+        .action = QStringLiteral("critique"),
+        .inputSummary = req.reason,
+        .outputSummary = res.note,
+        .status = QStringLiteral("success")
+      }, projectDir_);
+      return res;
+    }
+
     QString reviewPrompt = QStringLiteral("You are performing a peer critique/review of changes made by another specialist on Lane judge.\n");
     reviewPrompt += QStringLiteral("Request reason: ") + req.reason + QStringLiteral("\nDetails: ") + QString::fromUtf8(QJsonDocument(req.args).toJson(QJsonDocument::Compact));
     if (!measurements.isEmpty()) {
       reviewPrompt += QStringLiteral("\nDeterministic measurements for your domain:\n") + QString::fromUtf8(QJsonDocument(measurements).toJson(QJsonDocument::Compact));
     }
     reviewPrompt += QStringLiteral("\nProvide your verdict as a JSON object: {\"verdict\": \"approve\" | \"revise\", \"reason\": \"<explanation citing measurements>\", \"suggestedFix\": \"<fix>\"}.\n"
-                                   "Ground your decision strictly in the deterministic measurements. If there is a flash safety or clipping issue, flag it for revision.");
+                                   "Ground your decision strictly in the deterministic measurements. Revise ONLY when a measurement shows a flash safety, clipping or loudness problem; "
+                                   "otherwise approve. Never invent style or ordering rules.");
 
     std::vector<ChatMessage> msgs;
     msgs.push_back(ChatMessage{.role = QStringLiteral("user"), .content = reviewPrompt});
