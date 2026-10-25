@@ -53,7 +53,8 @@ public:
   virtual Lane lastLane() const { return Lane::Fast; }
 
   // Stop: the harness's flag. A client that waits on a network reply stops waiting once it is set.
-  void setCancelFlag(const std::atomic_bool* flag) { cancel_ = flag; }
+  // Virtual so a wrapping client hands the flag on to the client that actually waits on the network.
+  virtual void setCancelFlag(const std::atomic_bool* flag) { cancel_ = flag; }
   bool cancelRequested() const { return cancel_ && cancel_->load(); }
 
   // Reachability of this client (TCP to its endpoint, or always true for mock/offline).

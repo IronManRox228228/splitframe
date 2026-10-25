@@ -44,6 +44,10 @@ public:
   bool reachable(QString* error = nullptr) const override;
   QString lastObservedModel() const override { return inner_ ? inner_->lastObservedModel() : QString(); }
   Lane lastLane() const override { return inner_ ? inner_->lastLane() : Lane::Fast; }
+  void setCancelFlag(const std::atomic_bool* flag) override {
+    LlmClient::setCancelFlag(flag);
+    if (inner_) inner_->setCancelFlag(flag);
+  }
   void clearError() { lastError_.clear(); }
   const QString& lastError() const { return lastError_; }
   const std::shared_ptr<LlmClient>& inner() const { return inner_; }

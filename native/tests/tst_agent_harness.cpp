@@ -1,6 +1,7 @@
 // Integration tests for AgentHarness coordinating specialists, router, and engine in M5b.
 
 #include "agent/agent_harness.h"
+#include "agent/llm_config.h"
 #include "engine/engine.h"
 #include "fake_llm_server.h"
 
@@ -271,6 +272,16 @@ private slots:
     const Result r = engine_->call(QStringLiteral("agent.turn"), QJsonObject{{QStringLiteral("message"), QStringLiteral("add a marker at frame 3")}});
     QVERIFY(!r.ok); // the engine turns the exception into an error value
     QVERIFY(humanCanEdit());
+  }
+
+  // The app wraps its model client in a RecordingLlmClient; Stop must reach the client that waits on the network,
+  // not only the wrapper, or a slow model keeps the run (and the lock) alive.
+  void stopReachesTheClientInsideTheRecordingWrapper() {
+    auto inner = std::make_shared<MockLlmClient>();
+    harness_->setLlmClient(std::make_shared<RecordingLlmClient>(inner));
+    QVERIFY(!inner->cancelRequested());
+    harness_->requestCancel();
+    QVERIFY(inner->cancelRequested());
   }
 
   void stopEndsAfterTheCurrentToolCallAndCommitsOneStep() {
