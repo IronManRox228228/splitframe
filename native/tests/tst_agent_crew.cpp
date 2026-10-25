@@ -82,6 +82,10 @@ private:
     return r.value.toObject();
   }
 
+  Result tryCall(const QString& cmd, const QJsonObject& args = {}) {
+    return engine_->call(cmd, args);
+  }
+
   QString readTrace(const QString& dir) {
     QFile f(dir + QStringLiteral("/agent-trace.jsonl"));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
@@ -704,7 +708,7 @@ private slots:
     // Mutations took effect
     QCOMPARE(static_cast<int>(sess->project->doc().storyboard.size()), initialStoryboardCount + 2);
     QVERIFY(sess->project->canUndo());
-    QVERIFY(sess->project->undoLabel().contains(QStringLiteral("Agent")));
+    QVERIFY(sess->project->undoLabel().contains(QStringLiteral("Director")));
 
     // A SINGLE undo rolls back the entire agent turn!
     Result undoRes = engine_->call(QStringLiteral("history.undo"));
@@ -757,6 +761,193 @@ private slots:
     env.unset("SF_LLM_MODEL_FAST");
     LlmConfig cfg2 = LlmConfig::fromEnvironment();
     QCOMPARE(cfg2.modelFast, QStringLiteral("model-base-general"));
+  }
+
+  // ---- 18-FIX Item 2: peer review must fail honestly - no LLM or error -> "error", never "approve" ----
+  void reviewFailsHonestlyWhenLlmMissing() {
+    ScopedEnv env;
+    env.set("SF_AGENT_TRACE", testProjectDir_->path() + QStringLiteral("/agent-trace.jsonl"));
+
+    // Colourist specialist with NO llm client
+    Specialist colourist(SpecialistKind::Colourist, engine_.get(), nullptr, nullptr);
+    colourist.setCurrentRun(QStringLiteral("run_review_missing_llm"), testProjectDir_->path());
+
+    PeerRequest req{
+        QStringLiteral("req1"),
+        SpecialistKind::Editor,
+        SpecialistKind::Colourist,
+        QStringLiteral("review"),
+        {{QStringLiteral("session"), QString()}},
+        {},
+        QStringLiteral("Check for flash on the graded clip"),
+        true
+    };
+
+    PeerResponse res = colourist.handlePeerRequest(req, QString());
+
+    QCOMPARE(res.status, QStringLiteral("error"));
+    QVERIFY(res.note.contains(QStringLiteral("no llm client"), Qt::CaseInsensitive));
+    QCOMPARE(res.outputs.value(QStringLiteral("error")).toString(), QStringLiteral("no_llm_client"));
+
+    // Trace records the error review (not an approval)
+    const QString traceContent = readTrace(testProjectDir_->path());
+    QVERIFY(traceContent.contains(QStringLiteral("\"action\":\"critique\"")));
+    QVERIFY(traceContent.contains(QStringLiteral("\"status\":\"error\"")));
+    QVERIFY(traceContent.contains(QStringLiteral("\"error\":\"no_llm_client\"")));
+  }
+
+  // ---- 18-FIX Item 3: structured verdict - "approve, no flash risk" parses as approve, not revise ----
+  void reviewVerdictApproveNoFlashRiskParsesAsApprove() {
+    ScopedEnv env;
+    env.set("SF_AGENT_TRACE", testProjectDir_->path() + QStringLiteral("/agent-trace.jsonl"));
+
+    sf::test::FakeLlmServer fakeLlm;
+    QVERIFY(fakeLlm.listen());
+    fakeLlm.start();
+
+    // Review returns non-JSON text starting with "approve" - must parse as approve
+    fakeLlm.enqueueChat(QJsonObject{
+        {QStringLiteral("role"), QStringLiteral("assistant")},
+        {QStringLiteral("content"), QStringLiteral("approve, no flash risk")}
+    });
+
+    auto llm = std::make_shared<HttpLlmClient>(fakeLlm.chatUrl(), QStringLiteral("test-nemotron"));
+    Specialist colourist(SpecialistKind::Colourist, engine_.get(), nullptr, llm);
+    colourist.setCurrentRun(QStringLiteral("run_review_approve"), testProjectDir_->path());
+
+    Session* sess = engine_->session({});
+    QVERIFY(sess && sess->project);
+    PeerRequest req{
+        QStringLiteral("req2"),
+        SpecialistKind::Editor,
+        SpecialistKind::Colourist,
+        QStringLiteral("review"),
+        {{QStringLiteral("session"), sess->id}},
+        {},
+        QStringLiteral("Check the grade"),
+        true
+    };
+
+    PeerResponse res = colourist.handlePeerRequest(req, sess->id);
+
+    QCOMPARE(res.status, QStringLiteral("done"));
+    QCOMPARE(res.outputs.value(QStringLiteral("verdict")).toString(), QStringLiteral("approve"));
+    QVERIFY(res.note.contains(QStringLiteral("no flash risk"), Qt::CaseInsensitive));
+  }
+
+  // ---- 18-FIX Item 5: agent.assign target is strict - invalid name returns error, never falls back to Editor ----
+  void agentAssignInvalidTargetReturnsError() {
+    ScopedEnv env;
+    env.set("SF_AGENT_TRACE", testProjectDir_->path() + QStringLiteral("/agent-trace.jsonl"));
+
+    auto llm = std::make_shared<HttpLlmClient>(QStringLiteral("http://127.0.0.1:1"), QStringLiteral("test"));
+    AgentHarness harness(engine_.get(), llm);
+    harness.registerCommands(*engine_);
+
+    const Result r = tryCall(QStringLiteral("agent.assign"), {{
+        QStringLiteral("to"), QStringLiteral("audoi")},
+        {QStringLiteral("task"), QStringLiteral("Do something")}});
+
+    QVERIFY(!r.ok);
+    QCOMPARE(r.error.code, QStringLiteral("invalid_params"));
+    QVERIFY(r.error.message.contains(QStringLiteral("audoi"), Qt::CaseInsensitive));
+    QVERIFY(r.error.message.contains(QStringLiteral("director"), Qt::CaseInsensitive));
+    QVERIFY(r.error.message.contains(QStringLiteral("editor"), Qt::CaseInsensitive));
+    QVERIFY(r.error.message.contains(QStringLiteral("colourist"), Qt::CaseInsensitive));
+    QVERIFY(r.error.message.contains(QStringLiteral("audio"), Qt::CaseInsensitive));
+  }
+
+  // ---- 18-FIX Item 6: assigned task produces exactly one undo step labelled with the agent name ----
+  void assignedTaskOneUndoStepLabelledWithAgentName() {
+    ScopedEnv env;
+    env.set("SF_AGENT_TRACE", testProjectDir_->path() + QStringLiteral("/agent-trace.jsonl"));
+
+    // Save a music template
+    const QString gid = ok(QStringLiteral("comfy.graph.load"), {{
+        QStringLiteral("path"), fixturesDir() + QStringLiteral("/txt2img_api.json")},
+        {QStringLiteral("name"), QStringLiteral("BaseMusicGraph")}}).value(QStringLiteral("graphId")).toString();
+
+    QJsonObject musicTmpl{
+        {QStringLiteral("graphId"), gid},
+        {QStringLiteral("id"), QStringLiteral("music_t3")},
+        {QStringLiteral("name"), QStringLiteral("Music Gen T3")},
+        {QStringLiteral("kind"), QStringLiteral("music")},
+        {QStringLiteral("outputKind"), QStringLiteral("audio")},
+        {QStringLiteral("bindings"), QJsonObject{
+            {QStringLiteral("prompt"), QJsonObject{{QStringLiteral("node"), QStringLiteral("6")}, {QStringLiteral("input"), QStringLiteral("text")}}},
+            {QStringLiteral("durationSec"), QJsonObject{{QStringLiteral("node"), QStringLiteral("5")}, {QStringLiteral("input"), QStringLiteral("width")}}},
+            {QStringLiteral("seed"), QJsonObject{{QStringLiteral("node"), QStringLiteral("3")}, {QStringLiteral("input"), QStringLiteral("seed")}}}
+        }}
+    };
+    ok(QStringLiteral("comfy.graph.saveAsTemplate"), musicTmpl);
+
+    fakeComfy_->setOutputKind(QStringLiteral("audio"));
+    fakeComfy_->setOutputFilename(QStringLiteral("synth_score.wav"));
+
+    sf::test::FakeLlmServer fakeLlm;
+    QVERIFY(fakeLlm.listen());
+    fakeLlm.start();
+
+    // agent.assign -> Audio -> generate.music (scripted via FakeLlmServer)
+    fakeLlm.enqueueChat(QJsonObject{
+        {QStringLiteral("role"), QStringLiteral("assistant")},
+        {QStringLiteral("content"), QString()},
+        {QStringLiteral("tool_calls"), QJsonArray{
+            QJsonObject{
+                {QStringLiteral("id"), QStringLiteral("a1")},
+                {QStringLiteral("type"), QStringLiteral("function")},
+                {QStringLiteral("function"), QJsonObject{
+                    {QStringLiteral("name"), QStringLiteral("generate.ready")},
+                    {QStringLiteral("arguments"), QStringLiteral("{\"kind\":\"music\"}")}
+                }}
+            }
+        }}
+    });
+    fakeLlm.enqueueChat(QJsonObject{
+        {QStringLiteral("role"), QStringLiteral("assistant")},
+        {QStringLiteral("content"), QString()},
+        {QStringLiteral("tool_calls"), QJsonArray{
+            QJsonObject{
+                {QStringLiteral("id"), QStringLiteral("a2")},
+                {QStringLiteral("type"), QStringLiteral("function")},
+                {QStringLiteral("function"), QJsonObject{
+                    {QStringLiteral("name"), QStringLiteral("generate.music")},
+                    {QStringLiteral("arguments"), QStringLiteral("{\"templateId\":\"music_t3\",\"prompt\":\"ambient synth\",\"durationSec\":30.0,\"wait\":true}")}
+                }}
+            }
+        }}
+    });
+    fakeLlm.enqueueChat(QJsonObject{
+        {QStringLiteral("role"), QStringLiteral("assistant")},
+        {QStringLiteral("content"), QStringLiteral("approve: music looks good")}
+    });
+    fakeLlm.enqueueChat(QJsonObject{
+        {QStringLiteral("role"), QStringLiteral("assistant")},
+        {QStringLiteral("content"), QStringLiteral("Music generated.")}
+    });
+
+    auto llm = std::make_shared<HttpLlmClient>(fakeLlm.chatUrl(), QStringLiteral("test-nemotron"));
+
+    AgentHarness harness(engine_.get(), llm);
+    harness.registerCommands(*engine_);
+
+    // Call agent.assign directly via the engine (not through harness.chat),
+    // so the undo group is labelled with the assigned agent's name.
+    Session* sess = engine_->session({});
+    QVERIFY(sess && sess->project);
+    const QString sessionId = sess->id;
+
+    QJsonObject assignRes = ok(QStringLiteral("agent.assign"), {{
+        QStringLiteral("to"), QStringLiteral("audio")},
+        {QStringLiteral("task"), QStringLiteral("Generate music")},
+        {QStringLiteral("session"), sessionId}});
+
+    // Exactly one undo step, labelled with the agent name
+    QVERIFY(sess->project->canUndo());
+    QCOMPARE(sess->project->undoLabel(), QStringLiteral("Audio: Generate music"));
+
+    // One undo removes the agent's work
+    QCOMPARE(ok(QStringLiteral("history.undo")).value(QStringLiteral("steps")).toInt(), 1);
   }
 };
 

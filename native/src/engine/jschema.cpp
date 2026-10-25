@@ -45,7 +45,10 @@ std::optional<QString> validate(const QJsonValue& value, const QJsonObject& sche
       found = found || e == value;
       names << e.toString();
     }
-    if (!found) return QStringLiteral("%1: must be one of %2").arg(path, names.join(QStringLiteral(", ")));
+    if (!found) {
+      const QString got = value.isString() ? QStringLiteral("'%1'").arg(value.toString()) : typeOf(value);
+      return QStringLiteral("%1: %2 is not valid, must be one of %3").arg(path, got, names.join(QStringLiteral(", ")));
+    }
   }
   if (value.isDouble()) {
     const double d = value.toDouble();

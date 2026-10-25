@@ -308,6 +308,78 @@ QJsonObject parseToolArgs(const QJsonValue& arguments) {
   return QJsonDocument::fromJson(arguments.toString().toUtf8()).object();
 }
 
+struct ReviewVerdict {
+  bool ok = false;
+  QString verdict; // "approve" or "revise"
+  QString reason;
+  QString suggestedFix;
+  QString error;
+};
+
+static ReviewVerdict parseReviewVerdict(const QString& content) {
+  ReviewVerdict v;
+  QString text = content.trimmed();
+  if (text.isEmpty()) {
+    v.error = QStringLiteral("empty_response");
+    return v;
+  }
+
+  // 1. Try parsing JSON object directly or embedded in code block / brackets
+  QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+  if (!doc.isObject()) {
+    int start = text.indexOf(u'{');
+    int end = text.lastIndexOf(u'}');
+    if (start >= 0 && end > start) {
+      doc = QJsonDocument::fromJson(text.mid(start, end - start + 1).toUtf8());
+    }
+  }
+
+  if (doc.isObject()) {
+    const QJsonObject obj = doc.object();
+    if (!obj.contains(QStringLiteral("verdict"))) {
+      v.error = QStringLiteral("missing_verdict_field");
+      return v;
+    }
+    const QString verd = obj.value(QStringLiteral("verdict")).toString().trimmed().toLower();
+    if (verd != QLatin1String("approve") && verd != QLatin1String("revise")) {
+      v.error = QStringLiteral("invalid_verdict_enum");
+      return v;
+    }
+    v.ok = true;
+    v.verdict = verd;
+    v.reason = obj.value(QStringLiteral("reason")).toString();
+    v.suggestedFix = obj.value(QStringLiteral("suggestedFix")).toString();
+    return v;
+  }
+
+  // 2. Structured text starting with approve or revise (e.g. "approve, no flash risk", "approve: ...", "revise: ...")
+  // Enforces NO substring matching: only prefix enum check!
+  const QString lower = text.toLower();
+  if (lower.startsWith(QLatin1String("approve"))) {
+    v.ok = true;
+    v.verdict = QStringLiteral("approve");
+    QString rest = text.mid(7).trimmed();
+    while (!rest.isEmpty() && (rest[0] == u':' || rest[0] == u',' || rest[0] == u'-')) {
+      rest = rest.mid(1).trimmed();
+    }
+    v.reason = rest.isEmpty() ? text : rest;
+    return v;
+  }
+  if (lower.startsWith(QLatin1String("revise"))) {
+    v.ok = true;
+    v.verdict = QStringLiteral("revise");
+    QString rest = text.mid(6).trimmed();
+    while (!rest.isEmpty() && (rest[0] == u':' || rest[0] == u',' || rest[0] == u'-')) {
+      rest = rest.mid(1).trimmed();
+    }
+    v.reason = rest.isEmpty() ? text : rest;
+    return v;
+  }
+
+  v.error = QStringLiteral("unparseable_verdict");
+  return v;
+}
+
 } // namespace
 
 PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString& sessionId) {
@@ -318,6 +390,35 @@ PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString
     setPeerReviewEnabled(true);
     QString task = req.args.value(QStringLiteral("task")).toString();
     if (task.isEmpty()) task = req.reason;
+
+    const QString sceneId = req.args.value(QStringLiteral("sceneId")).toString();
+    if (!sceneId.isEmpty() && engine_) {
+      engine::Session* s = engine_->session(sessionId);
+      if (s && s->project) {
+        for (const auto& scn : s->project->doc().storyboard) {
+          if (scn.id == sceneId) {
+            QString sceneContext;
+            if (scn.shotPrompt && !scn.shotPrompt->isEmpty()) {
+              sceneContext += QStringLiteral("\nShot prompt: %1").arg(*scn.shotPrompt);
+            }
+            if (scn.voText && !scn.voText->isEmpty()) {
+              sceneContext += QStringLiteral("\nVoiceover text: %1").arg(*scn.voText);
+            }
+            if (scn.musicCue && !scn.musicCue->isEmpty()) {
+              sceneContext += QStringLiteral("\nMusic cue: %1").arg(*scn.musicCue);
+            }
+            if (scn.colourNote && !scn.colourNote->isEmpty()) {
+              sceneContext += QStringLiteral("\nColour note: %1").arg(*scn.colourNote);
+            }
+            if (!sceneContext.isEmpty()) {
+              task += QStringLiteral("\nScene context (sceneId: %1):%2").arg(sceneId, sceneContext);
+            }
+            break;
+          }
+        }
+      }
+    }
+
     QJsonObject turnRes = processTurn(task, sessionId, TurnPolicy::Execute, Lane::Fast);
     res.outputs = turnRes;
     const bool ok = (turnRes.value(QStringLiteral("status")).toString() == QStringLiteral("ok"));
@@ -325,46 +426,206 @@ PeerResponse Specialist::handlePeerRequest(const PeerRequest& req, const QString
     res.ops = turnRes.value(QStringLiteral("tool_results")).toArray();
     res.note = turnRes.value(QStringLiteral("content")).toString();
     if (res.note.isEmpty() && !ok) res.note = turnRes.value(QStringLiteral("error")).toString();
+
+    // Link generated assets to sceneId if applicable
+    if (ok && !sceneId.isEmpty() && engine_) {
+      engine::Session* s = engine_->session(sessionId);
+      if (s && s->project) {
+        QJsonArray newAssetIds;
+        for (const auto& trVal : res.ops) {
+          const QJsonObject tr = trVal.toObject();
+          const QString name = tr.value(QStringLiteral("name")).toString();
+          if (name.startsWith(QStringLiteral("generate.")) || name == QStringLiteral("comfy.run")) {
+            const QJsonObject resultObj = tr.value(QStringLiteral("result")).toObject();
+            const QJsonObject resBody = resultObj.contains(QStringLiteral("result")) && resultObj.value(QStringLiteral("result")).isObject()
+                                      ? resultObj.value(QStringLiteral("result")).toObject() : resultObj;
+            const QJsonArray filesArr = resBody.value(QStringLiteral("files")).toArray();
+            for (const auto& fVal : filesArr) {
+              const QString fPath = fVal.toString();
+              for (const auto& ast : s->project->assets()) {
+                if (ast.path == fPath || ast.path.endsWith(fPath) || fPath.endsWith(ast.path)) {
+                  if (!newAssetIds.contains(ast.id)) newAssetIds.append(ast.id);
+                }
+              }
+            }
+          }
+        }
+        if (!newAssetIds.isEmpty()) {
+          QJsonObject updateArgs{
+            {QStringLiteral("id"), sceneId},
+            {QStringLiteral("patch"), QJsonObject{
+              {QStringLiteral("assetIds"), newAssetIds},
+              {QStringLiteral("status"), QStringLiteral("ready")}
+            }}
+          };
+          if (!sessionId.isEmpty()) updateArgs.insert(QStringLiteral("session"), sessionId);
+          engine_->call(QStringLiteral("storyboard.scene.update"), updateArgs);
+        }
+      }
+    }
+
     return res;
   }
 
   if (req.kind == QStringLiteral("review") || req.kind == QStringLiteral("critique") || req.kind == QStringLiteral("peer_review")) {
+    if (!llm_) {
+      const QString reason = QStringLiteral("review unavailable: no llm client");
+      logAgentTrace(AgentTraceRecord{
+        .runId = currentRunId_.isEmpty() ? req.id : currentRunId_,
+        .agentName = name(),
+        .role = domain(),
+        .lane = QStringLiteral("judge"),
+        .action = QStringLiteral("critique"),
+        .inputSummary = req.reason,
+        .status = QStringLiteral("error"),
+        .error = QStringLiteral("no_llm_client")
+      }, projectDir_);
+      res.status = QStringLiteral("error");
+      res.note = reason;
+      res.outputs = QJsonObject{
+        {QStringLiteral("error"), QStringLiteral("no_llm_client")},
+        {QStringLiteral("reason"), reason}
+      };
+      return res;
+    }
+
+    QJsonObject measurements;
+    if (kind_ == SpecialistKind::Colourist && engine_) {
+      QJsonObject safetyArgs{{QStringLiteral("session"), sessionId}};
+      engine::Result rSafety = engine_->call(QStringLiteral("safety.check"), safetyArgs);
+      if (rSafety.ok) {
+        measurements.insert(QStringLiteral("safety.check"), rSafety.value.toObject());
+      }
+    } else if (kind_ == SpecialistKind::Audio && engine_) {
+      QJsonObject audioArgs{{QStringLiteral("session"), sessionId}};
+      engine::Result rAudio = engine_->call(QStringLiteral("audio.analyze"), audioArgs);
+      if (rAudio.ok) {
+        measurements.insert(QStringLiteral("audio.analyze"), rAudio.value.toObject());
+      }
+    }
+
     QString reviewPrompt = QStringLiteral("You are performing a peer critique/review of changes made by another specialist on Lane judge.\n");
     reviewPrompt += QStringLiteral("Request reason: ") + req.reason + QStringLiteral("\nDetails: ") + QString::fromUtf8(QJsonDocument(req.args).toJson(QJsonDocument::Compact));
-    reviewPrompt += QStringLiteral("\nProvide your verdict: return 'approve' or 'revise {reason, suggestedFix}'. If there is a flash safety or clipping issue, flag it for revision.");
+    if (!measurements.isEmpty()) {
+      reviewPrompt += QStringLiteral("\nDeterministic measurements for your domain:\n") + QString::fromUtf8(QJsonDocument(measurements).toJson(QJsonDocument::Compact));
+    }
+    reviewPrompt += QStringLiteral("\nProvide your verdict as a JSON object: {\"verdict\": \"approve\" | \"revise\", \"reason\": \"<explanation citing measurements>\", \"suggestedFix\": \"<fix>\"}.\n"
+                                   "Ground your decision strictly in the deterministic measurements. If there is a flash safety or clipping issue, flag it for revision.");
 
     std::vector<ChatMessage> msgs;
     msgs.push_back(ChatMessage{.role = QStringLiteral("user"), .content = reviewPrompt});
 
-    QJsonObject resp;
-    if (llm_) {
-      resp = llm_->complete(systemPrompt(), msgs, {}, slotId_, Lane::Judge);
-    } else {
-      resp = QJsonObject{{QStringLiteral("content"), QStringLiteral("approve")}};
-    }
+    QJsonObject resp = llm_->complete(systemPrompt(), msgs, {}, slotId_, Lane::Judge);
+    const QJsonValue errVal = resp.value(QStringLiteral("error"));
     QString content = resp.value(QStringLiteral("content")).toString().trimmed();
-    if (content.isEmpty()) content = QStringLiteral("approve");
 
-    const bool needsRevision = content.contains(QStringLiteral("revise"), Qt::CaseInsensitive) ||
-                               content.contains(QStringLiteral("flash"), Qt::CaseInsensitive) ||
-                               content.contains(QStringLiteral("clipping"), Qt::CaseInsensitive) ||
-                               content.contains(QStringLiteral("risk"), Qt::CaseInsensitive) ||
-                               content.contains(QStringLiteral("rejected"), Qt::CaseInsensitive);
+    if ((!errVal.isUndefined() && !errVal.isNull()) || content.isEmpty()) {
+      QString errCode = llmErrorCode(resp);
+      if (errCode.isEmpty() && errVal.isString()) errCode = errVal.toString();
+      if (errCode.isEmpty()) errCode = QStringLiteral("empty_response");
+      const QString reason = QStringLiteral("review unavailable: %1").arg(errCode);
+      logAgentTrace(AgentTraceRecord{
+        .runId = currentRunId_.isEmpty() ? req.id : currentRunId_,
+        .agentName = name(),
+        .role = domain(),
+        .lane = QStringLiteral("judge"),
+        .action = QStringLiteral("critique"),
+        .inputSummary = req.reason,
+        .model = llm_->lastObservedModel(),
+        .status = QStringLiteral("error"),
+        .error = errCode
+      }, projectDir_);
+      res.status = QStringLiteral("error");
+      res.note = reason;
+      res.outputs = QJsonObject{
+        {QStringLiteral("error"), errCode},
+        {QStringLiteral("reason"), reason},
+        {QStringLiteral("model"), llm_->lastObservedModel()},
+        {QStringLiteral("lane"), QStringLiteral("judge")}
+      };
+      return res;
+    }
+
+    ReviewVerdict v = parseReviewVerdict(content);
+    if (!v.ok) {
+      // Re-ask once with the error
+      msgs.push_back(ChatMessage{.role = QStringLiteral("assistant"), .content = content});
+      msgs.push_back(ChatMessage{
+        .role = QStringLiteral("user"),
+        .content = QStringLiteral("Verdict format error: %1. You must respond with a JSON object: {\"verdict\": \"approve\"|\"revise\", \"reason\": \"...\", \"suggestedFix\": \"...\"}").arg(v.error)
+      });
+      resp = llm_->complete(systemPrompt(), msgs, {}, slotId_, Lane::Judge);
+      const QJsonValue reErr = resp.value(QStringLiteral("error"));
+      content = resp.value(QStringLiteral("content")).toString().trimmed();
+      if ((!reErr.isUndefined() && !reErr.isNull()) || content.isEmpty()) {
+        v.ok = false;
+        v.error = QStringLiteral("re_ask_failed");
+      } else {
+        v = parseReviewVerdict(content);
+      }
+    }
+
+    if (!v.ok) {
+      const QString reason = QStringLiteral("review unavailable: parse error (%1)").arg(v.error);
+      logAgentTrace(AgentTraceRecord{
+        .runId = currentRunId_.isEmpty() ? req.id : currentRunId_,
+        .agentName = name(),
+        .role = domain(),
+        .lane = QStringLiteral("judge"),
+        .action = QStringLiteral("critique"),
+        .inputSummary = req.reason,
+        .model = llm_->lastObservedModel(),
+        .status = QStringLiteral("error"),
+        .error = v.error
+      }, projectDir_);
+      res.status = QStringLiteral("error");
+      res.note = reason;
+      res.outputs = QJsonObject{
+        {QStringLiteral("error"), v.error},
+        {QStringLiteral("reason"), reason},
+        {QStringLiteral("model"), llm_->lastObservedModel()},
+        {QStringLiteral("lane"), QStringLiteral("judge")}
+      };
+      return res;
+    }
 
     res.outputs = QJsonObject{
       {QStringLiteral("content"), content},
-      {QStringLiteral("model"), llm_ ? llm_->lastObservedModel() : QString()},
+      {QStringLiteral("verdict"), v.verdict},
+      {QStringLiteral("model"), llm_->lastObservedModel()},
       {QStringLiteral("lane"), QStringLiteral("judge")}
     };
+    if (!v.reason.isEmpty()) res.outputs.insert(QStringLiteral("reason"), v.reason);
+    if (!v.suggestedFix.isEmpty()) res.outputs.insert(QStringLiteral("suggestedFix"), v.suggestedFix);
 
-    if (needsRevision) {
+    if (v.verdict == QLatin1String("revise")) {
       res.status = QStringLiteral("needs_revision");
-      res.note = content;
-      res.outputs.insert(QStringLiteral("reason"), content);
-      res.outputs.insert(QStringLiteral("suggestedFix"), QStringLiteral("Revise clip or adjustment to eliminate issue"));
+      res.note = v.reason.isEmpty() ? content : v.reason;
+      logAgentTrace(AgentTraceRecord{
+        .runId = currentRunId_.isEmpty() ? req.id : currentRunId_,
+        .agentName = name(),
+        .role = domain(),
+        .lane = QStringLiteral("judge"),
+        .action = QStringLiteral("critique"),
+        .inputSummary = req.reason,
+        .model = llm_->lastObservedModel(),
+        .status = QStringLiteral("needs_revision"),
+        .error = QString()
+      }, projectDir_);
     } else {
       res.status = QStringLiteral("done");
-      res.note = content.isEmpty() ? QStringLiteral("approved") : content;
+      res.note = v.reason.isEmpty() ? QStringLiteral("approved") : v.reason;
+      logAgentTrace(AgentTraceRecord{
+        .runId = currentRunId_.isEmpty() ? req.id : currentRunId_,
+        .agentName = name(),
+        .role = domain(),
+        .lane = QStringLiteral("judge"),
+        .action = QStringLiteral("critique"),
+        .inputSummary = req.reason,
+        .model = llm_->lastObservedModel(),
+        .status = QStringLiteral("success"),
+        .error = QString()
+      }, projectDir_);
     }
     return res;
   }
@@ -559,27 +820,47 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
           {QStringLiteral("reason"), QStringLiteral("ask mode: waiting for agent.plan.run")}
         };
       } else if (fnName == QStringLiteral("agent.assign")) {
-        SpecialistKind target = parseSpecialistKind(fnArgs.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
-        PeerResponse pr = sendPeerRequest(
-          target,
-          QStringLiteral("assign"),
-          fnArgs,
-          {},
-          fnArgs.value(QStringLiteral("task")).toString(),
-          true
-        );
-        toolResult = pr.toJson();
+        const QString toStr = fnArgs.value(QStringLiteral("to")).toString();
+        auto optTarget = parseSpecialistKind(toStr);
+        if (!optTarget) {
+          toolResult = QJsonObject{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), QStringLiteral("invalid_params")},
+            {QStringLiteral("message"), QStringLiteral("Invalid target '%1' for agent.assign. Valid targets are: director, editor, colourist, audio.").arg(toStr)}
+          };
+        } else {
+          SpecialistKind target = *optTarget;
+          PeerResponse pr = sendPeerRequest(
+            target,
+            QStringLiteral("assign"),
+            fnArgs,
+            {},
+            fnArgs.value(QStringLiteral("task")).toString(),
+            true
+          );
+          toolResult = pr.toJson();
+        }
       } else if (fnName == QStringLiteral("peer_request")) {
-        SpecialistKind target = parseSpecialistKind(fnArgs.value(QStringLiteral("to")).toString()).value_or(SpecialistKind::Editor);
-        PeerResponse pr = sendPeerRequest(
-          target,
-          fnArgs.value(QStringLiteral("kind")).toString(),
-          fnArgs.value(QStringLiteral("args")).toObject(),
-          fnArgs.value(QStringLiteral("constraints")).toObject(),
-          fnArgs.value(QStringLiteral("reason")).toString(),
-          fnArgs.value(QStringLiteral("await")).toBool(true)
-        );
-        toolResult = pr.toJson();
+        const QString toStr = fnArgs.value(QStringLiteral("to")).toString();
+        auto optTarget = parseSpecialistKind(toStr);
+        if (!optTarget) {
+          toolResult = QJsonObject{
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("error"), QStringLiteral("invalid_params")},
+            {QStringLiteral("message"), QStringLiteral("Invalid target '%1'. Valid targets are: director, editor, colourist, audio.").arg(toStr)}
+          };
+        } else {
+          SpecialistKind target = *optTarget;
+          PeerResponse pr = sendPeerRequest(
+            target,
+            fnArgs.value(QStringLiteral("kind")).toString(),
+            fnArgs.value(QStringLiteral("args")).toObject(),
+            fnArgs.value(QStringLiteral("constraints")).toObject(),
+            fnArgs.value(QStringLiteral("reason")).toString(),
+            fnArgs.value(QStringLiteral("await")).toBool(true)
+          );
+          toolResult = pr.toJson();
+        }
       } else {
         toolResult = executeCommand(fnName, fnArgs, sessionId).toJson();
       }

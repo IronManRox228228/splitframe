@@ -207,14 +207,72 @@ QString deriveOutputKind(const QString& kind) {
   return {};
 }
 
-// Default bindings for a graph saved as a template: map well-known scalar inputs to canonical
-// parameter names (kAllowedBindings), mirroring the builtin templates. Link inputs arrive as
-// arrays in API-format graphs and never bind; the first CLIPTextEncode "text" binds prompt,
-// further ones bind negative.
+// Helper to trace back from a link input to find a text-encoding node.
+static QString traceClipTextNode(const QJsonObject& apiGraph, const QString& startId) {
+  QString currId = startId;
+  for (int depth = 0; depth < 8; ++depth) {
+    if (!apiGraph.contains(currId)) break;
+    const QJsonObject node = apiGraph.value(currId).toObject();
+    const QString ct = node.value(q("class_type")).toString();
+    const QJsonObject ins = node.value(q("inputs")).toObject();
+    if (ct == QLatin1String("CLIPTextEncode") || (ins.contains(q("text")) && !ins.value(q("text")).isArray())) {
+      return currId;
+    }
+    bool found = false;
+    for (auto it = ins.begin(); it != ins.end(); ++it) {
+      if ((it.key().contains(QLatin1String("conditioning")) || it.key() == QLatin1String("clip")) && it.value().isArray()) {
+        const QJsonArray arr = it.value().toArray();
+        if (!arr.isEmpty()) {
+          currId = arr[0].toString();
+          found = true;
+          break;
+        }
+      }
+    }
+    if (!found) break;
+  }
+  return QString();
+}
+
+// Default bindings for a graph saved as a template or run directly: map well-known scalar inputs
+// to canonical parameter names (kAllowedBindings).
+// Prompt and negative are discovered by following KSampler positive/negative links, NOT by sorted node id.
 QJsonObject deriveDefaultBindings(const QJsonObject& apiGraph) {
   QJsonObject bindings;
-  int textNodes = 0;
+
+  // 1. Follow positive and negative links from any sampler nodes
+  QString posClipId, negClipId;
   for (auto itN = apiGraph.begin(); itN != apiGraph.end(); ++itN) {
+    const QJsonObject node = itN.value().toObject();
+    const QJsonObject ins = node.value(q("inputs")).toObject();
+    if (ins.contains(q("positive")) && ins.value(q("positive")).isArray()) {
+      const QJsonArray arr = ins.value(q("positive")).toArray();
+      if (!arr.isEmpty()) {
+        const QString found = traceClipTextNode(apiGraph, arr[0].toString());
+        if (!found.isEmpty()) posClipId = found;
+      }
+    }
+    if (ins.contains(q("negative")) && ins.value(q("negative")).isArray()) {
+      const QJsonArray arr = ins.value(q("negative")).toArray();
+      if (!arr.isEmpty()) {
+        const QString found = traceClipTextNode(apiGraph, arr[0].toString());
+        if (!found.isEmpty()) negClipId = found;
+      }
+    }
+    if (!posClipId.isEmpty() && !negClipId.isEmpty()) break;
+  }
+
+  if (!posClipId.isEmpty()) {
+    bindings.insert(QStringLiteral("prompt"), QJsonObject{{q("node"), posClipId}, {q("input"), q("text")}});
+  }
+  if (!negClipId.isEmpty()) {
+    bindings.insert(QStringLiteral("negative"), QJsonObject{{q("node"), negClipId}, {q("input"), q("text")}});
+  }
+
+  // 2. Discover remaining parameters from node scalar inputs
+  int fallbackTextNodes = 0;
+  for (auto itN = apiGraph.begin(); itN != apiGraph.end(); ++itN) {
+    const QString nodeId = itN.key();
     const QJsonObject node = itN.value().toObject();
     const QString ct = node.value(q("class_type")).toString();
     const QJsonObject ins = node.value(q("inputs")).toObject();
@@ -222,21 +280,47 @@ QJsonObject deriveDefaultBindings(const QJsonObject& apiGraph) {
       if (itI.value().isArray() || itI.value().isObject()) continue; // a link input
       const QString name = itI.key();
       QString key;
-      if (name == QLatin1String("text") && ct == QLatin1String("CLIPTextEncode")) {
-        key = (textNodes++ == 0) ? QStringLiteral("prompt") : QStringLiteral("negative");
+      if (name == QLatin1String("text")) {
+        if (ct == QLatin1String("CLIPTextEncode")) {
+          if (nodeId == posClipId || nodeId == negClipId) {
+            // Already bound via sampler link
+          } else if (posClipId.isEmpty() && fallbackTextNodes == 0) {
+            key = QStringLiteral("prompt");
+            ++fallbackTextNodes;
+          } else if (negClipId.isEmpty() && fallbackTextNodes == 1) {
+            key = QStringLiteral("negative");
+            ++fallbackTextNodes;
+          }
+        } else {
+          key = QStringLiteral("text");
+        }
       } else if (name == QLatin1String("seed")) {
         key = QStringLiteral("seed");
+      } else if (name == QLatin1String("durationSec") || name == QLatin1String("duration_sec") || name == QLatin1String("duration")) {
+        key = QStringLiteral("durationSec");
+      } else if (name == QLatin1String("bpm") || name == QLatin1String("tempo")) {
+        key = QStringLiteral("bpm");
+      } else if (name == QLatin1String("lyrics")) {
+        key = QStringLiteral("lyrics");
+      } else if (name == QLatin1String("tags")) {
+        key = QStringLiteral("tags");
+      } else if (name == QLatin1String("voiceRef")) {
+        key = QStringLiteral("voiceRef");
       } else if (name == QLatin1String("width")) {
         key = QStringLiteral("width");
       } else if (name == QLatin1String("height")) {
         key = QStringLiteral("height");
       } else if (name == QLatin1String("steps")) {
         key = QStringLiteral("steps");
+      } else if (name == QLatin1String("frames")) {
+        key = QStringLiteral("frames");
+      } else if (name == QLatin1String("fps")) {
+        key = QStringLiteral("fps");
       } else if (name == QLatin1String("audio")) {
         key = QStringLiteral("audio");
       }
       if (!key.isEmpty() && !bindings.contains(key)) {
-        bindings.insert(key, QJsonObject{{q("node"), itN.key()}, {q("input"), name}});
+        bindings.insert(key, QJsonObject{{q("node"), nodeId}, {q("input"), name}});
       }
     }
   }
@@ -735,19 +819,61 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
   QString lastJobId;
   qint64 lastSeed = seed;
 
-  if (variants > 1 && placeOnTimeline && c.session && c.session->project) {
-    c.session->project->beginGroup(QStringLiteral("Generate %1").arg(expectedKind), c.actor());
-  }
+  struct GroupGuard {
+    editor::Project* project = nullptr;
+    bool committed = false;
+    GroupGuard(editor::Project* p, const QString& label, const QString& actor) : project(p) {
+      if (project) project->beginGroup(label, actor);
+    }
+    ~GroupGuard() {
+      if (project) {
+        if (!committed) project->rollbackGroup();
+        else project->endGroup();
+      }
+    }
+    void commit() { committed = true; }
+  };
+
+  editor::Project* groupProj = (variants > 1 && placeOnTimeline && c.session) ? c.session->project : nullptr;
+  GroupGuard groupGuard(groupProj, QStringLiteral("Generate %1").arg(expectedKind), c.actor());
 
   for (int v = 0; v < variants; ++v) {
     const qint64 vSeed = seed + v;
     lastSeed = vSeed;
 
+    QJsonObject effectiveBindings;
+    if (fromGraph) {
+      effectiveBindings = deriveDefaultBindings(srcJson);
+      if (a.contains(q("bindings"))) {
+        const QJsonObject explicitBindings = a.value(q("bindings")).toObject();
+        for (auto it = explicitBindings.begin(); it != explicitBindings.end(); ++it) {
+          effectiveBindings.insert(it.key(), it.value());
+        }
+      }
+      for (const char* k : {"prompt", "negative", "text", "durationSec", "bpm", "lyrics", "tags", "voiceRef",
+                            "width", "height", "frames", "fps", "steps", "image", "audio"}) {
+        if (a.contains(q(k)) && !effectiveBindings.contains(q(k))) {
+          return Result::failure(q("unbound_param"), QStringLiteral("Parameter '%1' cannot be bound to graph '%2'").arg(k, sourceGraphId));
+        }
+      }
+      if (a.contains(q("seed")) && !effectiveBindings.contains(q("seed"))) {
+        return Result::failure(q("unbound_param"), QStringLiteral("Parameter 'seed' cannot be bound to graph '%2'").arg(sourceGraphId));
+      }
+    }
+
     QJsonObject tParams;
     tParams.insert(q("templateId"), tmpl.id);
     if (!prompt.isEmpty()) tParams.insert(q("prompt"), prompt);
     if (!text.isEmpty()) tParams.insert(q("text"), text);
-    tParams.insert(q("seed"), vSeed);
+    if (fromGraph) {
+      if (a.contains(q("seed")) || effectiveBindings.contains(q("seed"))) {
+        tParams.insert(q("seed"), vSeed);
+      }
+    } else {
+      if (tmpl.bindings.contains(q("seed")) || a.contains(q("seed"))) {
+        tParams.insert(q("seed"), vSeed);
+      }
+    }
     for (const char* k : {"negative", "width", "height", "frames", "fps", "steps",
                           "image", "voiceRef", "durationSec", "bpm", "lyrics", "tags", "audio"}) {
       if (a.contains(q(k))) tParams.insert(q(k), a.value(q(k)));
@@ -766,6 +892,7 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
     }
 
     QString graphId;
+    QSet<QString> appliedParams;
     if (!fromGraph) {
       Result rTmpl = c.engine->call(q("comfy.graph.fromTemplate"), QJsonObject{
         {q("templateId"), templateId}, {q("params"), tParams}
@@ -788,19 +915,24 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
       for (auto it = srcUploads.begin(); it != srcUploads.end(); ++it) {
         ndoc.uploads.insert(it.key(), it.value());
       }
-      const QJsonObject autoBindings = deriveDefaultBindings(srcJson);
       for (auto it = tParams.begin(); it != tParams.end(); ++it) {
         const QString paramKey = it.key();
         if (paramKey == QLatin1String("templateId")) continue;
-        if (autoBindings.contains(paramKey)) {
-          const QJsonObject bObj = autoBindings.value(paramKey).toObject();
+        if (effectiveBindings.contains(paramKey)) {
+          const QJsonObject bObj = effectiveBindings.value(paramKey).toObject();
           const QString bNode = bObj.value(q("node")).toString();
           const QString bInput = bObj.value(q("input")).toString();
           const QJsonValue val = it.value();
           if (paramKey == QLatin1String("image")) {
             ndoc.uploads.insert(QStringLiteral("%1.%2").arg(bNode, bInput), val.toString());
+            appliedParams.insert(paramKey);
           } else {
-            ndoc.graph.setInput(bNode, bInput, val);
+            const QString setErr = ndoc.graph.setInput(bNode, bInput, val);
+            if (!setErr.isEmpty()) {
+              return Result::failure(q("unbound_param"),
+                QStringLiteral("Failed to bind '%1' to node '%2' input '%3': %4").arg(paramKey, bNode, bInput, setErr));
+            }
+            appliedParams.insert(paramKey);
           }
         }
       }
@@ -850,12 +982,28 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
       }
     }
 
-    QJsonObject baseProv = provBase(tmpl.id, &tmpl, expectedKind, prompt, text,
-                                    a.value(q("negative")).toString(), vSeed, promptId, workflowHash);
-    if (fromGraph) {
+    QJsonObject baseProv;
+    if (!fromGraph) {
+      baseProv = provBase(tmpl.id, &tmpl, expectedKind, prompt, text,
+                          a.value(q("negative")).toString(), vSeed, promptId, workflowHash);
+    } else {
       baseProv.insert(q("templateId"), QJsonValue(QJsonValue::Null));
+      baseProv.insert(q("kind"), expectedKind);
+      baseProv.insert(q("outputKind"), expectedKind);
       baseProv.insert(q("graphId"), sourceGraphId);
       if (!srcName.isEmpty()) baseProv.insert(q("graphName"), srcName);
+      if (appliedParams.contains(q("prompt")) && !prompt.isEmpty()) baseProv.insert(q("prompt"), prompt);
+      if (appliedParams.contains(q("text")) && !text.isEmpty()) baseProv.insert(q("text"), text);
+      if (appliedParams.contains(q("negative")) && a.contains(q("negative"))) baseProv.insert(q("negative"), a.value(q("negative")).toString());
+      if (appliedParams.contains(q("seed"))) baseProv.insert(q("seed"), vSeed);
+      if (appliedParams.contains(q("durationSec"))) baseProv.insert(q("durationSec"), a.value(q("durationSec")).toDouble());
+      if (appliedParams.contains(q("bpm"))) baseProv.insert(q("bpm"), a.value(q("bpm")).toDouble());
+      for (const char* k : {"width", "height", "frames", "fps", "steps", "lyrics", "tags", "voiceRef"}) {
+        if (appliedParams.contains(q(k))) baseProv.insert(q(k), a.value(q(k)));
+      }
+      if (!promptId.isEmpty()) baseProv.insert(q("promptId"), promptId);
+      if (!workflowHash.isEmpty()) baseProv.insert(q("workflowHash"), workflowHash);
+      baseProv.insert(q("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
     }
 
     Result landed = landOutputs(c, files, trackId, nextAt,
@@ -863,7 +1011,6 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
                                 expectedKind, tmpl.id, &tmpl, baseProv,
                                 placeOnTimeline);
     if (!landed.ok) {
-      if (variants > 1 && placeOnTimeline && c.session && c.session->project) c.session->project->rollbackGroup();
       return landed;
     }
     nextAt = std::nullopt;
@@ -876,9 +1023,7 @@ Result runGenerate(CallContext& c, const QJsonObject& a, const QString& expected
     for (const auto& vv : created.value(q("tracks")).toArray()) allCreatedTracks.append(vv);
   }
 
-  if (variants > 1 && placeOnTimeline && c.session && c.session->project) {
-    c.session->project->endGroup();
-  }
+  groupGuard.commit();
 
   QJsonObject allCreated;
   if (!allCreatedItems.isEmpty()) allCreated.insert(q("items"), allCreatedItems);
@@ -2493,10 +2638,24 @@ void registerComfyCommands(Engine& e) {
              QStringLiteral("Run an already-open ComfyUI graph document (from comfy.graph.new/load/fromTemplate/op) through the generate pipeline and place outputs on the timeline in one undo step."),
              js::obj({{q("graphId"), js::str(QStringLiteral("Graph document ID to execute"))},
                       {q("kind"), js::str(QStringLiteral("Media kind: 'image', 'video', 'speech', or 'music'"))},
+                      {q("bindings"), js::any(QStringLiteral("Optional custom bindings mapping parameter name to {node, input}"))},
                       {q("requires"), js::any(QStringLiteral("Optional {nodes: [class_type...], models: [{folder, file}...]} readiness gate on top of the graph's own nodes"))},
                       {q("needsUserModel"), js::boolean(QStringLiteral("True when required model files are placeholders the user must have (default false)"))},
                       {q("prompt"), js::str(QStringLiteral("Prompt text"))},
                       {q("negative"), js::str(QStringLiteral("Negative prompt"))},
+                      {q("text"), js::str(QStringLiteral("Speech/text input"))},
+                      {q("durationSec"), js::number(QStringLiteral("Duration in seconds"), 0.05)},
+                      {q("bpm"), js::number(QStringLiteral("Beats per minute"), 1, 400)},
+                      {q("lyrics"), js::str(QStringLiteral("Lyrics text"))},
+                      {q("tags"), js::str(QStringLiteral("Style tags"))},
+                      {q("voiceRef"), js::str(QStringLiteral("Voice reference"))},
+                      {q("width"), js::integer(QStringLiteral("Width in pixels"), 64, 8192)},
+                      {q("height"), js::integer(QStringLiteral("Height in pixels"), 64, 8192)},
+                      {q("frames"), js::integer(QStringLiteral("Frame count"), 1, 10000)},
+                      {q("fps"), js::number(QStringLiteral("Frames per second"), 1, 120)},
+                      {q("steps"), js::integer(QStringLiteral("Sampling steps"), 1, 200)},
+                      {q("image"), js::str(QStringLiteral("Path to image file for image-to-video / controlnet"))},
+                      {q("imageFromItemId"), js::str(QStringLiteral("Item ID on timeline to render a frame from"))},
                       {q("seed"), js::integer(QStringLiteral("Deterministic seed"), 0)},
                       {q("variants"), js::integer(QStringLiteral("Variant count (1-4, default 1)"), 1, 4)},
                       {q("trackId"), js::str(QStringLiteral("Target track ID"))},

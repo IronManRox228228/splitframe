@@ -217,15 +217,16 @@ void registerSessionCommands(Engine& e) {
 
   e.add(spec("session.group.begin", "", "engine", false,
              QStringLiteral("Begin an undo group on the session project."),
-             js::obj({{q("label"), js::str()}}),
+             js::obj({{q("label"), js::str()}, {q("actor"), js::str()}}),
              [](CallContext& c, const QJsonObject& a) {
-               c.session->project->beginGroup(a.value(q("label")).toString(), c.actor());
+               const QString actor = a.contains(q("actor")) ? a.value(q("actor")).toString() : c.actor();
+               c.session->project->beginGroup(a.value(q("label")).toString(), actor);
                return Result::success(QJsonObject{{q("ok"), true}});
              }));
 
   e.add(spec("session.group.end", "", "engine", false,
              QStringLiteral("End the current undo group on the session project."),
-             js::obj({{q("label"), js::str()}}),
+             js::obj({{q("label"), js::str()}, {q("actor"), js::str()}}),
              [](CallContext& c, const QJsonObject&) {
                c.session->project->endGroup();
                return Result::success(QJsonObject{{q("ok"), true}});

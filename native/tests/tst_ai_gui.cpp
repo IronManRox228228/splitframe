@@ -12,9 +12,12 @@ using namespace sf;
 
 namespace {
 QString Q(const char* s) { return QString::fromLatin1(s); }
+// The specialist loops tool rounds until the model stops calling tools: the default reply calls marker.add, and once the
+// tool result (which carries the "gui" label) is in the conversation the scripted reply ends the turn.
 const char* kMarkerScript =
-    "{\"content\":\"Dropped a marker.\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"marker.add\","
-    "\"arguments\":\"{\\\"frame\\\":10,\\\"label\\\":\\\"gui\\\"}\"}}]}";
+    "{\"default\":{\"content\":\"Dropping a marker.\",\"tool_calls\":[{\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"marker.add\","
+    "\"arguments\":\"{\\\"frame\\\":10,\\\"label\\\":\\\"gui\\\"}\"}}]},"
+    "\"scripted\":[{\"trigger\":\"\\\"gui\\\"\",\"response\":{\"content\":\"Dropped a marker.\"}}]}";
 } // namespace
 
 class TstAiGui : public QObject {

@@ -719,6 +719,95 @@ private slots:
     QCOMPARE(timelineItemCount(), 1);
   }
 
+  // =========================================================================
+  // 18-FIX-review.md Part 1 regression tests
+  // =========================================================================
+
+  // Item 1: Undo group leak - variants with wait:false must roll back the group on early return.
+  // The RAII GroupGuard around runGenerate's variants loop must always close (rollback) the group,
+  // even when a variant returns pending before landing.
+  void variantsFailWaitFalseRollsBackGroup() {
+    const QString gid = loadGraph(QStringLiteral("GusGraph"));
+    ok(Q("comfy.graph.saveAsTemplate"), {{
+        Q("graphId"), gid}, {Q("id"), QStringLiteral("variants_fail_tmpl")},
+        {Q("name"), QStringLiteral("Variants Fail")}, {Q("kind"), Q("image")}});
+
+    Session* sess = engine_->session(QString());
+    const int depthBefore = sess->project->groupDepth();
+
+    // variants:2 with wait:false -> first variant returns pending immediately,
+    // the RAII group guard must roll back the group.
+    const Result r = tryCall(Q("generate.image"), {{
+        Q("templateId"), QStringLiteral("variants_fail_tmpl")},
+        {Q("prompt"), QStringLiteral("rollback test")},
+        {Q("variants"), 2},
+        {Q("wait"), false}});
+
+    QCOMPARE(r.value.toObject().value(Q("pending")).toBool(), true);
+    QCOMPARE(sess->project->groupDepth(), depthBefore);
+    QCOMPARE(sess->project->groupDepth(), 0);
+  }
+
+  // Item 4: generate.fromGraph - text/durationSec/bpm are accepted by the schema but, with no
+  // binding, must fail with unbound_param and never be silently dropped. Nothing is queued.
+  void fromGraphTextDurationSecBpmUnboundIsError() {
+    const QString gid = loadGraph(QStringLiteral("GusGraph"));
+    ok(Q("comfy.graph.saveAsTemplate"), {{
+        Q("graphId"), gid}, {Q("id"), QStringLiteral("unbound_tmpl")},
+        {Q("name"), QStringLiteral("Unbound Template")}, {Q("kind"), Q("image")}});
+
+    const size_t queuedBefore = fake_->queued.size();
+
+    const Result rText = tryCall(Q("generate.fromGraph"), {{
+        Q("graphId"), gid}, {Q("kind"), Q("image")},
+        {Q("text"), QStringLiteral("should not bind")}});
+    QVERIFY(!rText.ok);
+    QCOMPARE(rText.error.code, Q("unbound_param"));
+
+    const Result rDur = tryCall(Q("generate.fromGraph"), {{
+        Q("graphId"), gid}, {Q("kind"), Q("image")},
+        {Q("durationSec"), 42.0}});
+    QVERIFY(!rDur.ok);
+    QCOMPARE(rDur.error.code, Q("unbound_param"));
+
+    const Result rBpm = tryCall(Q("generate.fromGraph"), {{
+        Q("graphId"), gid}, {Q("kind"), Q("image")},
+        {Q("bpm"), 120.0}});
+    QVERIFY(!rBpm.ok);
+    QCOMPARE(rBpm.error.code, Q("unbound_param"));
+
+    QCOMPARE(fake_->queued.size(), queuedBefore);
+  }
+
+  // Item 4: generate.fromGraph - prompt and negative are bound by following KSampler
+  // positive/negative links, not by sorted node id. In txt2img_api.json node 6 is the positive
+  // CLIPTextEncode and node 7 is the negative; the positive prompt must land on node 6.
+  void fromGraphPromptNegativeBoundViaKSamplerLinks() {
+    const QString gid = loadGraph(QStringLiteral("GusGraph"));
+    ok(Q("comfy.graph.saveAsTemplate"), {{
+        Q("graphId"), gid}, {Q("id"), QStringLiteral("links_tmpl")},
+        {Q("name"), QStringLiteral("Links Template")}, {Q("kind"), Q("image")}});
+
+    fake_->setOutputKind(Q("image"));
+
+    const QJsonObject r = ok(Q("generate.fromGraph"), {{
+        Q("graphId"), gid}, {Q("kind"), Q("image")},
+        {Q("prompt"), QStringLiteral("positive prompt text")},
+        {Q("negative"), QStringLiteral("negative prompt text")},
+        {Q("wait"), true}});
+
+    QCOMPARE(r.value(Q("pending")).toBool(), false);
+    QCOMPARE(r.value(Q("files")).toArray().size(), 1);
+
+    // The submitted graph must have prompt bound to node 6 (positive via KSampler link)
+    // and negative bound to node 7 (negative via KSampler link).
+    const QJsonObject submitted = fake_->queued.back();
+    const QJsonObject node6 = submitted.value("6").toObject().value("inputs").toObject();
+    const QJsonObject node7 = submitted.value("7").toObject().value("inputs").toObject();
+    QCOMPARE(node6.value("text").toString(), QStringLiteral("positive prompt text"));
+    QCOMPARE(node7.value("text").toString(), QStringLiteral("negative prompt text"));
+  }
+
   // video wrapper guards
   void videoWrapperGuards() {
     const Result rKind = tryCall(Q("generate.video"),
