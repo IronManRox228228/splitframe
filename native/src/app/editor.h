@@ -19,6 +19,7 @@
 #include "engine/api_server.h"
 #include "engine/engine.h"
 
+#include <QElapsedTimer>
 #include <QObject>
 #include <QQmlEngine>
 #include <QUrl>
@@ -55,6 +56,13 @@ class Editor : public QObject {
   // The local JSON-RPC / SSE API (engine/api_server.h) on 127.0.0.1, driving THIS project live. Off by default.
   Q_PROPERTY(bool apiEnabled READ apiEnabled WRITE setApiEnabled NOTIFY apiChanged)
   Q_PROPERTY(QString apiStatus READ apiStatus NOTIFY apiChanged)
+  // The Assistant (Director crew). `agentMode` is the engine's mode: plan | ask | default | auto.
+  Q_PROPERTY(bool agentBusy READ agentBusy NOTIFY agentBusyChanged)
+  Q_PROPERTY(QString agentMode READ agentMode WRITE setAgentMode NOTIFY agentModeChanged)
+  // Demo mode hook: while on, the Assistant replaces its text input with one clickable block per entry of `demoBlocks`
+  // ([{id, label, hint?}]) and emits demoBlockClicked(id). The demo task fills the list and does the replay.
+  Q_PROPERTY(bool demoMode READ demoMode WRITE setDemoMode NOTIFY demoChanged)
+  Q_PROPERTY(QVariantList demoBlocks READ demoBlocks WRITE setDemoBlocks NOTIFY demoChanged)
 
 public:
   struct Options {
@@ -91,6 +99,13 @@ public:
   void setApiEnabled(bool on);
   void setApiPort(quint16 port) { apiPort_ = port; } // before enabling; 0 = any free port
   QString apiStatus() const;
+  bool agentBusy() const { return agentBusy_; }
+  QString agentMode() const { return agentMode_; }
+  void setAgentMode(const QString& mode);
+  bool demoMode() const { return demoMode_; }
+  void setDemoMode(bool on);
+  QVariantList demoBlocks() const { return demoBlocks_; }
+  void setDemoBlocks(const QVariantList& blocks);
   // The engine acting on THIS project live (undo history, window), with the agent / copilot / branch / index commands registered.
   // Created on first use (the API server, a future agent panel); edits it makes carry their actor ("agent:editor", "api", ...).
   engine::Engine* engine();
@@ -122,6 +137,34 @@ public:
   Q_INVOKABLE void gotoEdge(int dir);
   Q_INVOKABLE void toast(const QString& text, const QString& kind = QStringLiteral("info"));
 
+  // ---- the Assistant ----
+  // Sends `message` to the crew: agent.chat (the Director) in default / auto mode, agent.turn in plan / ask mode (those hold
+  // their work for agentDecide). Returns at once; the run happens on the next event-loop turn and the model client waits on
+  // the network in a nested event loop, so the window keeps painting and the user keeps editing. Progress arrives as agentEvent,
+  // the end as agentTurnFinished. Edits the agents make are normal undoable edits ("agent:*" actor), grouped per message.
+  Q_INVOKABLE void agentChat(const QString& message);
+  // Run (apply = true) or discard the plan / proposed edits a plan or ask turn is holding (agent.plan.run / agent.plan.skip).
+  Q_INVOKABLE void agentDecide(bool apply);
+  // storyboard.get as a list of {id, title, intent, durationSec, status, shotPrompt, voText, ...}
+  Q_INVOKABLE QVariantList storyboard();
+  // ---- AI settings (QSettings; the same keys agent/llm_config.cpp and the Comfy client read) ----
+  // {endpoint, model, modelFast, modelDeep, modelJudge, apiKeyHint, hasApiKey, comfyUrl, comfyHome, comfyPython, routerKeyHint,
+  //  hasRouterKey, envOverrides: [names set in the environment, which win over the saved values]}. Secrets are masked.
+  Q_INVOKABLE QVariantMap aiConfig() const;
+  // Saves a map with the same keys (an absent / empty `apiKey` / `routerKey` keeps the stored secret, `clearApiKey` removes it)
+  // and applies the model settings to the running agents. The Comfy URL applies from the next start.
+  Q_INVOKABLE bool setAiConfig(const QVariantMap& config);
+  // GET <url>/system_stats; the answer arrives as comfyTested.
+  Q_INVOKABLE void testComfy(const QString& url);
+  // ---- Home ----
+  // Recent projects for the Home cards: [{path, name, exists, width, height, durationSec, modified (ISO), thumb (image URL)}]
+  Q_INVOKABLE QVariantList homeProjects() const;
+  Q_INVOKABLE bool renameProjectFile(const QString& path, const QString& name);
+  Q_INVOKABLE bool duplicateProjectFile(const QString& path);
+  Q_INVOKABLE void removeRecent(const QString& path);
+  Q_INVOKABLE void revealInFolder(const QString& path);
+  Q_INVOKABLE QString appVersion() const;
+
   static QString toLocalPath(const QString& pathOrUrl);
 
 signals:
@@ -131,6 +174,18 @@ signals:
   void saveAsRequested();
   void useProxiesChanged();
   void apiChanged();
+  void agentBusyChanged();
+  void agentModeChanged();
+  void demoChanged();
+  // One agent.event: {agent: director|editor|colourist|audio, lane, kind: think|tool|result|review|message, text, tool?, args?, ok?}
+  void agentEvent(const QVariantMap& event);
+  // The end of an agentChat run: {ok, response, status, error?, errorMessage?, planNeeded?, plan?, pendingApproval?, proposed?}
+  void agentTurnFinished(const QVariantMap& result);
+  void storyboardChanged();
+  // A generation job (generate.*, the Comfy analyzer) changed: {jobId, analyzer, state, progress}
+  void generationJobChanged(const QVariantMap& job);
+  void comfyTested(bool ok, const QString& message);
+  void demoBlockClicked(const QString& id);
   // kind: info, error, undo (the toast offers Undo)
   void toastRequested(const QString& text, const QString& kind);
 
@@ -139,6 +194,8 @@ private:
   void pushDocument();
   void pushAssets();
   void rememberRecent();
+  void runAgent(const QString& message);
+  void onEngineEvent(const QString& name, const QJsonObject& data);
   render::AssetTable assetTable() const;
   bool wrapMedia(const QString& path);
 
@@ -161,6 +218,12 @@ private:
   std::unique_ptr<engine::ApiServer> api_;
   quint16 apiPort_ = 0;
   ai::AiOptions aiOptions_;
+  bool agentBusy_ = false;
+  QString agentMode_ = QStringLiteral("default");
+  bool demoMode_ = false;
+  QVariantList demoBlocks_;
+  QByteArray lastAgentEvent_;
+  QElapsedTimer lastAgentEventClock_;
 };
 
 } // namespace sf::app

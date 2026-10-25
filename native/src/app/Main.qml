@@ -55,7 +55,9 @@ ApplicationWindow {
     Act { id: aUndo; text: "Undo"; key: "Ctrl+Z"; enabled: appEditor.canUndo; onTriggered: appEditor.undo() }
     Act { id: aRedo; text: "Redo"; key: "Ctrl+Shift+Z"; enabled: appEditor.canRedo; onTriggered: appEditor.redo() }
     Act { id: aSelectAll; text: "Select all"; key: "Ctrl+A"; onTriggered: appEditor.controller.selectAll() }
-    Act { id: aDeselect; text: "Deselect"; key: "Escape"; onTriggered: appEditor.controller.deselect() }
+    Act { id: aDeselect; text: "Deselect"; key: "Escape"; enabled: Theme.modalDepth === 0; onTriggered: appEditor.controller.deselect() }
+    Act { id: aAsk; text: "Ask SplitFrame"; key: "Ctrl+K"; enabled: root.screen === "edit"; onTriggered: root.focusAsk() }
+    Act { id: aAiSettings; text: "AI settings…"; key: ""; onTriggered: aiSettingsDialog.open() }
     Act { id: aSplit; text: "Split at playhead"; key: "S"; onTriggered: appEditor.controller.splitAtPlayhead() }
     Act { id: aDelete; text: "Delete"; key: "Delete"; enabled: appEditor.hasSelection; onTriggered: appEditor.controller.deleteSelection() }
     Act { id: aClone; text: "Clone"; key: "Ctrl+D"; enabled: appEditor.hasSelection; onTriggered: appEditor.controller.cloneSelection() }
@@ -99,6 +101,40 @@ ApplicationWindow {
     readonly property var pageNames: ["edit", "colour", "audio"]
     property int page: Math.max(0, pageNames.indexOf(appOptions.page === "color" ? "colour" : appOptions.page))
     property var visited: [true, false, false]
+
+    // ---------------------------------------------------------------- screens
+    // "home" (the project list) or "edit". Any project that loads (new, opened, recovered) shows the editor; the back arrow returns.
+    property string screen: appOptions.screen === "home" ? "home" : "edit"
+    property bool goingHome: false
+    onScreenChanged: {
+        if (screen === "home") appPlayer.pause()
+        keys.forceActiveFocus()
+    }
+    function goHome() {
+        guard(() => {
+            if (appEditor.dirty) {
+                // "Discard" was chosen: leave a clean blank project behind so Home's New / Open don't ask again
+                goingHome = true
+                appEditor.newProject()
+                goingHome = false
+            }
+            screen = "home"
+        })
+    }
+    // Home's format cards and the drop zone: a blank project of this size, optionally with the file picker straight after
+    function startProject(width, height, importAfter) {
+        guard(() => {
+            appEditor.newProject("", width, height, 30)
+            if (importAfter) importDialog.open()
+        })
+    }
+    // Ctrl+K: focus the command bar, unless the user is typing in some other field
+    function focusAsk() {
+        const f = root.activeFocusItem
+        const typingElsewhere = f && f !== editPage.commandBar.field && typeof f.cursorPosition !== "undefined"
+        if (typingElsewhere) return
+        editPage.focusCommandBar()
+    }
     onPageChanged: {
         const v = visited.slice()
         v[page] = true
@@ -129,6 +165,9 @@ ApplicationWindow {
             appEditor.openPath(path)
         }
     }
+
+    // main() calls this when the application is about to quit: the refraction layers let go of their backdrops before teardown
+    function shutdownGlass() { Theme.refractionOn = false }
 
     property bool forceClose: false
     onClosing: close => {
@@ -200,6 +239,7 @@ ApplicationWindow {
             Cmd { act: aImport }
             Cmd { act: aExport }
             MenuSeparator {}
+            Cmd { act: aAiSettings }
             Cmd { act: aApi }
             MenuSeparator {}
             Cmd { act: aQuit }
@@ -217,6 +257,8 @@ ApplicationWindow {
             Cmd { act: aDelete }
             Cmd { act: aNudgeL }
             Cmd { act: aNudgeR }
+            MenuSeparator {}
+            Cmd { act: aAsk }
         }
         Menu {
             title: "&Playback"
@@ -247,14 +289,31 @@ ApplicationWindow {
 
     // ---------------------------------------------------------------- top bar
     header: Item {
-        height: 46
+        visible: root.screen === "edit"
+        height: visible ? 46 : 0
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
 
         RowLayout {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 14
+            anchors.leftMargin: 8
             spacing: 8
+            IconBtn {
+                iconName: "back"
+                iconSize: 18
+                tip: "Back to projects"
+                onClicked: root.goHome()
+            }
+            Image {
+                source: "assets/splitframe-logo.png"
+                sourceSize.height: 44
+                Layout.preferredHeight: 22
+                Layout.preferredWidth: 22 * 762 / 246
+                smooth: true
+                mipmap: true
+                opacity: 0.95
+            }
+            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: Theme.lineStrong; opacity: 0.7 }
             Rectangle {
                 width: 8
                 height: 8
@@ -293,12 +352,22 @@ ApplicationWindow {
         anchors.fill: parent
         focus: true
 
+        HomePage {
+            anchors.fill: parent
+            visible: root.screen === "home"
+            onCreateRequested: (w, h, importAfter) => root.startProject(w, h, importAfter)
+            onOpenRequested: path => root.guard(() => root.openWithRecovery(path))
+        }
+
         StackLayout {
             anchors.fill: parent
+            visible: root.screen === "edit"
             currentIndex: root.page
 
             EditPage {
                 id: editPage
+                leftPanel: appOptions.assistant ? "assistant" : "media"
+                onAiSettingsRequested: aiSettingsDialog.open()
                 onImportRequested: importDialog.open()
                 onFocusReleased: keys.forceActiveFocus()
                 onAssetDragStarted: (id, name) => {
@@ -362,8 +431,9 @@ ApplicationWindow {
         }
     }
 
-    // files dragged in from Explorer
+    // files dragged in from Explorer. On Home they start a 16:9 project (port of ui/DropImport.tsx).
     DropArea {
+        id: dropArea
         anchors.fill: parent
         z: -1
         onDropped: drop => {
@@ -371,7 +441,40 @@ ApplicationWindow {
             const urls = []
             for (let i = 0; i < drop.urls.length; ++i) urls.push(drop.urls[i].toString())
             if (urls.length === 1 && urls[0].toLowerCase().endsWith(".json")) root.guard(() => root.openWithRecovery(urls[0]))
+            else if (root.screen === "home") root.guard(() => {
+                appEditor.newProject("", 1920, 1080, 30)
+                appEditor.importFiles(urls.slice(0, 200))
+            })
             else appEditor.importFiles(urls)
+        }
+    }
+    Rectangle {
+        // "Drop to import"
+        parent: keys
+        z: 950
+        anchors.fill: parent
+        visible: dropArea.containsDrag && dropArea.drag.source === null
+        color: "#cc050606"
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 24
+            radius: 22
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.accent
+            GlassPanel {
+                anchors.centerIn: parent
+                strong: true
+                width: 360
+                height: 150
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    spacing: 10
+                    Icon { Layout.alignment: Qt.AlignHCenter; name: "upload"; size: 36; strokeWidth: 1.6; color: Theme.text }
+                    Text { Layout.alignment: Qt.AlignHCenter; text: "Drop to import"; color: Theme.text; font.pixelSize: 18; font.weight: Font.DemiBold }
+                    Text { Layout.alignment: Qt.AlignHCenter; text: "Video, audio and images"; color: Theme.muted; font.pixelSize: 13 }
+                }
+            }
         }
     }
 
@@ -421,6 +524,10 @@ ApplicationWindow {
     }
 
     ExportDialog { id: exportDialog }
+    AiSettingsDialog {
+        id: aiSettingsDialog
+        onSaved: editPage.assistant.reloadConfig()
+    }
 
     Dialog {
         id: unsavedDialog
@@ -508,6 +615,11 @@ ApplicationWindow {
         visited = v
         appEditor.mixer.metering = page === 2
         keys.forceActiveFocus()
+        Theme.refractionOn = appOptions.glass !== "flat"
+        Theme.backdropItem = keys
+        if (appOptions.aiSettings) aiSettingsDialog.open()
+        if (appOptions.cmdBar) Qt.callLater(() => editPage.focusCommandBar())
+        if (appOptions.ask !== "") Qt.callLater(() => editPage.sendToAssistant(appOptions.ask))
         if (appOptions.startup) {
             const found = appEditor.recoveries()
             if (found.length > 0) {
@@ -521,6 +633,7 @@ ApplicationWindow {
     Connections {
         target: appEditor.project
         function onLoaded() {
+            if (!root.goingHome) root.screen = "edit"
             Qt.callLater(() => {
                 const v = editPage.timeline.view
                 if (appOptions.fit || appEditor.controller.durationFrames * v.pxPerFrame > v.width - 40)

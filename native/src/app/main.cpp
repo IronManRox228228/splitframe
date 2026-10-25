@@ -2,6 +2,7 @@
 #include "app/editor.h"
 #include "app/player.h"
 #include "app/pool_image_provider.h"
+#include "app/project_thumb_provider.h"
 #include "app/window_recorder.h"
 #include "engine/headless.h"
 #include "export/export_cli.h"
@@ -97,7 +98,13 @@ int main(int argc, char* argv[]) {
   const QCommandLineOption recordDelayOpt(QStringLiteral("record-delay"), QStringLiteral("Seconds to wait after the window first shows before recording starts (default 0)."), QStringLiteral("s"));
   const QCommandLineOption llmEndpointOpt(QStringLiteral("llm-endpoint"), QStringLiteral("Chat-completions URL for the agent commands (default: $SF_LLM_ENDPOINT or http://127.0.0.1:8080/v1/chat/completions; \"mock\" for offline)."), QStringLiteral("url"));
   const QCommandLineOption llmModelOpt(QStringLiteral("llm-model"), QStringLiteral("Model name for the agent commands (default: $SF_LLM_MODEL)."), QStringLiteral("name"));
-  for (const auto* o : {&apiOpt, &apiPortOpt, &pageOpt, &llmEndpointOpt, &llmModelOpt}) cli.addOption(*o);
+  const QCommandLineOption screenOpt(QStringLiteral("screen"), QStringLiteral("Open on this screen: home (default without a file) or edit."), QStringLiteral("screen"));
+  const QCommandLineOption assistantOpt(QStringLiteral("assistant"), QStringLiteral("Open the Assistant panel on the Edit page."));
+  const QCommandLineOption askOpt(QStringLiteral("ask"), QStringLiteral("Send <message> to the Assistant once the editor is up (screenshots, scripted runs)."), QStringLiteral("message"));
+  const QCommandLineOption cmdBarOpt(QStringLiteral("cmdbar"), QStringLiteral("Focus the Ask SplitFrame command bar on the Edit page."));
+  const QCommandLineOption aiSettingsOpt(QStringLiteral("ai-settings"), QStringLiteral("Open the AI settings dialog."));
+  const QCommandLineOption glassOpt(QStringLiteral("glass"), QStringLiteral("Glass style: refract (default, falls back to flat) or flat."), QStringLiteral("style"));
+  for (const auto* o : {&apiOpt, &apiPortOpt, &pageOpt, &llmEndpointOpt, &llmModelOpt, &screenOpt, &assistantOpt, &askOpt, &cmdBarOpt, &aiSettingsOpt, &glassOpt}) cli.addOption(*o);
   for (const auto* o : {&screenshotOpt, &frameOpt, &cpuOpt, &swOpt, &playOpt, &settingsOpt, &recoveryOpt, &selectOpt, &fitOpt,
                         &recordDirOpt, &recordFpsOpt, &recordSecOpt, &recordDelayOpt}) cli.addOption(*o);
   cli.process(app);
@@ -119,14 +126,30 @@ int main(int argc, char* argv[]) {
   engine.addImageProvider(QStringLiteral("pool"), new sf::app::PoolImageProvider(editor.pool()));
   engine.rootContext()->setContextProperty(QStringLiteral("appPlayer"), &player);
   engine.rootContext()->setContextProperty(QStringLiteral("appEditor"), &editor);
-  engine.rootContext()->setContextProperty(QStringLiteral("appOptions"),
-                                           QVariantMap{{QStringLiteral("fit"), cli.isSet(fitOpt)}, {QStringLiteral("page"), cli.value(pageOpt)}, {QStringLiteral("startup"), cli.positionalArguments().isEmpty()}});
+  engine.addImageProvider(QStringLiteral("projthumb"), new sf::app::ProjectThumbProvider);
+  // Home is the first screen unless a file, a page or --screen asks for the editor
+  const QString screen = cli.isSet(screenOpt) ? cli.value(screenOpt)
+                         : (!cli.positionalArguments().isEmpty() || cli.isSet(pageOpt) || cli.isSet(assistantOpt) || cli.isSet(askOpt) || cli.isSet(cmdBarOpt)) ? QStringLiteral("edit")
+                                                                                                                                                              : QStringLiteral("home");
+  engine.rootContext()->setContextProperty(
+      QStringLiteral("appOptions"),
+      QVariantMap{{QStringLiteral("fit"), cli.isSet(fitOpt)},
+                  {QStringLiteral("page"), cli.value(pageOpt)},
+                  {QStringLiteral("startup"), cli.positionalArguments().isEmpty()},
+                  {QStringLiteral("screen"), screen},
+                  {QStringLiteral("assistant"), cli.isSet(assistantOpt) || cli.isSet(askOpt)},
+                  {QStringLiteral("ask"), cli.value(askOpt)},
+                  {QStringLiteral("cmdBar"), cli.isSet(cmdBarOpt)},
+                  {QStringLiteral("aiSettings"), cli.isSet(aiSettingsOpt)},
+                  {QStringLiteral("glass"), cli.isSet(glassOpt) ? cli.value(glassOpt) : QStringLiteral("refract")}});
   QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); },
                    Qt::QueuedConnection);
   engine.loadFromModule(QStringLiteral("SplitFrame"), QStringLiteral("Main"));
   if (engine.rootObjects().isEmpty()) return 1;
   auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
   if (!window) return 1;
+
+  QObject::connect(&app, &QCoreApplication::aboutToQuit, window, [window] { QMetaObject::invokeMethod(window, "shutdownGlass"); });
 
   if (cli.isSet(recordDirOpt)) {
     sf::app::WindowRecorder::Options recOpt;
@@ -209,13 +232,16 @@ int main(int argc, char* argv[]) {
     wait->clock.start();
     timer->setInterval(50);
     // the Audio page has no preview, so no frame is ever composited for it
-    const bool wantFrame = cli.value(pageOpt) != QLatin1String("audio");
+    const bool wantFrame = cli.value(pageOpt) != QLatin1String("audio") && screen != QLatin1String("home");
     // the Colour page measures its scopes in the background: shoot once they are in
     const bool wantScopes = cli.value(pageOpt) == QLatin1String("colour");
-    QObject::connect(timer, &QTimer::timeout, window, [wait, window, out, opened, wantFrame, wantScopes, &player, &editor] {
+    // Home card pictures and a scripted Assistant run (--ask) arrive after the first frame: give them a floor of time
+    const int minMs = cli.isSet(askOpt) ? 2500 : (screen == QLatin1String("home") ? 1500 : (cli.isSet(aiSettingsOpt) || cli.isSet(cmdBarOpt) ? 800 : 0));
+    QObject::connect(timer, &QTimer::timeout, window, [wait, window, out, opened, wantFrame, wantScopes, minMs, &player, &editor] {
       // wait for the playhead's frame to be fully composited (decoders caught up) and the thumbnails to
       // exist, then a few frames more so the window has presented it; give up after a while and shoot what is there
-      const bool ready = *opened && editor.pool()->pending() == 0 && player.loaded() && (!wantFrame || player.settled()) && (!wantScopes || editor.colour()->scopesIdle());
+      const bool ready = *opened && editor.pool()->pending() == 0 && player.loaded() && (!wantFrame || player.settled()) && (!wantScopes || editor.colour()->scopesIdle()) &&
+                         !editor.agentBusy() && wait->clock.elapsed() >= minMs;
       wait->steady = ready ? wait->steady + 1 : 0;
       const bool timedOut = wait->clock.elapsed() > 20000;
       if (wait->steady >= 6 || timedOut) {

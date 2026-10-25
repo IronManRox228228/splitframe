@@ -1,14 +1,31 @@
 import QtQuick
 
 // A glass slab: translucent fill over the ground, a 1px border and an inset highlight along the top edge.
-// A translucent fill stands in for the Electron app's backdrop blur, which is not worth a blur pass per panel.
+// Flat by default (a translucent fill stands in for the Electron app's backdrop blur, which is not worth a blur pass per panel).
+// Give it a `backdrop` (an item behind it, not containing it) and it refracts that instead: RefractiveGlass bends and softens the
+// picture near the rim. It falls back to the flat fill whenever the shader is unavailable or Theme.refractionOn is off.
 Rectangle {
     id: slab
     property bool strong: false
-    color: strong ? Theme.glassStrong : Theme.glassFill
+    property Item backdrop: null
+    readonly property bool refracting: fx.active
+    function refreshBackdrop() { fx.refresh() }
+
+    color: refracting ? "transparent" : (strong ? Theme.glassStrong : Theme.glassFill)
     radius: Theme.radiusPanel
     border.width: 1
     border.color: Theme.glassBorder
+
+    RefractiveGlass {
+        id: fx
+        anchors.fill: parent
+        z: -1
+        backdrop: slab.backdrop
+        radius: slab.radius
+        strength: slab.strong ? 16 : 10
+        bevel: Math.min(22, slab.radius)
+        tint: slab.strong ? Qt.rgba(0.063, 0.07, 0.067, 0.86) : Qt.rgba(1, 1, 1, 0.06)
+    }
 
     Rectangle {
         // inset top highlight

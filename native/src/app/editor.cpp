@@ -1,9 +1,20 @@
 #include "app/editor.h"
 
+#include "agent/llm_config.h"
+#include "core/schema.h"
 #include "core/timeline_doc.h"
 #include "media/probe.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDesktopServices>
+#include <QJsonDocument>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QProcess>
+#include <QSettings>
+#include <QTimer>
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
@@ -29,6 +40,10 @@ engine::Engine* Editor::engine() {
     engine_ = std::make_unique<engine::Engine>();
     engine_->attach(&project_, &pool_);
     ai_ = std::make_unique<ai::AiServices>(*engine_, aiOptions_);
+    connect(engine_.get(), &engine::Engine::event, this, [this](const QString& name, const QJsonObject& data, qint64) { onEngineEvent(name, data); });
+    // The crew's live stream: the harness's Qt signal becomes the engine event "agent.event" (API clients see it too)
+    if (auto* h = ai_->harness())
+      connect(h, &agent::AgentHarness::agentEvent, this, [this](const QJsonObject& ev) { engine_->emitEvent(QStringLiteral("agent.event"), ev); });
   }
   return engine_.get();
 }
@@ -324,5 +339,280 @@ void Editor::gotoEdge(int dir) {
 }
 
 void Editor::toast(const QString& text, const QString& kind) { emit toastRequested(text, kind); }
+
+// ---------- the Assistant ----------
+
+void Editor::setAgentMode(const QString& mode) {
+  const QString m = mode.trimmed().toLower();
+  if (m != QLatin1String("plan") && m != QLatin1String("ask") && m != QLatin1String("default") && m != QLatin1String("auto")) return;
+  if (m == agentMode_) return;
+  agentMode_ = m;
+  emit agentModeChanged();
+}
+
+void Editor::setDemoMode(bool on) {
+  if (on == demoMode_) return;
+  demoMode_ = on;
+  emit demoChanged();
+}
+
+void Editor::setDemoBlocks(const QVariantList& blocks) {
+  demoBlocks_ = blocks;
+  emit demoChanged();
+}
+
+// Engine events the GUI cares about. agent.event is the crew's live stream; the harness's own Qt signal is forwarded into the engine
+// in engine() below, so the API server's SSE stream carries it too. If the harness already forwards it, the duplicate is dropped here.
+void Editor::onEngineEvent(const QString& name, const QJsonObject& data) {
+  if (name == QLatin1String("agent.event")) {
+    const QByteArray key = QJsonDocument(data).toJson(QJsonDocument::Compact);
+    if (key == lastAgentEvent_ && lastAgentEventClock_.isValid() && lastAgentEventClock_.elapsed() < 25) return;
+    lastAgentEvent_ = key;
+    lastAgentEventClock_.restart();
+    emit agentEvent(data.toVariantMap());
+  } else if (name == QLatin1String("doc.changed")) {
+    emit storyboardChanged();
+  } else if (name == QLatin1String("jobs.updated")) {
+    const QString analyzer = data.value(QStringLiteral("analyzer")).toString();
+    if (analyzer.startsWith(QLatin1String("comfy")) || analyzer.startsWith(QLatin1String("generate"))) emit generationJobChanged(data.toVariantMap());
+  }
+}
+
+void Editor::agentChat(const QString& message) {
+  const QString text = message.trimmed();
+  if (text.isEmpty() || agentBusy_) return;
+  agentBusy_ = true;
+  emit agentBusyChanged();
+  QTimer::singleShot(0, this, [this, text] { runAgent(text); });
+}
+
+void Editor::runAgent(const QString& message) {
+  engine::Engine* e = engine();
+  e->call(QStringLiteral("agent.mode.set"), QJsonObject{{QStringLiteral("mode"), agentMode_}});
+  const bool held = agentMode_ == QLatin1String("plan") || agentMode_ == QLatin1String("ask");
+  const engine::Result r = e->call(held ? QStringLiteral("agent.turn") : QStringLiteral("agent.chat"), QJsonObject{{QStringLiteral("message"), message}});
+  QVariantMap out;
+  if (r.ok) {
+    out = r.value.toObject().toVariantMap();
+  } else {
+    out.insert(QStringLiteral("ok"), false);
+    out.insert(QStringLiteral("error"), r.error.code == QLatin1String("unavailable") ? QStringLiteral("provider_unreachable") : r.error.code);
+    out.insert(QStringLiteral("errorMessage"), r.error.message);
+  }
+  agentBusy_ = false;
+  emit agentBusyChanged();
+  emit agentTurnFinished(out);
+  emit storyboardChanged();
+}
+
+void Editor::agentDecide(bool apply) {
+  if (agentBusy_) return;
+  agentBusy_ = true;
+  emit agentBusyChanged();
+  QTimer::singleShot(0, this, [this, apply] {
+    const engine::Result r = engine()->call(apply ? QStringLiteral("agent.plan.run") : QStringLiteral("agent.plan.skip"));
+    QVariantMap out;
+    if (r.ok) {
+      out = r.value.toObject().toVariantMap();
+    } else {
+      out.insert(QStringLiteral("ok"), false);
+      out.insert(QStringLiteral("error"), r.error.code);
+      out.insert(QStringLiteral("errorMessage"), r.error.message);
+    }
+    out.insert(QStringLiteral("decision"), apply ? QStringLiteral("apply") : QStringLiteral("skip"));
+    agentBusy_ = false;
+    emit agentBusyChanged();
+    emit agentTurnFinished(out);
+    emit storyboardChanged();
+  });
+}
+
+QVariantList Editor::storyboard() {
+  const engine::Result r = engine()->call(QStringLiteral("storyboard.get"));
+  QVariantList out;
+  if (!r.ok) return out;
+  for (const QJsonValue& v : r.value.toObject().value(QStringLiteral("scenes")).toArray()) out.push_back(v.toObject().toVariantMap());
+  return out;
+}
+
+// ---------- AI settings ----------
+
+namespace {
+
+QString maskSecret(const QString& s) {
+  if (s.isEmpty()) return QString();
+  return s.size() <= 8 ? QString(s.size(), QChar(0x2022)) : QString(6, QChar(0x2022)) + s.right(4);
+}
+
+QStringList envOverridesOf(const QStringList& names) {
+  QStringList out;
+  for (const QString& n : names)
+    if (!qEnvironmentVariable(n.toUtf8().constData()).trimmed().isEmpty()) out << n;
+  return out;
+}
+
+} // namespace
+
+QVariantMap Editor::aiConfig() const {
+  const agent::LlmConfig& cfg = aiOptions_.llm; // what the agents actually run on: environment, saved settings, then --llm-* options
+  QSettings s;
+  QVariantMap m;
+  m.insert(QStringLiteral("endpoint"), cfg.endpoint);
+  m.insert(QStringLiteral("model"), cfg.model);
+  m.insert(QStringLiteral("modelFast"), cfg.modelFast == cfg.model ? QString() : cfg.modelFast);
+  m.insert(QStringLiteral("modelDeep"), cfg.modelDeep == cfg.model ? QString() : cfg.modelDeep);
+  m.insert(QStringLiteral("modelJudge"), cfg.modelJudge == cfg.model ? QString() : cfg.modelJudge);
+  m.insert(QStringLiteral("hasApiKey"), !cfg.apiKey.isEmpty());
+  m.insert(QStringLiteral("apiKeyHint"), maskSecret(cfg.apiKey));
+  m.insert(QStringLiteral("comfyUrl"), s.value(QStringLiteral("comfy/url")).toString());
+  m.insert(QStringLiteral("comfyHome"), s.value(QStringLiteral("comfy/home")).toString());
+  m.insert(QStringLiteral("comfyPython"), s.value(QStringLiteral("comfy/python")).toString());
+  const QString routerKey = s.value(QStringLiteral("comfyRouter/apiKey")).toString();
+  const QString envRouter = qEnvironmentVariable("COMFY_API_KEY");
+  m.insert(QStringLiteral("hasRouterKey"), !routerKey.isEmpty() || !envRouter.isEmpty());
+  m.insert(QStringLiteral("routerKeyHint"), maskSecret(routerKey.isEmpty() ? envRouter : routerKey));
+  m.insert(QStringLiteral("envOverrides"),
+           envOverridesOf({QStringLiteral("SF_LLM_ENDPOINT"), QStringLiteral("SF_LLM_MODEL"), QStringLiteral("SF_LLM_MODEL_FAST"), QStringLiteral("SF_LLM_MODEL_DEEP"),
+                           QStringLiteral("SF_LLM_MODEL_JUDGE"), QStringLiteral("SF_LLM_API_KEY"), QStringLiteral("SF_COMFY_URL"), QStringLiteral("SF_COMFY_HOME"),
+                           QStringLiteral("SF_COMFY_PYTHON"), QStringLiteral("COMFY_API_KEY")}));
+  return m;
+}
+
+bool Editor::setAiConfig(const QVariantMap& c) {
+  QSettings s;
+  const auto put = [&](const QString& key, const QString& value) {
+    const QString v = value.trimmed();
+    if (v.isEmpty()) s.remove(key);
+    else s.setValue(key, v);
+  };
+  put(QStringLiteral("SF_LLM_ENDPOINT"), c.value(QStringLiteral("endpoint")).toString());
+  put(QStringLiteral("SF_LLM_MODEL"), c.value(QStringLiteral("model")).toString());
+  put(QStringLiteral("SF_LLM_MODEL_FAST"), c.value(QStringLiteral("modelFast")).toString());
+  put(QStringLiteral("SF_LLM_MODEL_DEEP"), c.value(QStringLiteral("modelDeep")).toString());
+  put(QStringLiteral("SF_LLM_MODEL_JUDGE"), c.value(QStringLiteral("modelJudge")).toString());
+  if (c.value(QStringLiteral("clearApiKey")).toBool()) s.remove(QStringLiteral("SF_LLM_API_KEY"));
+  else if (!c.value(QStringLiteral("apiKey")).toString().trimmed().isEmpty()) s.setValue(QStringLiteral("SF_LLM_API_KEY"), c.value(QStringLiteral("apiKey")).toString().trimmed());
+  put(QStringLiteral("comfy/url"), c.value(QStringLiteral("comfyUrl")).toString());
+  put(QStringLiteral("comfy/home"), c.value(QStringLiteral("comfyHome")).toString());
+  put(QStringLiteral("comfy/python"), c.value(QStringLiteral("comfyPython")).toString());
+  if (c.value(QStringLiteral("clearRouterKey")).toBool()) s.remove(QStringLiteral("comfyRouter/apiKey"));
+  else if (!c.value(QStringLiteral("routerKey")).toString().trimmed().isEmpty()) s.setValue(QStringLiteral("comfyRouter/apiKey"), c.value(QStringLiteral("routerKey")).toString().trimmed());
+  s.sync();
+  if (s.status() != QSettings::NoError) {
+    emit toastRequested(QStringLiteral("Could not save AI settings."), QStringLiteral("error"));
+    return false;
+  }
+  agent::LlmConfig cfg = agent::LlmConfig::fromEnvironment();
+  cfg.timeoutMs = aiOptions_.llm.timeoutMs;
+  aiOptions_.llm = cfg;
+  if (ai_) ai_->setLlmConfig(cfg); // before the first agent use there is nothing to rebuild: engine() reads aiOptions_
+  emit toastRequested(QStringLiteral("AI settings saved."), QStringLiteral("info"));
+  return true;
+}
+
+void Editor::testComfy(const QString& url) {
+  const QString text = url.trimmed().isEmpty() ? qEnvironmentVariable("SF_COMFY_URL", QStringLiteral("http://127.0.0.1:8188")) : url.trimmed();
+  const QUrl base(text);
+  if (!base.isValid() || base.scheme().isEmpty()) {
+    emit comfyTested(false, QStringLiteral("That is not a URL. Try http://127.0.0.1:8188."));
+    return;
+  }
+  QUrl target = base;
+  target.setPath(base.path().endsWith(QLatin1Char('/')) ? base.path() + QStringLiteral("system_stats") : base.path() + QStringLiteral("/system_stats"));
+  auto* nam = new QNetworkAccessManager(this);
+  QNetworkRequest req(target);
+  req.setTransferTimeout(3000);
+  QNetworkReply* reply = nam->get(req);
+  connect(reply, &QNetworkReply::finished, this, [this, reply, nam, base] {
+    const bool ok = reply->error() == QNetworkReply::NoError;
+    emit comfyTested(ok, ok ? QStringLiteral("ComfyUI answered at %1.").arg(base.toString()) : QStringLiteral("Can't reach ComfyUI at %1. Is it running?").arg(base.toString()));
+    reply->deleteLater();
+    nam->deleteLater();
+  });
+}
+
+// ---------- Home ----------
+
+QVariantList Editor::homeProjects() const {
+  QVariantList out;
+  for (const QVariant& v : recent_.entries()) {
+    const QVariantMap e = v.toMap();
+    const QString path = e.value(QStringLiteral("path")).toString();
+    QVariantMap m{{QStringLiteral("path"), path}, {QStringLiteral("name"), e.value(QStringLiteral("name"))}, {QStringLiteral("exists"), e.value(QStringLiteral("exists"))}};
+    const QFileInfo fi(path);
+    m.insert(QStringLiteral("modified"), fi.exists() ? fi.lastModified().toString(Qt::ISODate) : QString());
+    m.insert(QStringLiteral("width"), 1920);
+    m.insert(QStringLiteral("height"), 1080);
+    m.insert(QStringLiteral("durationSec"), 0.0);
+    if (fi.exists()) {
+      try {
+        const ProjectBundle b = loadProjectBundle(path);
+        m.insert(QStringLiteral("name"), b.doc.project.name);
+        m.insert(QStringLiteral("width"), static_cast<int>(b.doc.project.width));
+        m.insert(QStringLiteral("height"), static_cast<int>(b.doc.project.height));
+        Frame end = 0;
+        for (const Item& it : b.doc.items) end = std::max(end, it.startFrame + it.durationFrames);
+        m.insert(QStringLiteral("durationSec"), b.doc.project.fps > 0 ? static_cast<double>(end) / static_cast<double>(b.doc.project.fps) : 0.0);
+      } catch (const std::exception&) {
+      }
+      m.insert(QStringLiteral("thumb"), QStringLiteral("image://projthumb/") + QString::fromLatin1(QUrl::toPercentEncoding(path)));
+    }
+    out.push_back(m);
+  }
+  return out;
+}
+
+bool Editor::renameProjectFile(const QString& path, const QString& name) {
+  const QString n = name.trimmed();
+  if (n.isEmpty()) return false;
+  if (path == project_.path()) {
+    emit toastRequested(QStringLiteral("Open projects are renamed from the editor."), QStringLiteral("info"));
+    return false;
+  }
+  try {
+    ProjectBundle b = loadProjectBundle(path);
+    b.doc.project.name = n;
+    saveProjectBundle(path, b, true);
+  } catch (const std::exception& e) {
+    emit toastRequested(QStringLiteral("Could not rename: %1").arg(QString::fromUtf8(e.what())), QStringLiteral("error"));
+    return false;
+  }
+  emit recent_.changed();
+  return true;
+}
+
+bool Editor::duplicateProjectFile(const QString& path) {
+  try {
+    ProjectBundle b = loadProjectBundle(path);
+    const QFileInfo fi(path);
+    const QString newName = b.doc.project.name + QStringLiteral(" copy");
+    QString target = fi.absoluteDir().filePath(fi.completeBaseName() + QStringLiteral(" copy.json"));
+    for (int i = 2; QFileInfo::exists(target); ++i) target = fi.absoluteDir().filePath(QStringLiteral("%1 copy %2.json").arg(fi.completeBaseName()).arg(i));
+    b.doc.project.name = newName;
+    b.doc.project.id = newId(QStringLiteral("prj"));
+    saveProjectBundle(target, b, true);
+    recent_.add(target);
+    emit toastRequested(QStringLiteral("Created \"%1\"").arg(newName), QStringLiteral("info"));
+    return true;
+  } catch (const std::exception& e) {
+    emit toastRequested(QStringLiteral("Could not duplicate: %1").arg(QString::fromUtf8(e.what())), QStringLiteral("error"));
+    return false;
+  }
+}
+
+void Editor::removeRecent(const QString& path) { recent_.remove(path); }
+
+void Editor::revealInFolder(const QString& path) {
+  const QFileInfo fi(path);
+#ifdef Q_OS_WIN
+  if (fi.exists()) {
+    QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("/select,"), QDir::toNativeSeparators(fi.absoluteFilePath())});
+    return;
+  }
+#endif
+  QDesktopServices::openUrl(QUrl::fromLocalFile(fi.absolutePath()));
+}
+
+QString Editor::appVersion() const { return QCoreApplication::applicationVersion(); }
 
 } // namespace sf::app

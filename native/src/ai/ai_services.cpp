@@ -37,6 +37,12 @@ AiServices::~AiServices() {
   if (catalogIsTemp_ && !openCatalog_.isEmpty()) QFile::remove(openCatalog_);
 }
 
+void AiServices::setLlmConfig(const agent::LlmConfig& config) {
+  options_.llm = config;
+  configError_.clear();
+  setLlmClient(agent::makeLlmClient(options_.llm, &configError_));
+}
+
 void AiServices::setLlmClient(std::shared_ptr<agent::LlmClient> client) {
   llm_ = std::make_shared<agent::RecordingLlmClient>(std::move(client));
   harness_->setLlmClient(llm_);

@@ -47,7 +47,12 @@ LlmConfig LlmConfig::fromEnvironment() {
   if (ok && ms > 0) c.timeoutMs = ms;
   c.mockScript = qEnvironmentVariable("SF_LLM_MOCK_SCRIPT").trimmed();
   const QString apiKey = qEnvironmentVariable("SF_LLM_API_KEY").trimmed();
-  if (!apiKey.isEmpty()) c.apiKey = apiKey;
+  if (!apiKey.isEmpty()) {
+    c.apiKey = apiKey;
+  } else {
+    const QString sKey = settings.value(QStringLiteral("SF_LLM_API_KEY")).toString().trimmed();
+    if (!sKey.isEmpty()) c.apiKey = sKey;
+  }
   return c;
 }
 

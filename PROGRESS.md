@@ -177,3 +177,41 @@ RUN COMPLETE
 - **tst_agent_harness**: 12 passed, 0 failed, 0 skipped
 - **tst_agent_specialists**: 9 passed, 0 failed, 0 skipped
 - **tst_agent_peer_bus**: 8 passed, 0 failed, 0 skipped
+
+## 19-UI-glass-port.md
+
+Worktree: `.claude/worktrees/agent-a816a9169e73d0751` (reset to `comfy` a672500; nothing committed). Build dir `native/build/ui`.
+
+### Files changed
+- C++: `native/src/app/editor.{h,cpp}` (agentChat/agentDecide/storyboard bridge, agentMode, demoMode/demoBlocks/demoBlockClicked, AI config in QSettings, testComfy, Home project list/rename/duplicate/reveal), `main.cpp` (Home first, `--screen --assistant --ask --cmdbar --ai-settings --glass`, thumb provider, quit hook), new `project_thumb_provider.h`, `native/src/ai/ai_services.{h,cpp}` (`setLlmConfig`), `native/src/agent/llm_config.cpp` (SF_LLM_API_KEY read from QSettings too). No edit to agent_harness/specialist/types/cmd_comfy/cmd_session: the harness `agentEvent` signal is forwarded into `Engine::emitEvent("agent.event")` from `Editor::engine()`, and the Editor listens on `Engine::event` (duplicates from a harness-side hookup are dropped).
+- QML (new): Icons, Icon, IconBtn, GButton, GInput, GDialog, GlassMenu, DashedBox, Spinner, HomePage, ProjectCard, LeftRail, AssistantPanel, AgentChip, AgentModePill, ToolRow, ReviewCard, PlanCard, ConfirmCard, Markdown, StoryboardStrip, CommandBar, AiSettingsDialog, RefractiveGlass, `format.js`, `agentfmt.js`, `assets/splitframe-logo.png` (rasterised from the Electron SVG), `shaders/refract.frag`. Edited: Theme (tokens, agent colours), GlassPanel (optional backdrop), Main, EditPage, PreviewPanel, CMakeLists (`qt_add_shaders`).
+- Tests: `tst_ai_gui` (+2: agentChat returns at once and streams real events; unreachable model gives `provider_unreachable`), `tst_ui_smoke` (+5: Home, Assistant crew run on mock, Assistant error, command bar + AI settings, flat-glass fallback; `SF_DEMO_DIR` keeps the demo project).
+
+### Status
+1. Home (ProjectListScreen, ProjectCard, DropImport): done. Glow + wordmark, search pill + New video, 4 format cards + Start from footage, recent cards (picture, duration, aspect, hover menu), drop overlay, Home on start, back arrow returns.
+2. Assistant (ChatTab/AgentCards/Markdown): done. Rail entry, tool cards (agent name in crew colour, spinner/check/failure reason, expandable JSON), reviews (approved / needs revision + reason), markdown replies, Copy, Stop marker, IME-safe Enter, Shift+Tab cycles mode, friendly errors with Retry / Open settings / technical details, plan + confirm cards for Plan/Ask mode, compact storyboard (`storyboard.get`, refreshed on doc changes), generation progress from `jobs.updated` (comfy/generate analyzers). Everything shown comes from real `agent.event`s and turn results.
+3. Command bar (Ctrl+K, Ask SplitFrame): done, sends through the same path.
+4. Mode pill: done, wired to `agent.mode.set`. Default/Auto send `agent.chat` (Director); Plan/Ask send `agent.turn` (the only path that holds plans/proposals).
+5. AI settings: done (SF_LLM_ENDPOINT/MODEL/_FAST/_DEEP/_JUDGE, API key masked, ComfyUI URL + Test, folder, python, Router key masked, env-override notes). No Meterless/Zetaris/NVIDIA.
+6. Demo hook: `Editor.demoMode`, `demoBlocks` ([{id,label}]), signal `demoBlockClicked(id)`; the Assistant swaps its text box for clickable blocks. No replay built.
+Refraction glass: SHIPPED, default on (`--glass flat` or Theme.refractionOn=false falls back; also falls back if the shader errors). Used by dialogs, menus, mode list (backdrop = window content, captured only while open), command bar (small region of the preview, re-captured 4x/s), Home cards (backdrop = hero glow). Editor panels stay flat on purpose (no per-frame capture of the timeline/video). Lens displacement, 9-tap blur, red/blue fringe, specular rim. Playback untouched (no live full-window layers).
+
+### Tests
+- ctest (77): 75 pass; `tst_ai_gui` 1 fail and `tst_ai_wire` 2 fails are pre-existing on `comfy` (mock repeats tool_calls so 8 markers instead of 1; actor is "api" not "agent:editor"), both in agent/harness code, not touched here. My new tst_ai_gui cases pass.
+- `tst_ui_smoke` Totals: 13 passed, 0 failed, 0 skipped, 0 blacklisted, 146802ms
+- `tst_ai_gui` own new cases: 2 of 2 pass (suite Totals: 4 passed, 1 failed (pre-existing), 0 skipped).
+
+### Screenshots (`native/build/ui/shots/`)
+`ui_home.png`, `ui_home_empty.png`, `ui_assistant.png` (real crew run on the mock model: tool cards, Director message), `ui_assistant_error.png`, `ui_commandbar.png`, `ui_ai_settings.png`, `ui_flat.png` (fallback), plus the existing page shots. Electron app not run for side-by-side (would need its dev stack; compared against the renderer source instead).
+
+### Deviations from Electron (and why)
+- Icons are drawn from the Electron SVG paths with Qt Shapes (no SVG plugin needed). Logo is a PNG raster of the SVG.
+- Rail has Media + Assistant only; Text/Audio/Captions panels have no native counterpart.
+- Delete on a project card is "Remove from list" (never deletes files); Rename edits the project name in the file.
+- No Models (download) section in AI settings: nothing is downloaded. Comfy URL changes apply at next start (the Comfy client is owned by files this task must not touch).
+- Stop cannot abort the crew mid-step (synchronous engine): it hides further output; Send is re-enabled when the step ends. The run is non-blocking in the UI sense: the model client waits in a nested event loop on the UI thread (engine is single-threaded), so the window keeps painting and editing works.
+- Markdown uses Qt's CommonMark renderer (text escaped first), so code styling differs slightly.
+- Buttons never take keyboard focus (keeps editor shortcuts), so no focus ring.
+- Mode hints for Default/Auto reworded to describe the Director crew truthfully.
+- Command bar uses a darker glass than `.glass` so it stays readable over bright video.
+- Agent colours (Director mint, Editor blue, Colourist amber, Audio violet) are new: Electron had one assistant.

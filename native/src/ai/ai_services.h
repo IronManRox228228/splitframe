@@ -43,6 +43,9 @@ public:
   const agent::LlmConfig& llmConfig() const { return options_.llm; }
 
 public:
+  // Rebuilds the model client from a new configuration (the GUI's AI settings): the agents and the footage index use it from then on.
+  void setLlmConfig(const agent::LlmConfig& config);
+
   // Replaces the model (tests, later a smarter client). The harness and the footage index use it from then on.
   void setLlmClient(std::shared_ptr<agent::LlmClient> client);
 

@@ -8,6 +8,7 @@ import SplitFrame
 GlassPanel {
     id: root
     property Component overlayContent
+    property alias surface: surfaceRect
 
     ColumnLayout {
         anchors.fill: parent
@@ -17,6 +18,7 @@ GlassPanel {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            id: surfaceRect
             color: "#030404"
             radius: 14
             clip: true
