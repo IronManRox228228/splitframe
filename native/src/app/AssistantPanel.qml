@@ -375,7 +375,7 @@ Item {
                             iconName: "copy"
                             text: "Copy"
                             tip: "Copy this reply"
-                            onClicked: { clip.text = del.text; clip.selectAll(); clip.copy(); appEditor.toast("Copied.") }
+                            onClicked: { appEditor.copyText(del.text); appEditor.toast("Copied.") }
                         }
                     }
                 }
@@ -580,7 +580,5 @@ Item {
     }
 
     property bool stick: true
-    // clipboard helper: a hidden editor that selects and copies the reply text
-    TextEdit { id: clip; visible: false }
     function focusInput() { input.forceActiveFocus() }
 }

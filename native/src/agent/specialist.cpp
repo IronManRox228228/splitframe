@@ -75,6 +75,65 @@ QString Specialist::systemPrompt() const {
   return {};
 }
 
+namespace {
+
+// Deterministic "what is in the project" text, built from the same read commands the model can call
+// (assets.list, timeline.get, storyboard.get), so the model never has to guess or ask first.
+QString projectSummaryText(engine::Engine* engine, const QString& sessionId) {
+  constexpr int kMaxAssets = 40;
+  QJsonObject sessArg;
+  if (!sessionId.isEmpty()) sessArg.insert(QStringLiteral("session"), sessionId);
+
+  const engine::Result assetsRes = engine->call(QStringLiteral("assets.list"), sessArg);
+  if (!assetsRes.ok) return QStringLiteral("Project summary unavailable (no open project).");
+  const QJsonArray assets = assetsRes.value.toObject().value(QStringLiteral("assets")).toArray();
+
+  QString out = QStringLiteral("Project summary (live; call assets.list for paths and details):\n");
+  if (assets.isEmpty()) {
+    out += QStringLiteral("Project has no media yet.\n");
+  } else {
+    out += QStringLiteral("Assets (%1):\n").arg(assets.size());
+    int shown = 0;
+    for (const auto& v : assets) {
+      if (shown++ >= kMaxAssets) break;
+      const QJsonObject a = v.toObject();
+      QString line = QStringLiteral("- %1 | %2 | %3 | %4s")
+        .arg(a.value(QStringLiteral("id")).toString(), a.value(QStringLiteral("name")).toString(),
+             a.value(QStringLiteral("kind")).toString(),
+             QString::number(a.value(QStringLiteral("durationMs")).toDouble() / 1000.0, 'f', 1));
+      if (a.value(QStringLiteral("kind")).toString() == QLatin1String("video") && a.contains(QStringLiteral("width")))
+        line += QStringLiteral(" | %1x%2").arg(a.value(QStringLiteral("width")).toInt()).arg(a.value(QStringLiteral("height")).toInt());
+      line += QStringLiteral(" | hasAudio=%1").arg(a.value(QStringLiteral("hasAudio")).toBool() ? QStringLiteral("yes") : QStringLiteral("no"));
+      const QString status = a.value(QStringLiteral("status")).toString();
+      if (!status.isEmpty() && status != QLatin1String("ready")) line += QStringLiteral(" | status=%1").arg(status);
+      out += line + QLatin1Char('\n');
+    }
+    if (assets.size() > kMaxAssets) out += QStringLiteral("+%1 more\n").arg(assets.size() - kMaxAssets);
+  }
+
+  QJsonObject tlArg = sessArg;
+  tlArg.insert(QStringLiteral("mode"), QStringLiteral("summary"));
+  tlArg.insert(QStringLiteral("limit"), 1);   // only the per-track itemCount is read
+  tlArg.insert(QStringLiteral("includeMarkers"), false);
+  const engine::Result tlRes = engine->call(QStringLiteral("timeline.get"), tlArg);
+  if (tlRes.ok) {
+    const QJsonObject tl = tlRes.value.toObject();
+    int items = 0;
+    const QJsonArray tracks = tl.value(QStringLiteral("tracks")).toArray();
+    for (const auto& t : tracks) items += t.toObject().value(QStringLiteral("itemCount")).toInt();
+    const QJsonObject proj = tl.value(QStringLiteral("project")).toObject();
+    const double fps = proj.value(QStringLiteral("fps")).toDouble();
+    const double secs = fps > 0 ? proj.value(QStringLiteral("durationFrames")).toDouble() / fps : 0.0;
+    out += QStringLiteral("Timeline: %1 tracks, %2 items, %3s total.\n").arg(tracks.size()).arg(items).arg(QString::number(secs, 'f', 1));
+  }
+
+  const engine::Result sbRes = engine->call(QStringLiteral("storyboard.get"), sessArg);
+  if (sbRes.ok) out += QStringLiteral("Storyboard: %1 scenes.").arg(sbRes.value.toObject().value(QStringLiteral("count")).toInt());
+  return out.trimmed();
+}
+
+} // namespace
+
 QJsonObject Specialist::scopedViewJson(const QString& sessionId) const {
   if (!engine_) return {};
 
@@ -691,7 +750,9 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
 
   QJsonObject scopedView = scopedViewJson(sessionId);
   QString scopedViewStr = QString::fromUtf8(QJsonDocument(scopedView).toJson(QJsonDocument::Compact));
-  QString enrichedPrompt = systemPrompt() + QStringLiteral("\n\nCurrent scoped state: ") + scopedViewStr;
+  QString enrichedPrompt = systemPrompt();
+  if (engine_) enrichedPrompt += QStringLiteral("\n\n") + projectSummaryText(engine_, sessionId);
+  enrichedPrompt += QStringLiteral("\n\nCurrent scoped state: ") + scopedViewStr;
 
   QJsonArray allToolResults;
   QJsonArray proposed;

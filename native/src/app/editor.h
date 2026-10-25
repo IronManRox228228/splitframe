@@ -141,6 +141,7 @@ public:
   Q_INVOKABLE void step(qint64 frames);
   Q_INVOKABLE void gotoEdge(int dir);
   Q_INVOKABLE void toast(const QString& text, const QString& kind = QStringLiteral("info"));
+  Q_INVOKABLE void copyText(const QString& text);   // system clipboard (the reply "Copy" button)
 
   // ---- the Assistant ----
   // Sends `message` to the crew: agent.chat (the Director) in default / auto mode, agent.turn in plan / ask mode (those hold

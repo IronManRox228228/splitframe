@@ -6,6 +6,7 @@
 #include "media/probe.h"
 
 #include <QCoreApplication>
+#include <QClipboard>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QJsonDocument>
@@ -17,6 +18,7 @@
 #include <QTimer>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QImageReader>
 #include <QStandardPaths>
 
@@ -353,6 +355,10 @@ void Editor::gotoEdge(int dir) {
 }
 
 void Editor::toast(const QString& text, const QString& kind) { emit toastRequested(text, kind); }
+
+void Editor::copyText(const QString& text) {
+  if (QClipboard* cb = QGuiApplication::clipboard()) cb->setText(text);
+}
 
 // ---------- the Assistant ----------
 

@@ -2,11 +2,13 @@
 
 #include "agent/agent_harness.h"
 #include "agent/llm_config.h"
+#include "core/schema.h"
 #include "engine/engine.h"
 #include "fake_llm_server.h"
 
 #include <QTest>
 
+using namespace sf;
 using namespace sf::agent;
 using namespace sf::engine;
 
@@ -375,6 +377,61 @@ private slots:
       if (tVal.toObject().value(QStringLiteral("name")).toString() == QStringLiteral("HTTP Track")) found = true;
     }
     QVERIFY(found);
+  }
+
+  // ---- project summary is injected into every run ----
+  void projectSummaryNamesAssets() {
+    Session* sess = engine_->session();
+    QVERIFY(sess && sess->project);
+    Asset v;
+    v.id = QStringLiteral("ast_v1");
+    v.originalName = QStringLiteral("beach_sunset.mp4");
+    v.path = QStringLiteral("beach_sunset.mp4");
+    v.kind = AssetKind::Video;
+    v.durationMs = 12500;
+    v.width = 1920;
+    v.height = 1080;
+    v.hasAudio = true;
+    sess->project->addAsset(v);
+
+    mockLlm_->clearCalls();
+    harness_->chat(QStringLiteral("make a short film"));
+    QVERIFY(!mockLlm_->calls().empty());
+    const QString sys = mockLlm_->calls().front().systemPrompt;
+    QVERIFY(sys.contains(QStringLiteral("beach_sunset.mp4")));
+    QVERIFY(sys.contains(QStringLiteral("ast_v1")));
+    QVERIFY(sys.contains(QStringLiteral("12.5s")));
+    QVERIFY(sys.contains(QStringLiteral("1920x1080")));
+    QVERIFY(sys.contains(QStringLiteral("Timeline:")));
+    QVERIFY(sys.contains(QStringLiteral("Storyboard: 0 scenes")));
+    QVERIFY(!sys.contains(QStringLiteral("Project has no media yet.")));
+  }
+
+  void projectSummaryCapsAssetList() {
+    Session* sess = engine_->session();
+    QVERIFY(sess && sess->project);
+    for (int i = 0; i < 45; ++i) {
+      Asset a;
+      a.id = QStringLiteral("ast_%1").arg(i);
+      a.originalName = QStringLiteral("clip_%1.mp4").arg(i);
+      a.path = a.originalName;
+      a.kind = AssetKind::Video;
+      a.durationMs = 1000;
+      sess->project->addAsset(a);
+    }
+    mockLlm_->clearCalls();
+    harness_->chat(QStringLiteral("what do I have"));
+    const QString sys = mockLlm_->calls().front().systemPrompt;
+    QVERIFY(sys.contains(QStringLiteral("clip_39.mp4")));
+    QVERIFY(!sys.contains(QStringLiteral("clip_40.mp4")));
+    QVERIFY(sys.contains(QStringLiteral("+5 more")));
+  }
+
+  void projectSummaryEmptyProject() {
+    mockLlm_->clearCalls();
+    harness_->chat(QStringLiteral("make a short film"));
+    QVERIFY(!mockLlm_->calls().empty());
+    QVERIFY(mockLlm_->calls().front().systemPrompt.contains(QStringLiteral("Project has no media yet.")));
   }
 };
 
