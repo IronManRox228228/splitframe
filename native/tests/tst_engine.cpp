@@ -2179,6 +2179,41 @@ private slots:
     QCOMPARE(placed.value(Q("trackId")).toString(), textTrackId); // slots on the existing text track
   }
 
+  // A scene that names its clip goes on the timeline as that clip (it used to be a text slot even then, so a "finished"
+  // film had no footage); a scene without one stays a placeholder, and a video clip never runs past its source.
+  void storyboardToTimelinePlacesSceneClips() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_}}});
+    const QJsonObject asset = ok(Q("assets.list")).value(Q("assets")).toArray().at(0).toObject();
+    const QString storyId = asset.value(Q("id")).toString();
+    QVERIFY(!storyId.isEmpty());
+    ok(Q("storyboard.set"), {{Q("scenes"), QJsonArray{
+      QJsonObject{{Q("id"), Q("sc_1")}, {Q("title"), Q("Opening")}, {Q("durationSec"), 1.0}, {Q("assetIds"), QJsonArray{storyId}}},
+      QJsonObject{{Q("id"), Q("sc_2")}, {Q("title"), Q("Missing shot")}, {Q("durationSec"), 2.0}},
+      QJsonObject{{Q("id"), Q("sc_3")}, {Q("title"), Q("Long")}, {Q("durationSec"), 9999.0}, {Q("assetIds"), QJsonArray{storyId}}}
+    }}});
+    const QJsonObject placed = ok(Q("storyboard.toTimeline"));
+    QCOMPARE(placed.value(Q("clipsPlaced")).toInt(), 2);
+    QCOMPARE(placed.value(Q("placeholders")).toInt(), 1);
+    const QString videoTrackId = placed.value(Q("videoTrackId")).toString();
+    QVERIFY(!videoTrackId.isEmpty());
+
+    const double fps = ok(Q("project.info")).value(Q("fps")).toDouble();
+    const qint64 sourceFrames = std::llround(asset.value(Q("durationMs")).toDouble() / 1000.0 * fps);
+    QVector<QJsonObject> clips;
+    for (const auto& tVal : ok(Q("timeline.get"), {{Q("mode"), Q("summary")}}).value(Q("tracks")).toArray()) {
+      const QJsonObject tObj = tVal.toObject();
+      if (tObj.value(Q("id")).toString() != videoTrackId) continue;
+      for (const auto& iVal : tObj.value(Q("items")).toArray()) clips << iVal.toObject();
+    }
+    QCOMPARE(clips.size(), 2);
+    for (const auto& c : clips) QCOMPARE(c.value(Q("asset")).toString(), storyId);
+    std::sort(clips.begin(), clips.end(), [](const QJsonObject& x, const QJsonObject& y) { return x.value(Q("start")).toInteger() < y.value(Q("start")).toInteger(); });
+    QCOMPARE(clips[0].value(Q("start")).toInteger(), 0);
+    QCOMPARE(clips[0].value(Q("dur")).toInteger(), std::llround(1.0 * fps));
+    QCOMPARE(clips[1].value(Q("start")).toInteger(), std::llround(1.0 * fps) + std::llround(2.0 * fps)); // after the slot
+    QCOMPARE(clips[1].value(Q("dur")).toInteger(), sourceFrames); // capped at the source
+  }
+
   void unknownTextureRejected() {
     const QString item = ok(Q("text.add"), {{Q("text"), Q("T")}, {Q("startFrame"), 0}, {Q("durationFrames"), 20}}).value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
     QVERIFY(!item.isEmpty());

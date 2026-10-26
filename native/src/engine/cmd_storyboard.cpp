@@ -228,7 +228,9 @@ void registerStoryboardCommands(Engine& e) {
 
   // storyboard.toTimeline
   e.add(spec("storyboard.toTimeline", "storyboardToTimeline", "editor", true,
-             QStringLiteral("Lays scenes out as placeholder slots on the timeline, with markers (undoable)."),
+             QStringLiteral("Lays the scenes out in order on the timeline, one marker each (undoable). A scene with a video or image asset in "
+                            "assetIds becomes that clip on a video track (a video clip is at most as long as its source); a scene "
+                            "without one becomes a text placeholder slot. The result says how many of each."),
              js::obj({{q("trackName"), js::str(QStringLiteral("Optional name of a text track for the placeholders"))},
                       {q("startFrame"), js::integer(QStringLiteral("Starting frame position (default 0)"))}}),
              [](CallContext& c, const QJsonObject& a) {
@@ -239,6 +241,50 @@ void registerStoryboardCommands(Engine& e) {
 
                const double fps = (d.project.fps > 0) ? static_cast<double>(d.project.fps) : 30.0;
                Frame curFrame = static_cast<Frame>(a.value(q("startFrame")).toInt(0));
+
+               const editor::Project& p = *c.session->project;
+               // The first video or image asset of a scene is its clip; scenes without one get a text placeholder.
+               const auto sceneAsset = [&p](const StoryboardScene& s) -> const Asset* {
+                 for (const QString& aid : s.assetIds)
+                   if (const Asset* as = p.asset(aid); as && (as->kind == AssetKind::Video || as->kind == AssetKind::Image)) return as;
+                 return nullptr;
+               };
+               const auto sceneFrames = [&](const StoryboardScene& s) {
+                 Frame f = std::max(Frame(1), static_cast<Frame>(std::lround(s.durationSec * fps)));
+                 if (const Asset* as = sceneAsset(s); as && as->kind == AssetKind::Video && as->durationMs > 0)
+                   f = std::min(f, std::max(Frame(1), static_cast<Frame>(std::lround(static_cast<double>(as->durationMs) / 1000.0 * fps))));
+                 return f;
+               };
+               const Frame layoutStart = curFrame;
+               Frame layoutEnd = curFrame;
+               bool anyClip = false, anyPlaceholder = false;
+               for (const auto& scene : d.storyboard) {
+                 layoutEnd += sceneFrames(scene);
+                 if (sceneAsset(scene)) anyClip = true;
+                 else anyPlaceholder = true;
+               }
+               // Is [layoutStart, layoutEnd) free on this track?
+               const auto trackFree = [&d, layoutStart, layoutEnd](const QString& trackId) {
+                 for (const Item& i : d.items)
+                   if (i.trackId == trackId && i.startFrame < layoutEnd && i.startFrame + i.durationFrames > layoutStart) return false;
+                 return true;
+               };
+
+               std::vector<Op> ops;
+
+               // Clips go on the first unlocked video track that is free over the layout, else on a new one.
+               QString videoTrackId;
+               if (anyClip) {
+                 for (const Track& t : d.tracks)
+                   if (!t.locked && t.kind == TrackKind::Video && trackFree(t.id)) {
+                     videoTrackId = t.id;
+                     break;
+                   }
+                 if (videoTrackId.isEmpty()) {
+                   videoTrackId = newId(QStringLiteral("trk"));
+                   ops.push_back(TrackAdd{.trackId = videoTrackId, .kind = TrackKind::Video, .name = QStringLiteral("Storyboard")});
+                 }
+               }
 
                // Find an existing text track or create one
                QString textTrackId;
@@ -255,47 +301,63 @@ void registerStoryboardCommands(Engine& e) {
                }
                const QString effectiveName = ignoreCustomName ? QString() : customName;
 
-               for (const Track& t : d.tracks) {
-                 if (!t.locked && t.kind == TrackKind::Text) {
-                   if (effectiveName.isEmpty() || t.name == effectiveName) {
-                     textTrackId = t.id;
-                     break;
+               if (anyPlaceholder) {
+                 for (const Track& t : d.tracks) {
+                   if (!t.locked && t.kind == TrackKind::Text) {
+                     if (effectiveName.isEmpty() || t.name == effectiveName) {
+                       textTrackId = t.id;
+                       break;
+                     }
                    }
                  }
-               }
-
-               std::vector<Op> ops;
-               if (textTrackId.isEmpty()) {
-                 textTrackId = newId(QStringLiteral("trk"));
-                 ops.push_back(TrackAdd{
-                   .trackId = textTrackId,
-                   .kind = TrackKind::Text,
-                   .name = !effectiveName.isEmpty() ? effectiveName : QStringLiteral("Storyboard Slots")
-                 });
+                 if (textTrackId.isEmpty()) {
+                   textTrackId = newId(QStringLiteral("trk"));
+                   ops.push_back(TrackAdd{
+                     .trackId = textTrackId,
+                     .kind = TrackKind::Text,
+                     .name = !effectiveName.isEmpty() ? effectiveName : QStringLiteral("Storyboard Slots")
+                   });
+                 }
                }
 
                std::vector<StoryboardScene> updatedScenes = d.storyboard;
                int markersAdded = 0;
                int placedCount = 0;
+               int clipsPlaced = 0;
+               int placeholders = 0;
 
                for (auto& scene : updatedScenes) {
-                 const Frame durFrames = std::max(Frame(1), static_cast<Frame>(std::lround(scene.durationSec * fps)));
+                 const Frame durFrames = sceneFrames(scene);
                  const QString itemId = newId(QStringLiteral("itm"));
 
-                 TextProps tp;
-                 tp.text = QStringLiteral("[%1] %2\n%3").arg(scene.id, scene.title, scene.intent);
-                 tp.style.fontFamily = QStringLiteral("Geist");
-                 tp.style.fontSize = 48;
-                 tp.style.fontWeight = 700;
-                 tp.style.color = QStringLiteral("#ffffff");
-                 Item item = createItem(ItemType::Text, ItemInit{
-                   .id = itemId,
-                   .trackId = textTrackId,
-                   .startFrame = curFrame,
-                   .durationFrames = durFrames,
-                   .props = tp
-                 });
-                 ops.push_back(ItemAdd{item});
+                 if (const Asset* as = sceneAsset(scene)) {
+                   ItemInit init;
+                   init.id = itemId;
+                   init.trackId = videoTrackId;
+                   init.startFrame = curFrame;
+                   init.durationFrames = durFrames;
+                   init.assetId = as->id;
+                   if (as->kind == AssetKind::Video) init.sourceInFrame = 0;
+                   init.labels = Labels{QStringLiteral("clip"), std::nullopt};
+                   ops.push_back(ItemAdd{createItem(as->kind == AssetKind::Image ? ItemType::Image : ItemType::Video, init)});
+                   ++clipsPlaced;
+                 } else {
+                   TextProps tp;
+                   tp.text = QStringLiteral("[%1] %2\n%3").arg(scene.id, scene.title, scene.intent);
+                   tp.style.fontFamily = QStringLiteral("Geist");
+                   tp.style.fontSize = 48;
+                   tp.style.fontWeight = 700;
+                   tp.style.color = QStringLiteral("#ffffff");
+                   Item item = createItem(ItemType::Text, ItemInit{
+                     .id = itemId,
+                     .trackId = textTrackId,
+                     .startFrame = curFrame,
+                     .durationFrames = durFrames,
+                     .props = tp
+                   });
+                   ops.push_back(ItemAdd{item});
+                   ++placeholders;
+                 }
 
                  Marker marker;
                  marker.id = newId(QStringLiteral("mrk"));
@@ -319,6 +381,9 @@ void registerStoryboardCommands(Engine& e) {
                  {q("placedScenes"), placedCount},
                  {q("totalFrames"), static_cast<qint64>(curFrame)},
                  {q("markersAdded"), markersAdded},
+                 {q("clipsPlaced"), clipsPlaced},
+                 {q("placeholders"), placeholders},
+                 {q("videoTrackId"), videoTrackId},
                  {q("trackId"), textTrackId}
                });
              }));
