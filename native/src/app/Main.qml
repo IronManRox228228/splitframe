@@ -636,6 +636,18 @@ ApplicationWindow {
         }
     }
 
+    // An agent run (from the Ask bar, the API or MCP) or an edit from outside while Home is up: show the editor, so the
+    // work is seen as it happens instead of behind the project list.
+    Connections {
+        target: appEditor
+        function onAgentBusyChanged() {
+            if (appEditor.agentBusy && root.screen === "home" && !root.goingHome) root.screen = "edit"
+        }
+        function onTitleChanged() {
+            if (appEditor.dirty && root.screen === "home" && !root.goingHome) root.screen = "edit"
+        }
+    }
+
     // a freshly opened project is shown whole when it would not fit at the current zoom
     Connections {
         target: appEditor.project
