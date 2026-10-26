@@ -228,9 +228,9 @@ private slots:
     QCOMPARE(static_cast<int>(doc.items.size()), 3);
     QVERIFY(doc.markers.size() >= 3);
 
-    // Verify trace recorded director plan on lane deep
+    // Verify trace recorded director plan on lane deep (the run made tool calls, so the row says "build", not "plan")
     const QString traceContent = readTrace(testProjectDir_->path());
-    QVERIFY(traceContent.contains(QStringLiteral("\"action\":\"plan\"")));
+    QVERIFY(traceContent.contains(QStringLiteral("\"action\":\"build\"")));
     QVERIFY(traceContent.contains(QStringLiteral("\"lane\":\"deep\"")));
     QVERIFY(traceContent.contains(QStringLiteral("\"role\":\"director\"")));
   }

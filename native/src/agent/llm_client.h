@@ -24,6 +24,10 @@ QJsonObject stripReasoning(const QJsonObject& message);
 // Returns an empty QString if the response has no error code or is unmapped.
 QString llmErrorCode(const QJsonObject& resp);
 
+// The provider's own message from an error response, as one short line for the Assistant chat: whitespace collapsed, capped at
+// 200 characters, and any API key or auth header scrubbed. Empty when the response carries no message.
+QString llmErrorMessage(const QJsonObject& resp);
+
 // LLM lanes are a product-level routing idea: Fast = planning/tool-calling turns, Deep =
 // generation-prompt and storyboard writing, Judge = peer review. The agent mesh (Part C) picks
 // a lane per call by purpose; with one OpenAI-compatible provider all lanes share its model.

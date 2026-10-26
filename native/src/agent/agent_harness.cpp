@@ -256,6 +256,7 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
     out.insert(QStringLiteral("toolResults"), res.value(QStringLiteral("tool_results")));
     out.insert(QStringLiteral("status"), res.value(QStringLiteral("status")));
     if (res.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), res.value(QStringLiteral("error")));
+    if (res.contains(QStringLiteral("errorMessage"))) out.insert(QStringLiteral("errorMessage"), res.value(QStringLiteral("errorMessage")));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
 
     const QString resStatus = res.value(QStringLiteral("status")).toString();
@@ -350,6 +351,7 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
     out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
     out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
     if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
+    if (turnRes.contains(QStringLiteral("errorMessage"))) out.insert(QStringLiteral("errorMessage"), turnRes.value(QStringLiteral("errorMessage")));
     out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
 
     logAgentTrace(AgentTraceRecord{
@@ -389,6 +391,7 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
   out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
   out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
   if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
+  if (turnRes.contains(QStringLiteral("errorMessage"))) out.insert(QStringLiteral("errorMessage"), turnRes.value(QStringLiteral("errorMessage")));
   out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
 
   const QString turnStatus = turnRes.value(QStringLiteral("status")).toString();
@@ -458,6 +461,7 @@ QJsonObject AgentHarness::chat(const QString& userMessage, const QString& sessio
   out.insert(QStringLiteral("toolResults"), turnRes.value(QStringLiteral("tool_results")));
   out.insert(QStringLiteral("status"), turnRes.value(QStringLiteral("status")));
   if (turnRes.contains(QStringLiteral("error"))) out.insert(QStringLiteral("error"), turnRes.value(QStringLiteral("error")));
+  if (turnRes.contains(QStringLiteral("errorMessage"))) out.insert(QStringLiteral("errorMessage"), turnRes.value(QStringLiteral("errorMessage")));
   out.insert(QStringLiteral("teamThread"), bus_->teamThreadJson());
 
   emit turnCompleted(out);

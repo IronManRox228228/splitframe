@@ -290,58 +290,65 @@ ApplicationWindow {
     // ---------------------------------------------------------------- top bar
     header: Item {
         visible: root.screen === "edit"
-        height: visible ? 46 : 0
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
+        height: visible ? 54 : 0
+        // a floating glass slab like the rail and the panels below it, not a flat bar with a rule under it
+        GlassPanel {
+            anchors.fill: parent
+            anchors.leftMargin: Theme.gap
+            anchors.rightMargin: Theme.gap
+            anchors.topMargin: Theme.gap
+            radius: 16
 
-        RowLayout {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 8
-            spacing: 8
-            IconBtn {
-                iconName: "back"
-                iconSize: 18
-                tip: "Back to projects"
-                onClicked: root.goHome()
+            RowLayout {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: 8
+                spacing: 8
+                IconBtn {
+                    iconName: "back"
+                    iconSize: 18
+                    tip: "Back to projects"
+                    onClicked: root.goHome()
+                }
+                Image {
+                    source: "assets/splitframe-logo.png"
+                    sourceSize.height: 44
+                    Layout.preferredHeight: 22
+                    Layout.preferredWidth: 22 * 762 / 246
+                    smooth: true
+                    mipmap: true
+                    opacity: 0.95
+                }
+                Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: Theme.lineStrong; opacity: 0.7 }
+                Rectangle {
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: appEditor.dirty ? Theme.warn : Theme.accent
+                }
+                Text {
+                    text: appEditor.projectName
+                    color: Theme.text
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
             }
-            Image {
-                source: "assets/splitframe-logo.png"
-                sourceSize.height: 44
-                Layout.preferredHeight: 22
-                Layout.preferredWidth: 22 * 762 / 246
-                smooth: true
-                mipmap: true
-                opacity: 0.95
-            }
-            Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 20; color: Theme.lineStrong; opacity: 0.7 }
-            Rectangle {
-                width: 8
-                height: 8
-                radius: 4
-                color: appEditor.dirty ? Theme.warn : Theme.accent
-            }
-            Text {
-                text: appEditor.projectName
-                color: Theme.text
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-            }
-        }
 
-        PageSwitcher {
-            anchors.centerIn: parent
-            current: root.page
-            onPicked: i => root.page = i
-        }
+            PageSwitcher {
+                anchors.centerIn: parent
+                current: root.page
+                onPicked: i => root.page = i
+            }
 
-        RowLayout {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.rightMargin: 14
-            spacing: 6
-            Btn { text: "Undo"; enabled: appEditor.canUndo; tip: "Undo (Ctrl+Z)"; onClicked: aUndo.trigger() }
-            Btn { text: "Redo"; enabled: appEditor.canRedo; tip: "Redo (Ctrl+Shift+Z)"; onClicked: aRedo.trigger() }
-            Btn { text: "Export"; accentFill: true; tip: "Export (Ctrl+E)"; onClicked: aExport.trigger() }
+            RowLayout {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.rightMargin: 14
+                spacing: 6
+                Btn { text: "Undo"; enabled: appEditor.canUndo; tip: "Undo (Ctrl+Z)"; onClicked: aUndo.trigger() }
+                Btn { text: "Redo"; enabled: appEditor.canRedo; tip: "Redo (Ctrl+Shift+Z)"; onClicked: aRedo.trigger() }
+                Btn { text: "Export"; accentFill: true; tip: "Export (Ctrl+E)"; onClicked: aExport.trigger() }
+            }
         }
     }
 

@@ -827,6 +827,8 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       const QString code = llmErrorCode(llmResp);
       const QString finalErr = !code.isEmpty() ? code : (errVal.isString() ? errVal.toString() : QStringLiteral("llm_error"));
       result.insert(QStringLiteral("error"), finalErr);
+      const QString providerMsg = llmErrorMessage(llmResp);
+      if (!providerMsg.isEmpty()) result.insert(QStringLiteral("errorMessage"), providerMsg);
       logAgentTrace(AgentTraceRecord{
         .runId = runId,
         .agentName = name(),
@@ -1086,7 +1088,8 @@ QJsonObject Specialist::processTurn(const QString& userMessage, const QString& s
       .agentName = name(),
       .role = domain(),
       .lane = QStringLiteral("deep"),
-      .action = QStringLiteral("plan"),
+      // a deep turn that ran tools built things; only a reply with no tool calls is a plan, so the row says which
+      .action = allToolResults.isEmpty() ? QStringLiteral("plan") : QStringLiteral("build"),
       .inputSummary = userMessage,
       .outputSummary = respContent.isEmpty() ? QStringLiteral("Director storyboard plan") : respContent,
       .model = llm_ ? llm_->lastObservedModel() : QString(),

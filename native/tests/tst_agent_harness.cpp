@@ -262,6 +262,19 @@ private slots:
     QCOMPARE(markerCount(), 1);
   }
 
+  void providerMessageReachesTheResultWithoutKeys() {
+    harness_->setMode(AgentMode::Auto);
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("error"), QJsonObject{
+      {QStringLiteral("code"), QStringLiteral("rate_limited")},
+      {QStringLiteral("message"), QStringLiteral("You exceeded your current quota.\nBearer sk-abcdef123456789 rejected")}}}});
+    const QJsonObject res = harness_->executeTurn(QStringLiteral("add a marker at frame 3"));
+    QCOMPARE(res.value(QStringLiteral("error")).toString(), QStringLiteral("rate_limited"));
+    const QString msg = res.value(QStringLiteral("errorMessage")).toString();
+    QVERIFY2(msg.startsWith(QStringLiteral("You exceeded your current quota.")), qPrintable(msg));
+    QVERIFY(!msg.contains(QLatin1Char('\n')));
+    QVERIFY(!msg.contains(QStringLiteral("abcdef123456789")));
+  }
+
   void aThrowingTurnReleasesTheLock() {
     class ThrowingLlm : public LlmClient {
     public:

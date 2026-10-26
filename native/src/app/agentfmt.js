@@ -88,8 +88,15 @@ function summarize(result) {
     return ""
 }
 
-// Turns a provider code into something a person can act on. connection: Retry makes sense.
+// Turns a provider code into something a person can act on. connection: Retry makes sense. The provider's own message, when it
+// sent one, rides along on a second line so "quota exceeded" or "model X not found" reaches the chat as the provider said it.
 function friendlyError(code, message, endpoint) {
+    const r = friendlyBase(code, message, endpoint)
+    const said = String(message || "").replace(/\s+/g, " ").trim()
+    if (said !== "" && said !== String(code) && r.text !== said) r.text += "\n" + said.slice(0, 200)
+    return r
+}
+function friendlyBase(code, message, endpoint) {
     const where = endpoint ? " at " + endpoint : ""
     switch (code) {
     case "provider_unreachable":

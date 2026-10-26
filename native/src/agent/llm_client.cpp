@@ -62,6 +62,16 @@ QString llmErrorCode(const QJsonObject& resp) {
   return codes.contains(code) ? code : QString();
 }
 
+QString llmErrorMessage(const QJsonObject& resp) {
+  const QJsonValue err = resp.value(QStringLiteral("error"));
+  QString msg = err.isObject() ? err.toObject().value(QStringLiteral("message")).toString() : err.toString();
+  msg = msg.simplified();
+  static const QRegularExpression keyLike(QStringLiteral("(?i)(bearer\\s+|sk-|key[=:\\s]+|authorization:?\\s*)[A-Za-z0-9._~+/=-]{8,}"));
+  msg.replace(keyLike, QStringLiteral("[hidden]"));
+  if (msg.size() > 200) msg = msg.left(197) + QStringLiteral("...");
+  return msg;
+}
+
 // ---- MockLlmClient ----
 
 void MockLlmClient::setScriptedResponse(const QString& triggerText, QJsonObject response) {
