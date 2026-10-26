@@ -1198,7 +1198,10 @@ Result reshootVariantsCmd(CallContext& c, const QJsonObject& a) {
   const QJsonObject scParams = sidecar.value(q("params")).toObject();
   const qint64 origSeed = scParams.value(q("seed")).toVariant().toLongLong();
   const QString origPrompt = scParams.value(q("prompt")).toString();
-  const QString templateId = scParams.value(q("templateId")).toString(QStringLiteral("sd15_txt2img"));
+  const QString templateId = scParams.value(q("templateId")).toString();
+  if (templateId.isEmpty()) {
+    return invalid(QStringLiteral("templateId is required: call comfy.template.list for the installed templates"));
+  }
 
   const int count = std::clamp(a.value(q("count")).toInt(4), 2, 8);
   const QString vary = a.value(q("vary")).toString(QStringLiteral("seed"));

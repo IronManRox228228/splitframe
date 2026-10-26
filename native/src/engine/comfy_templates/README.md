@@ -101,14 +101,13 @@ Core ComfyUI does not ship built-in music generation nodes (such as ACE-Step or 
 Template graphs reference ComfyUI node classes by their `class_type` string (for example `KSampler`, `CheckpointLoaderSimple`, `SaveImage`). These names must come from one of two sources:
 
 1. **A real ComfyUI install** - the `/object_info` endpoint lists every registered `class_type` for the running server.
-2. **An existing template** - classes already used by a shipped template or a workflow you exported from ComfyUI (the built-in `sd15_txt2img` and `image_txt2img` workflows use `KSampler`, `CheckpointLoaderSimple`, `EmptyLatentImage`, `CLIPTextEncode`, `VAEDecode`, and `SaveImage`).
+2. **An existing template** - classes already used by a shipped template or a workflow you exported from ComfyUI.
 
 Never copy a class name from memory into a template: an unverified `class_type` fails readiness (`comfy.ready` reports it as a missing node) and generation (`generate.*`) refuses to queue the shot.
 
 ## Built-in Templates
 
-- **`sd15_txt2img`** - classic 512x512 Stable Diffusion 1.5 text-to-image reference workflow.
-- **`image_txt2img`** - 1280x720 text-to-image. The graph is the same shape as `sd15_txt2img`; `requires.models` names `checkpoints/sd15.safetensors` as a **placeholder**, and `needsUserModel: true` marks that the user must have a checkpoint of that name (or bind `ckpt_name`/template import to a different file) before generation can pass the readiness gate on their install.
+No templates are built in right now; LTX, Z-Image and ACE-Step templates will be added here. Installed templates are listed by `comfy.template.list`.
 
 ## Comfy Router Cloud Provider (Comfy Developer Platform)
 

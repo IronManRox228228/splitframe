@@ -36,6 +36,9 @@ private slots:
     userTemplatesDir_ = std::make_unique<QTemporaryDir>();
     QVERIFY(userTemplatesDir_->isValid());
     qputenv("SF_COMFY_TEMPLATES", userTemplatesDir_->path().toUtf8());
+    // Test-only template: SplitFrame ships none, so the fake-server tests install this one.
+    QVERIFY(QFile::copy(QStringLiteral(SF_COMFY_FIXTURES) + QStringLiteral("/test_txt2img.json"),
+                        userTemplatesDir_->path() + QStringLiteral("/test_txt2img.json")));
 
     jobsCacheDir_ = std::make_unique<QTemporaryDir>();
     QVERIFY(jobsCacheDir_->isValid());
@@ -50,24 +53,24 @@ private slots:
     engine_.reset();
   }
 
-  // 1. templateList: sd15_txt2img is listed with source builtin.
+  // 1. templateList: the fixture test_txt2img is listed from the user dir; no id mentions sd15.
   void templateList() {
     Result r = engine_->call(q("comfy.template.list"), {});
     QVERIFY(r.ok);
     const QJsonArray templates = r.value.toObject().value(q("templates")).toArray();
-    bool foundSd15 = false;
+    bool foundTest = false;
     for (const auto& v : templates) {
       const QJsonObject t = v.toObject();
-      if (t.value(q("id")).toString() == QLatin1String("sd15_txt2img")) {
-        foundSd15 = true;
-        QCOMPARE(t.value(q("source")).toString(), QStringLiteral("builtin"));
+      if (t.value(q("id")).toString() == QLatin1String("test_txt2img")) {
+        foundTest = true;
+        QCOMPARE(t.value(q("source")).toString(), QStringLiteral("user"));
         QCOMPARE(t.value(q("kind")).toString(), QStringLiteral("image"));
         QVERIFY(t.value(q("bindings")).toArray().contains(QStringLiteral("prompt")));
         QVERIFY(t.value(q("bindings")).toArray().contains(QStringLiteral("seed")));
-        break;
       }
+      QVERIFY2(!t.value(q("id")).toString().contains(QStringLiteral("sd15")), "no template id may contain sd15");
     }
-    QVERIFY2(foundSd15, "Builtin template sd15_txt2img not found in comfy.template.list");
+    QVERIFY2(foundTest, "User template test_txt2img not found in comfy.template.list");
   }
 
   // 2. fromTemplateBinds: params prompt/seed/width set the right inputs. An unknown param is invalid.
@@ -78,7 +81,7 @@ private slots:
       {q("width"), 768}
     };
     Result r = engine_->call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), validParams}
     });
     QVERIFY(r.ok);
@@ -106,7 +109,7 @@ private slots:
       {q("nonExistentParam"), QStringLiteral("fails")}
     };
     Result rBad = engine_->call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), badParams}
     });
     QVERIFY(!rBad.ok);
@@ -116,7 +119,7 @@ private slots:
   // 3. runValidatesFirst: a graph with steps=0 gives invalid with issues, and the fake's queued stays empty.
   void runValidatesFirst() {
     Result rTmpl = engine_->call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), QJsonObject{{q("steps"), 0}}}
     });
     QVERIFY(rTmpl.ok);
@@ -138,7 +141,7 @@ private slots:
   // 4. runWaitDownloads: comfy.run {wait:true} returns 1 file that exists, with a .sfgen.json sidecar.
   void runWaitDownloads() {
     Result rTmpl = engine_->call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), QJsonObject{{q("prompt"), QStringLiteral("test run wait")}, {q("steps"), 20}}}
     });
     QVERIFY(rTmpl.ok);
@@ -167,7 +170,7 @@ private slots:
   // 5. runCached: running the same graph again gives cached: true, and the fake receives no new prompt.
   void runCached() {
     Result rTmpl = engine_->call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), QJsonObject{{q("prompt"), QStringLiteral("test cache hit")}, {q("steps"), 20}, {q("seed"), 999999}}}
     });
     QVERIFY(rTmpl.ok);
@@ -184,7 +187,7 @@ private slots:
     QCOMPARE(fake_->queued.size(), queuedCount);
   }
 
-  // 6. generateShotPlacesImage: on a new project, generate.shot {templateId:"sd15_txt2img", prompt:"red square"}
+  // 6. generateShotPlacesImage: on a new project, generate.shot {templateId:"test_txt2img", prompt:"red square"}
   // creates 1 image item of 90 frames at 30 fps. A single undo removes it.
   void generateShotPlacesImage() {
     Result rProj = engine_->call(q("project.new"), {
@@ -196,7 +199,7 @@ private slots:
     QVERIFY(rProj.ok);
 
     Result rShot = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("red square")},
       {q("wait"), true}
     });
@@ -312,14 +315,14 @@ private slots:
     QVERIFY(rProj.ok);
 
     Result r1 = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("deterministic prompt")},
       {q("wait"), false}
     });
     QVERIFY(r1.ok);
 
     Result r2 = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("deterministic prompt")},
       {q("wait"), false}
     });
@@ -330,7 +333,7 @@ private slots:
     QCOMPARE(seed1, seed2);
 
     Result r3 = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("different prompt")},
       {q("wait"), false}
     });
@@ -381,7 +384,7 @@ private slots:
     QVERIFY(rProj.ok);
 
     Result rShot = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("a blue lake")},
       {q("wait"), true}
     });
@@ -430,7 +433,7 @@ private slots:
     QVERIFY(rProj.ok);
 
     Result rShot = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("a castle")},
       {q("wait"), true}
     });
@@ -473,7 +476,7 @@ private slots:
     QVERIFY(rProj.ok);
 
     Result rShot = engine_->call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("a green tree")},
       {q("wait"), true}
     });

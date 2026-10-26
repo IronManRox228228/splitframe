@@ -51,6 +51,9 @@ private slots:
     userTemplatesDir_ = std::make_unique<QTemporaryDir>();
     QVERIFY(userTemplatesDir_->isValid());
     qputenv("SF_COMFY_TEMPLATES", userTemplatesDir_->path().toUtf8());
+    // Test-only template: SplitFrame ships none, so the fake-server tests install this one.
+    QVERIFY(QFile::copy(QStringLiteral(SF_COMFY_FIXTURES) + QStringLiteral("/test_txt2img.json"),
+                        userTemplatesDir_->path() + QStringLiteral("/test_txt2img.json")));
 
     jobsCacheDir_ = std::make_unique<QTemporaryDir>();
     QVERIFY(jobsCacheDir_->isValid());
@@ -171,7 +174,7 @@ private slots:
     QVERIFY(rStart.ok);
 
     Result rTmpl = engine.call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), QJsonObject{{q("prompt"), QStringLiteral("crash test")}, {q("steps"), 20}, {q("seed"), 12345}}}
     });
     QVERIFY(rTmpl.ok);
@@ -258,7 +261,7 @@ private slots:
     Engine engine;
 
     Result rTmpl = engine.call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), QJsonObject{{q("prompt"), QStringLiteral("lost job test")}, {q("steps"), 20}, {q("seed"), 555}}}
     });
     QVERIFY(rTmpl.ok);
@@ -282,7 +285,7 @@ private slots:
     Engine engine;
 
     Result rTmpl = engine.call(q("comfy.graph.fromTemplate"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("params"), QJsonObject{{q("prompt"), QStringLiteral("timeout test")}, {q("steps"), 20}, {q("seed"), 777}}}
     });
     QVERIFY(rTmpl.ok);
@@ -310,7 +313,7 @@ private slots:
     engine.createSession();
 
     Result rShot = engine.call(q("generate.shot"), {
-      {q("templateId"), QStringLiteral("sd15_txt2img")},
+      {q("templateId"), QStringLiteral("test_txt2img")},
       {q("prompt"), QStringLiteral("shot fail test")},
       {q("wait"), true},
       {q("timeoutMs"), 5000}
@@ -485,7 +488,7 @@ private slots:
       Engine engine;
 
       Result rTmpl = engine.call(q("comfy.graph.fromTemplate"), {
-        {q("templateId"), QStringLiteral("sd15_txt2img")},
+        {q("templateId"), QStringLiteral("test_txt2img")},
         {q("params"), QJsonObject{{q("prompt"), QStringLiteral("hung test")}, {q("steps"), 20}, {q("seed"), 12345}}}
       });
       QVERIFY(rTmpl.ok);

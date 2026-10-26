@@ -1,8 +1,8 @@
 {
-  "id": "sd15_txt2img",
-  "name": "SD 1.5 text to image",
+  "id": "test_txt2img",
+  "name": "Test text to image",
   "kind": "image",
-  "description": "Generate a still image with Stable Diffusion 1.5 using a text prompt.",
+  "description": "Test-only text-to-image template for the fake ComfyUI server.",
   "whenToUse": [
     "still",
     "background",

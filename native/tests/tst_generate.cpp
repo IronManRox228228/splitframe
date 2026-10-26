@@ -107,6 +107,9 @@ private slots:
     userTemplatesDir_ = std::make_unique<QTemporaryDir>();
     QVERIFY(userTemplatesDir_->isValid());
     qputenv("SF_COMFY_TEMPLATES", userTemplatesDir_->path().toUtf8());
+    // Test-only template: SplitFrame ships none, so the fake-server tests install this one.
+    QVERIFY(QFile::copy(QStringLiteral(SF_COMFY_FIXTURES) + QStringLiteral("/test_txt2img.json"),
+                        userTemplatesDir_->path() + QStringLiteral("/test_txt2img.json")));
 
     jobsCacheDir_ = std::make_unique<QTemporaryDir>();
     QVERIFY(jobsCacheDir_->isValid());
@@ -253,7 +256,7 @@ private slots:
     fake_->setOutputKind(Q("image"));
     const int countBefore = timelineItemCount();
     const QJsonObject r = ok(Q("generate.image"), {{
-        Q("templateId"), QStringLiteral("sd15_txt2img")},
+        Q("templateId"), QStringLiteral("test_txt2img")},
         {Q("prompt"), QStringLiteral("misty forest at dawn")},
         {Q("placeOnTimeline"), false},
         {Q("wait"), true}});
@@ -273,7 +276,7 @@ private slots:
     fake_->setOutputKind(Q("image"));
     const int countBefore = timelineItemCount();
     const QJsonObject r = ok(Q("generate.thumbnail"), {{
-        Q("templateId"), QStringLiteral("sd15_txt2img")},
+        Q("templateId"), QStringLiteral("test_txt2img")},
         {Q("prompt"), QStringLiteral("cyberpunk city thumbnail")},
         {Q("title"), QStringLiteral("SplitFrame Ep 1")},
         {Q("name"), QStringLiteral("ep1_thumb")}});
@@ -296,7 +299,7 @@ private slots:
   void test06_provenanceJsonlMatchesAssetMetadataAndHash() {
     fake_->setOutputKind(Q("image"));
     const QJsonObject r = ok(Q("generate.image"), {{
-        Q("templateId"), QStringLiteral("sd15_txt2img")},
+        Q("templateId"), QStringLiteral("test_txt2img")},
         {Q("prompt"), QStringLiteral("provenance audit test")},
         {Q("wait"), true}});
 
@@ -343,7 +346,7 @@ private slots:
     const size_t assetsBefore = engine_->session(QString())->project->assets().size();
 
     const QJsonObject r = ok(Q("generate.image"), {{
-        Q("templateId"), QStringLiteral("sd15_txt2img")},
+        Q("templateId"), QStringLiteral("test_txt2img")},
         {Q("prompt"), QStringLiteral("three trees in a meadow")},
         {Q("seed"), 700},
         {Q("variants"), 3},
@@ -376,7 +379,7 @@ private slots:
     const size_t queuedBefore = fake_->queued.size();
 
     // 1. fromTemplate with only { templateId } (no params)
-    const QJsonObject rTmpl = ok(Q("comfy.graph.fromTemplate"), {{Q("templateId"), QStringLiteral("sd15_txt2img")}});
+    const QJsonObject rTmpl = ok(Q("comfy.graph.fromTemplate"), {{Q("templateId"), QStringLiteral("test_txt2img")}});
     const QString gid = rTmpl.value(Q("graphId")).toString();
     QVERIFY(!gid.isEmpty());
 
@@ -438,7 +441,7 @@ private slots:
     fake_->setOutputFilename(QStringLiteral("../../secret_dump.png"));
 
     const QJsonObject r = ok(Q("generate.image"), {{
-        Q("templateId"), QStringLiteral("sd15_txt2img")},
+        Q("templateId"), QStringLiteral("test_txt2img")},
         {Q("prompt"), QStringLiteral("safe file path test")},
         {Q("wait"), true}});
 
@@ -459,22 +462,22 @@ private slots:
   void test10_oldTemplateV1LoadsAndGenerateShotWorks() {
     fake_->setOutputKind(Q("image"));
 
-    // Verify v1 template (sd15_txt2img has no outputKind or requires) loads in template.list
+    // Verify v1 template (test_txt2img has no outputKind or requires) loads in template.list
     bool foundV1 = false;
     for (const auto& tv : ok(Q("comfy.template.list")).value(Q("templates")).toArray()) {
       const QJsonObject t = tv.toObject();
-      if (t.value(Q("id")).toString() == QLatin1String("sd15_txt2img")) {
+      if (t.value(Q("id")).toString() == QLatin1String("test_txt2img")) {
         foundV1 = true;
         // outputKind defaults to image derived from kind
         QCOMPARE(t.value(Q("outputKind")).toString(), QStringLiteral("image"));
         break;
       }
     }
-    QVERIFY2(foundV1, "v1 template sd15_txt2img missing from comfy.template.list");
+    QVERIFY2(foundV1, "v1 template test_txt2img missing from comfy.template.list");
 
     const int countBefore = timelineItemCount();
     const QJsonObject rShot = ok(Q("generate.shot"), {{
-        Q("templateId"), QStringLiteral("sd15_txt2img")},
+        Q("templateId"), QStringLiteral("test_txt2img")},
         {Q("prompt"), QStringLiteral("classic v1 shot")},
         {Q("wait"), true}});
 
@@ -811,7 +814,7 @@ private slots:
   // video wrapper guards
   void videoWrapperGuards() {
     const Result rKind = tryCall(Q("generate.video"),
-                                 {{Q("templateId"), QStringLiteral("sd15_txt2img")}, {Q("prompt"), Q("x")}, {Q("wait"), true}});
+                                 {{Q("templateId"), QStringLiteral("test_txt2img")}, {Q("prompt"), Q("x")}, {Q("wait"), true}});
     QVERIFY(!rKind.ok);
     QCOMPARE(rKind.error.code, Q("invalid_params"));
     QVERIFY(rKind.error.message.contains(QStringLiteral("produces image")));
@@ -829,25 +832,23 @@ private slots:
     QCOMPARE(fake_->queued.size(), queuedBefore + 1);
   }
 
-  // builtin image_txt2img is listed and ready
-  void builtinImageTemplate() {
+  // the fixture template is listed from the user dir and ready; no template id contains sd15
+  void userImageTemplate() {
     bool found = false;
     for (const auto& tv : ok(Q("comfy.template.list")).value(Q("templates")).toArray()) {
       const QJsonObject t = tv.toObject();
-      if (t.value(Q("id")).toString() == QLatin1String("image_txt2img")) {
+      if (t.value(Q("id")).toString() == QLatin1String("test_txt2img")) {
         found = true;
         QCOMPARE(t.value(Q("kind")).toString(), QStringLiteral("image"));
         QCOMPARE(t.value(Q("outputKind")).toString(), QStringLiteral("image"));
-        QCOMPARE(t.value(Q("source")).toString(), QStringLiteral("builtin"));
-        QCOMPARE(t.value(Q("needsUserModel")).toBool(), true);
+        QCOMPARE(t.value(Q("source")).toString(), QStringLiteral("user"));
         QVERIFY(t.value(Q("bindings")).toArray().contains(Q("prompt")));
-        QVERIFY(t.value(Q("requires")).toObject().value(Q("models")).toArray().size() >= 1);
-        break;
       }
+      QVERIFY2(!t.value(Q("id")).toString().contains(QStringLiteral("sd15")), "no template id may contain sd15");
     }
-    QVERIFY2(found, "builtin image_txt2img missing from comfy.template.list");
+    QVERIFY2(found, "user template test_txt2img missing from comfy.template.list");
 
-    const QJsonObject row = ok(Q("generate.ready"), {{Q("templateId"), QStringLiteral("image_txt2img")}});
+    const QJsonObject row = ok(Q("generate.ready"), {{Q("templateId"), QStringLiteral("test_txt2img")}});
     QCOMPARE(row.value(Q("ok")).toBool(), true);
     QVERIFY(row.value(Q("missingNodes")).toArray().isEmpty());
     QVERIFY(row.value(Q("missingModels")).toArray().isEmpty());
