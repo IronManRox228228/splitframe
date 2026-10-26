@@ -49,8 +49,11 @@ Result assembleCmd(CallContext& c, const QJsonObject& a) {
       if (!apply) {
         return invalid(QStringLiteral("Music item '%1' is not on the timeline: call audio.add with asset id '%1' first, or set apply=true").arg(musicItemId));
       }
-      // Place the asset with the same command the caller would use, then assemble onto it.
-      Result rPlace = c.engine->call(q("audio.add"), {{q("assetId"), musicItemId}, {q("session"), c.session->id}});
+      // Place the asset with the same command the caller would use, then assemble onto it. The caller's origin goes along:
+      // without it the inner call is "api" and the copilot lock refuses it while that agent holds the project.
+      QJsonObject placeArgs{{q("assetId"), musicItemId}, {q("session"), c.session->id}};
+      if (!c.origin.isEmpty()) placeArgs.insert(q("origin"), c.origin);
+      Result rPlace = c.engine->call(q("audio.add"), placeArgs);
       if (!rPlace.ok) return rPlace;
       const QJsonArray createdItems = rPlace.value.toObject().value(q("created")).toObject().value(q("items")).toArray();
       if (createdItems.isEmpty()) {

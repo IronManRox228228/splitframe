@@ -2096,6 +2096,31 @@ private slots:
     QVERIFY(rUndo.ok);
   }
 
+  // The agent that holds the project calls edit.assemble with a music asset id: the inner audio.add runs as that agent,
+  // so the copilot lock lets it through (it used to come back agent_busy, "Director is editing").
+  void assembleMusicAssetIdUnderAgentLock() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, beats_}}});
+    QString storyId, beatsId;
+    for (const auto& aVal : ok(Q("assets.list")).value(Q("assets")).toArray()) {
+      const QJsonObject aObj = aVal.toObject();
+      if (aObj.value(Q("path")).toString().contains(Q("story"))) storyId = aObj.value(Q("id")).toString();
+      else if (aObj.value(Q("path")).toString().contains(Q("beats"))) beatsId = aObj.value(Q("id")).toString();
+    }
+    QVERIFY(!storyId.isEmpty());
+    QVERIFY(!beatsId.isEmpty());
+
+    ok(Q("session.group.begin"), {{Q("label"), Q("Director: film")}, {Q("actor"), Q("agent:director")}});
+    Result r = raw(Q("edit.assemble"), {
+      {Q("assetIds"), QJsonArray{storyId}},
+      {Q("musicItemId"), beatsId},
+      {Q("pacing"), Q("social-short")},
+      {Q("apply"), true},
+      {Q("origin"), Q("agent:director")}
+    });
+    QVERIFY2(r.ok, qPrintable(r.error.code + Q(": ") + r.error.message));
+    ok(Q("session.group.end"), {{Q("actor"), Q("agent:director")}});
+  }
+
   void storyboardSetAcceptsSceneFields() {
     const QJsonObject scene{{Q("id"), Q("sc_1")}, {Q("title"), Q("Open")}, {Q("intent"), Q("establish")},
                             {Q("durationSec"), 4.5}, {Q("shotPrompt"), Q("wide")}, {Q("voText"), Q("vo")},
