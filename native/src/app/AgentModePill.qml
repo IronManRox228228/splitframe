@@ -32,11 +32,13 @@ Item {
         anchors.fill: parent
         focusPolicy: Qt.NoFocus
         hoverEnabled: true
-        implicitWidth: row.implicitWidth + (pill.compact ? 20 : 24)
+        // The button sizes and places contentItem itself (anchors on it are ignored), so the side gap is padding.
+        leftPadding: pill.compact ? 10 : 12
+        rightPadding: pill.compact ? 10 : 12
+        implicitWidth: row.implicitWidth + leftPadding + rightPadding
         onClicked: list.opened ? list.close() : list.open()
         contentItem: Row {
             id: row
-            anchors.centerIn: parent
             spacing: 6
             Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: pill.dot(appEditor.agentMode) }
             Text { anchors.verticalCenter: parent.verticalCenter; text: pill.labels[appEditor.agentMode]; color: button.hovered ? Theme.text : Theme.fg2; font.pixelSize: 12 }
