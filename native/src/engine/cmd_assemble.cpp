@@ -25,6 +25,8 @@ Result assembleCmd(CallContext& c, const QJsonObject& a) {
     return invalid(QStringLiteral("Argument 'musicItemId' is required"));
   }
 
+  const bool apply = a.value(q("apply")).toBool(false);
+
   const QString pacingName = a.value(q("pacing")).toString();
   if (pacingName.isEmpty()) {
     return invalid(QStringLiteral("Argument 'pacing' is required"));
@@ -39,8 +41,29 @@ Result assembleCmd(CallContext& c, const QJsonObject& a) {
   const double fps = static_cast<double>(doc.project.fps);
 
   const Item* musicItem = getItem(doc, musicItemId);
+  QString resolvedMusicId = musicItemId;
   if (!musicItem) {
-    return notFound(QStringLiteral("Music item '%1' not found").arg(musicItemId));
+    // Not a timeline item: maybe it is a music asset id from assets.list.
+    const Asset* musicAsset = c.session->project->asset(musicItemId);
+    if (musicAsset && (musicAsset->kind == AssetKind::Audio || musicAsset->hasAudio)) {
+      if (!apply) {
+        return invalid(QStringLiteral("Music item '%1' is not on the timeline: call audio.add with asset id '%1' first, or set apply=true").arg(musicItemId));
+      }
+      // Place the asset with the same command the caller would use, then assemble onto it.
+      Result rPlace = c.engine->call(q("audio.add"), {{q("assetId"), musicItemId}, {q("session"), c.session->id}});
+      if (!rPlace.ok) return rPlace;
+      const QJsonArray createdItems = rPlace.value.toObject().value(q("created")).toObject().value(q("items")).toArray();
+      if (createdItems.isEmpty()) {
+        return Result::failure(q("edit_rejected"), QStringLiteral("audio.add placed asset '%1' but created no item").arg(musicItemId));
+      }
+      resolvedMusicId = createdItems.first().toString();
+      musicItem = getItem(doc, resolvedMusicId);
+      if (!musicItem) {
+        return Result::failure(q("edit_rejected"), QStringLiteral("Placed music asset '%1' but item '%2' is missing").arg(musicItemId, resolvedMusicId));
+      }
+    } else {
+      return notFound(QStringLiteral("Music item '%1' not found: pass the id of an audio item on the timeline (audio.add returns it) or a music asset id").arg(musicItemId));
+    }
   }
   if (!musicItem->assetId || (musicItem->type() != ItemType::Audio && musicItem->type() != ItemType::Video)) {
     return invalid(QStringLiteral("Item '%1' is not an audio item").arg(musicItemId));
@@ -93,7 +116,7 @@ Result assembleCmd(CallContext& c, const QJsonObject& a) {
   }
 
   // 2. Music analysis
-  Result rMusic = c.engine->call(q("music.structure"), {{q("itemId"), musicItemId}, {q("session"), c.session->id}});
+  Result rMusic = c.engine->call(q("music.structure"), {{q("itemId"), resolvedMusicId}, {q("session"), c.session->id}});
   if (!rMusic.ok) {
     return Result::failure(q("audio_error"), QStringLiteral("Failed to analyse music: %1").arg(rMusic.error.message));
   }
@@ -224,7 +247,6 @@ Result assembleCmd(CallContext& c, const QJsonObject& a) {
   }
 
   // 5. Apply if requested
-  const bool apply = a.value(q("apply")).toBool(false);
   const bool replaceTrack = a.value(q("replaceTrack")).toBool(false);
 
   if (apply) {
@@ -283,7 +305,7 @@ void registerAssembleCommands(Engine& e) {
   e.add(spec("edit.assemble", "", "editor", true,
              QStringLiteral("Build deterministic rough cut from shots, music item, and pacing profile. Cuts on beats and sections. Deterministic code, not a model."),
              js::obj({{q("assetIds"), js::array(js::str(), QStringLiteral("List of asset IDs to cut between"))},
-                      {q("musicItemId"), js::str(QStringLiteral("ID of audio item playing music"))},
+                      {q("musicItemId"), js::str(QStringLiteral("ID of an audio item on the timeline (audio.add returns it), or a music asset id from assets.list"))},
                       {q("pacing"), js::str(QStringLiteral("Name of pacing profile from pacing.json"))},
                       {q("targetFrames"), js::integer(QStringLiteral("Target duration in frames (default music length)"), 1)},
                       {q("trackId"), js::str(QStringLiteral("Target video track ID (default first video track)"))},

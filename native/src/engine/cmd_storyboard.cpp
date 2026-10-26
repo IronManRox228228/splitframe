@@ -229,7 +229,7 @@ void registerStoryboardCommands(Engine& e) {
   // storyboard.toTimeline
   e.add(spec("storyboard.toTimeline", "storyboardToTimeline", "editor", true,
              QStringLiteral("Lays scenes out as placeholder slots on the timeline, with markers (undoable)."),
-             js::obj({{q("trackName"), js::str(QStringLiteral("Optional track name"))},
+             js::obj({{q("trackName"), js::str(QStringLiteral("Optional name of a text track for the placeholders"))},
                       {q("startFrame"), js::integer(QStringLiteral("Starting frame position (default 0)"))}}),
              [](CallContext& c, const QJsonObject& a) {
                const TimelineDoc& d = c.session->project->doc();
@@ -243,9 +243,21 @@ void registerStoryboardCommands(Engine& e) {
                // Find an existing text track or create one
                QString textTrackId;
                const QString customName = a.value(q("trackName")).toString();
+               // A name that already belongs to a non-text track must not be reused for a text
+               // track (two tracks would share one name): ignore it and fall back to the default.
+               bool ignoreCustomName = false;
+               if (!customName.isEmpty()) {
+                 for (const Track& t : d.tracks)
+                   if (t.name == customName && t.kind != TrackKind::Text) {
+                     ignoreCustomName = true;
+                     break;
+                   }
+               }
+               const QString effectiveName = ignoreCustomName ? QString() : customName;
+
                for (const Track& t : d.tracks) {
                  if (!t.locked && t.kind == TrackKind::Text) {
-                   if (customName.isEmpty() || t.name == customName) {
+                   if (effectiveName.isEmpty() || t.name == effectiveName) {
                      textTrackId = t.id;
                      break;
                    }
@@ -258,7 +270,7 @@ void registerStoryboardCommands(Engine& e) {
                  ops.push_back(TrackAdd{
                    .trackId = textTrackId,
                    .kind = TrackKind::Text,
-                   .name = !customName.isEmpty() ? customName : QStringLiteral("Storyboard Slots")
+                   .name = !effectiveName.isEmpty() ? effectiveName : QStringLiteral("Storyboard Slots")
                  });
                }
 

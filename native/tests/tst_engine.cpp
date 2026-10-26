@@ -2033,6 +2033,69 @@ private slots:
     QCOMPARE(videoItemCountRestored, 0);
   }
 
+  void assembleAcceptsMusicAssetId() {
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, talk_, beats_}}});
+    const QJsonArray assets = ok(Q("assets.list")).value(Q("assets")).toArray();
+    QString storyId, beatsId;
+    for (const auto& aVal : assets) {
+      const QJsonObject aObj = aVal.toObject();
+      const QString path = aObj.value(Q("path")).toString();
+      if (path.contains(Q("story"))) storyId = aObj.value(Q("id")).toString();
+      else if (path.contains(Q("beats"))) beatsId = aObj.value(Q("id")).toString();
+    }
+    QVERIFY(!storyId.isEmpty());
+    QVERIFY(!beatsId.isEmpty());
+
+    // The raw asset id is not a timeline item: a dry run must refuse with a clear error.
+    Result rDry = raw(Q("edit.assemble"), {
+      {Q("assetIds"), QJsonArray{storyId}},
+      {Q("musicItemId"), beatsId},
+      {Q("pacing"), Q("social-short")},
+      {Q("apply"), false}
+    });
+    QVERIFY(!rDry.ok);
+    QCOMPARE(rDry.error.code, Q("invalid_params"));
+    QVERIFY(rDry.error.message.contains(Q("audio.add")));
+    QVERIFY(rDry.error.message.contains(Q("apply=true")));
+
+    // An id that is neither a timeline item nor an asset keeps the not_found error, now actionable.
+    Result rUnknown = raw(Q("edit.assemble"), {
+      {Q("assetIds"), QJsonArray{storyId}},
+      {Q("musicItemId"), Q("no_such_music_asset")},
+      {Q("pacing"), Q("social-short")},
+      {Q("apply"), false}
+    });
+    QVERIFY(!rUnknown.ok);
+    QCOMPARE(rUnknown.error.code, Q("not_found"));
+    QVERIFY(rUnknown.error.message.contains(Q("pass the id of an audio item on the timeline")));
+    QVERIFY(rUnknown.error.message.contains(Q("audio.add returns it")));
+
+    // With apply=true the engine places the asset itself (audio.add) and assembles onto it.
+    Result rApply = raw(Q("edit.assemble"), {
+      {Q("assetIds"), QJsonArray{storyId}},
+      {Q("musicItemId"), beatsId},
+      {Q("pacing"), Q("social-short")},
+      {Q("apply"), true}
+    });
+    QVERIFY2(rApply.ok, qPrintable(rApply.error.message));
+    QCOMPARE(rApply.value.toObject().value(Q("applied")).toBool(), true);
+
+    // The music asset is now on the timeline as exactly one audio item.
+    QJsonObject tl = ok(Q("timeline.get"), {{Q("mode"), Q("summary")}});
+    int musicItems = 0;
+    for (const auto& tVal : tl.value(Q("tracks")).toArray()) {
+      const QJsonObject tObj = tVal.toObject();
+      if (tObj.value(Q("kind")).toString() == Q("audio")) {
+        for (const auto& iVal : tObj.value(Q("items")).toArray())
+          if (iVal.toObject().value(Q("asset")).toString() == beatsId) ++musicItems;
+      }
+    }
+    QCOMPARE(musicItems, 1);
+
+    Result rUndo = raw(Q("history.undo"), {});
+    QVERIFY(rUndo.ok);
+  }
+
   void storyboardSetAcceptsSceneFields() {
     const QJsonObject scene{{Q("id"), Q("sc_1")}, {Q("title"), Q("Open")}, {Q("intent"), Q("establish")},
                             {Q("durationSec"), 4.5}, {Q("shotPrompt"), Q("wide")}, {Q("voText"), Q("vo")},
@@ -2050,6 +2113,45 @@ private slots:
     QCOMPARE(all.size(), 2);
     QCOMPARE(all.at(0).toObject().value(Q("title")).toString(), Q("Opening"));
     QCOMPARE(raw(Q("storyboard.set"), {{Q("scenes"), QJsonArray{QJsonObject{{Q("bogus"), 1}}}}}).error.code, Q("invalid_params"));
+  }
+
+  void storyboardToTimelineTrackNameClash() {
+    ok(Q("storyboard.set"), {{Q("scenes"), QJsonArray{
+      QJsonObject{{Q("id"), Q("sc_1")}, {Q("title"), Q("Opening")}, {Q("intent"), Q("establish")}, {Q("durationSec"), 2.0}},
+      QJsonObject{{Q("id"), Q("sc_2")}, {Q("title"), Q("Demo")}, {Q("intent"), Q("product")}, {Q("durationSec"), 3.0}}
+    }}});
+
+    const QJsonObject tlBefore = ok(Q("timeline.get"), {{Q("mode"), Q("summary")}});
+    const QJsonArray tracksBefore = tlBefore.value(Q("tracks")).toArray();
+    QString textTrackId;
+    int mainVideoCount = 0;
+    for (const auto& tVal : tracksBefore) {
+      const QJsonObject tObj = tVal.toObject();
+      if (tObj.value(Q("kind")).toString() == Q("text")) textTrackId = tObj.value(Q("id")).toString();
+      if (tObj.value(Q("name")).toString() == Q("Main Video")) ++mainVideoCount;
+    }
+    QVERIFY(!textTrackId.isEmpty());
+    QCOMPARE(mainVideoCount, 1);
+
+    // "Main Video" names the real video track, not a text track: toTimeline must not create a
+    // second track named "Main Video".
+    const QJsonObject placed = ok(Q("storyboard.toTimeline"), {{Q("trackName"), Q("Main Video")}});
+    QVERIFY(!placed.value(Q("trackId")).toString().isEmpty());
+    QCOMPARE(placed.value(Q("placedScenes")).toInt(), 2);
+
+    const QJsonObject tlAfter = ok(Q("timeline.get"), {{Q("mode"), Q("summary")}});
+    const QJsonArray tracksAfter = tlAfter.value(Q("tracks")).toArray();
+    QCOMPARE(tracksAfter.size(), tracksBefore.size()); // no extra track was created
+    mainVideoCount = 0;
+    int textCount = 0;
+    for (const auto& tVal : tracksAfter) {
+      const QJsonObject tObj = tVal.toObject();
+      if (tObj.value(Q("kind")).toString() == Q("text")) ++textCount;
+      if (tObj.value(Q("name")).toString() == Q("Main Video")) ++mainVideoCount;
+    }
+    QCOMPARE(textCount, 1);
+    QCOMPARE(mainVideoCount, 1);
+    QCOMPARE(placed.value(Q("trackId")).toString(), textTrackId); // slots on the existing text track
   }
 
   void unknownTextureRejected() {
