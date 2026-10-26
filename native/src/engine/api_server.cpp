@@ -58,9 +58,19 @@ public:
     QObject::connect(socket, &QTcpSocket::readyRead, this, [this] {
       buf_ += sock_->readAll();
       if (!sse_) idle_.start();
+      // A call can run nested event loops (agent.chat waits on the model), and the client may hang up meanwhile. Deleting
+      // the connection then would delete the socket under its own readyRead emission and crash on return; defer it.
+      // A connection inside a call is busy, not idle: the idle timer would abort it mid-call (every call over idleMs).
+      ++inReadyRead_;
+      idle_.stop();
       process();
+      if (--inReadyRead_ == 0 && hungUp_) return deleteLater();
+      if (inReadyRead_ == 0 && !sse_) idle_.start();
     });
-    QObject::connect(socket, &QTcpSocket::disconnected, this, [this] { deleteLater(); });
+    QObject::connect(socket, &QTcpSocket::disconnected, this, [this] {
+      if (inReadyRead_ > 0) hungUp_ = true;
+      else deleteLater();
+    });
     idle_.start();
   }
   ~Connection() override { srv_->connections_.removeAll(this); }
@@ -174,6 +184,8 @@ private:
   QTimer idle_;
   bool sse_ = false;
   bool closing_ = false;
+  int inReadyRead_ = 0;
+  bool hungUp_ = false;
   QSet<QString> filter_;
 };
 

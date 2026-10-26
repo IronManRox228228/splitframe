@@ -182,6 +182,41 @@ private slots:
     }
   }
 
+  // A long call (agent.chat waits on the model in a nested event loop) outlasts the idle timeout, or its client hangs up
+  // before the answer: the server must answer / survive and keep serving. The idle timer used to abort the busy
+  // connection mid-call, deleting the socket under its own readyRead, and the app crashed on return.
+  void longCallOutlastsIdleTimeoutOrClientHangsUp() {
+    engine_->add(CommandSpec{.name = Q("test.slow"), .description = Q("Waits in a nested event loop."), .domain = Q("engine"),
+                             .needsSession = false, .inputSchema = QJsonObject{{Q("type"), Q("object")}, {Q("properties"), QJsonObject{}}},
+                             .handler = [](CallContext&, const QJsonObject&) {
+                               QTest::qWait(600);
+                               return Result::success(QJsonObject{{Q("slept"), true}});
+                             }});
+    server_.reset();
+    ApiServer::Options o;
+    o.tokenFile = dir_.filePath(Q("api-token"));
+    o.idleMs = 150; // shorter than the call
+    server_ = std::make_unique<ApiServer>(*engine_, o);
+    QVERIFY(server_->start());
+
+    const Response slow = call(Q("test.slow"));
+    QCOMPARE(slow.status, 200);
+    QCOMPARE(slow.json().value(Q("result")).toObject().value(Q("slept")).toBool(), true);
+
+    {
+      QTcpSocket s;
+      s.connectToHost(QHostAddress::LocalHost, server_->port());
+      QVERIFY(s.waitForConnected(3000));
+      s.write(request("POST", "/rpc", rpc(Q("test.slow"))));
+      QVERIFY(s.waitForBytesWritten(3000));
+      QTest::qWait(100); // the server is now inside test.slow
+      s.abort();
+    }
+    QTest::qWait(1200);
+    const Response r = call(Q("engine.ping"));
+    QCOMPARE(r.status, 200);
+  }
+
   void jsonRpcErrors() {
     // parse error
     Response r = roundTrip(request("POST", "/rpc", "{not json"));
