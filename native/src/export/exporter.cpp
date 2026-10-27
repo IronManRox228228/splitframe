@@ -252,7 +252,9 @@ bool Job::tryOpenVideo(const AVCodec* codec, bool nvenc) {
     case VideoCodec::H264:
     case VideoCodec::H265: {
       if (nvenc) {
-        set("preset", s_.encoderPreset.isEmpty() ? QStringLiteral("p5") : s_.encoderPreset);
+        // NVENC only takes p1..p7; a x264 name ("veryfast", set when the settings were built for software) fails to open
+        static const QRegularExpression nvPresetOk(QStringLiteral("^p[1-7]$"));
+        set("preset", nvPresetOk.match(s_.encoderPreset).hasMatch() ? s_.encoderPreset : QStringLiteral("p5"));
         if (!bitrateMode) {
           set("rc", QStringLiteral("vbr"));
           set("cq", QString::number(s_.crf >= 0 ? s_.crf : 23));
