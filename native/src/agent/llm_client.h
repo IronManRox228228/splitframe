@@ -151,6 +151,8 @@ public:
   Lane lastLane() const override { return lastLaneCalled_; }
 
   void setTimeoutMs(int ms) { timeoutMs_ = ms; }
+  // How often a rate-limited (429) call is retried after the provider's retry hint (default 2; 0 reports the first 429).
+  void setRateLimitRetries(int n) { rateLimitRetries_ = n; }
   const QString& endpoint() const { return endpoint_; }
   // Optional Bearer auth for local servers that enforce a key (SF_LLM_API_KEY).
   void setApiKey(QString key) { apiKey_ = std::move(key); }
@@ -160,6 +162,10 @@ public:
   QString lastObservedModel() const override { return lastObservedModel_; }
 
 private:
+  // One HTTP round trip; complete() wraps it and waits out a short rate limit (429 with a retry hint) before giving up.
+  QJsonObject completeOnce(const QString& systemPrompt, const std::vector<ChatMessage>& messages, const QJsonArray& tools, int slotId, Lane lane);
+  int rateLimitRetries_ = 2;
+  int retryAfterMs_ = 0; // set by completeOnce on a 429: the provider's hint (Retry-After header or retryDelay in the body), 0 when none
   QString endpoint_;
   QString model_;
   QString modelFast_;

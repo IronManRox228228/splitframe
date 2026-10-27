@@ -191,6 +191,32 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
                                     const QJsonArray& tools,
                                     int slotId,
                                     Lane lane) {
+  // Hosted free tiers rate-limit per minute; a run of tool calls hits that mid-edit. Wait out a short limit instead of failing the turn.
+  constexpr int kMaxWaitMs = 60000, kDefaultWaitMs = 15000;
+  QJsonObject out = completeOnce(systemPrompt, messages, tools, slotId, lane);
+  for (int attempt = 0; attempt < rateLimitRetries_ && out.value(QStringLiteral("code")).toString() == QStringLiteral("rate_limited"); ++attempt) {
+    const int waitMs = retryAfterMs_ > 0 ? retryAfterMs_ + 500 : kDefaultWaitMs;
+    if (waitMs > kMaxWaitMs) break; // a daily quota asks for hours: report it
+    QEventLoop loop;
+    QTimer done, poll;
+    done.setSingleShot(true);
+    QObject::connect(&done, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(&poll, &QTimer::timeout, &loop, [this, &loop] { if (cancelRequested()) loop.quit(); });
+    poll.start(100);
+    done.start(waitMs);
+    loop.exec();
+    if (cancelRequested()) return QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), QStringLiteral("cancelled")}, {QStringLiteral("message"), QStringLiteral("Stopped by the user")}}}, {QStringLiteral("code"), QStringLiteral("cancelled")}};
+    out = completeOnce(systemPrompt, messages, tools, slotId, lane);
+  }
+  return out;
+}
+
+QJsonObject HttpLlmClient::completeOnce(const QString& systemPrompt,
+                                        const std::vector<ChatMessage>& messages,
+                                        const QJsonArray& tools,
+                                        int slotId,
+                                        Lane lane) {
+  retryAfterMs_ = 0;
   lastLaneCalled_ = lane;
   const QString activeModel = modelForLane(lane);
   QJsonObject req;
@@ -282,6 +308,16 @@ QJsonObject HttpLlmClient::complete(const QString& systemPrompt,
 
   const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
   const QByteArray respData = reply->readAll();
+  if (status == 429) {
+    bool ok = false;
+    double sec = reply->rawHeader("Retry-After").toDouble(&ok);
+    if (!ok) {
+      static const QRegularExpression hint(QStringLiteral("(?:retryDelay\\W+|retry in\\s+)([0-9.]+)s"));
+      const auto m = hint.match(QString::fromUtf8(respData));
+      if (m.hasMatch()) { sec = m.captured(1).toDouble(&ok); }
+    }
+    if (ok && sec > 0) retryAfterMs_ = static_cast<int>(sec * 1000);
+  }
   const QString transportError = reply->error() != QNetworkReply::NoError ? reply->errorString() : QString();
   reply->deleteLater();
 

@@ -9,6 +9,7 @@
 #include "fake_llm_server.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -70,9 +71,26 @@ private slots:
     server.start();
 
     HttpLlmClient client(server.chatUrl(), QStringLiteral("test-model"));
+    client.setRateLimitRetries(0);
     server.setNextChatStatus(429);
     QJsonObject resp = client.complete(QStringLiteral("s"), {ChatMessage{.role = QStringLiteral("user"), .content = QStringLiteral("hi")}});
     QCOMPARE(llmErrorCode(resp), QStringLiteral("rate_limited"));
+  }
+
+  void rateLimitWaitsOutTheProvidersHintAndRetries() {
+    sf::test::FakeLlmServer server;
+    QVERIFY(server.listen());
+    server.start();
+
+    HttpLlmClient client(server.chatUrl(), QStringLiteral("test-model"));
+    server.setNextChatStatus(429);
+    server.setNextChatBody(QJsonObject{{QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), QStringLiteral("rate_limited")},
+                                                                              {QStringLiteral("message"), QStringLiteral("Quota exceeded. Please retry in 0.1s.")}}}});
+    QElapsedTimer t;
+    t.start();
+    QJsonObject resp = client.complete(QStringLiteral("s"), {ChatMessage{.role = QStringLiteral("user"), .content = QStringLiteral("hi")}});
+    QVERIFY2(llmErrorCode(resp).isEmpty(), "the retry after the hint should reach the normal reply");
+    QVERIFY(t.elapsed() >= 500);
   }
 
   void errorCodeModelNotFound() {
@@ -115,6 +133,7 @@ private slots:
     server.start();
 
     HttpLlmClient client(server.chatUrl(), QStringLiteral("test-model"));
+    client.setRateLimitRetries(0);
 
     const QStringList codes{
       QStringLiteral("provider_unreachable"),
