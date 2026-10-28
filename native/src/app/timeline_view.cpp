@@ -566,13 +566,16 @@ void TimelineView::paintClip(QPainter* p, const ItemRow& r, const QRectF& rect, 
     const auto& strip = preview->strip;
     const double tileH = rect.height();
     const QSize first = strip.front().image.size();
-    const double tileW = std::max(24.0, tileH * first.width() / std::max(1, first.height()));
+    const double naturalW = std::max(24.0, tileH * first.width() / std::max(1, first.height()));
+    // a whole number of tiles per clip, so zooming re-spreads the strip over the clip's new width: a short
+    // clip shows one frame from its middle, a long one many frames; each tile is cropped to fit, not stretched
+    const double tileW = rect.width() > naturalW ? rect.width() / std::round(rect.width() / naturalW) : naturalW;
     const double from = std::max(rect.left(), 0.0);
     const double to = std::min(rect.right(), width());
     const double startX = rect.left() + std::floor((from - rect.left()) / tileW) * tileW;
     p->setOpacity(p->opacity() * 0.85);
     for (double x = startX; x < to; x += tileW) {
-      const double frames = (x - rect.left()) / px_;
+      const double frames = (x + std::min(tileW, rect.width()) / 2 - rect.left()) / px_;
       const double sec = (static_cast<double>(r.sourceIn) + frames * r.speed) / fps;
       size_t idx = 0;
       if (r.type == ItemType::Video) {
@@ -580,7 +583,18 @@ void TimelineView::paintClip(QPainter* p, const ItemRow& r, const QRectF& rect, 
         const auto it = std::upper_bound(strip.begin(), strip.end(), sec, [](double s, const Thumbnail& t) { return s < t.requestedSec; });
         idx = it == strip.begin() ? 0 : static_cast<size_t>(it - strip.begin()) - 1;
       }
-      p->drawImage(QRectF(x, rect.top(), tileW, tileH), strip[idx].image);
+      const QImage& img = strip[idx].image;
+      QRectF src(QPointF(0, 0), QSizeF(img.size()));
+      const double imgAspect = src.width() / std::max(1.0, src.height());
+      const double tileAspect = tileW / tileH;
+      if (tileAspect < imgAspect) {
+        const double w = src.height() * tileAspect;
+        src = QRectF((src.width() - w) / 2, 0, w, src.height());
+      } else {
+        const double h = src.width() / tileAspect;
+        src = QRectF(0, (src.height() - h) / 2, src.width(), h);
+      }
+      p->drawImage(QRectF(x, rect.top(), tileW, tileH), img, src);
     }
     p->setOpacity(lifted ? 0.92 : (trimming ? 0.8 : (dim ? 0.6 : 1.0)));
   } else if (preview && r.type == ItemType::Audio && preview->peaks.bucketCount() > 0) {
