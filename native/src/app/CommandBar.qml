@@ -73,11 +73,12 @@ Item {
         }
     }
 
-    // the video behind the bar moves: re-capture the small region a few times a second while the bar is on screen
+    // the video behind the bar moves: re-capture the small region a few times a second while the bar is on screen.
+    // Not while exporting: the preview is still then, and a re-capture re-renders the window content mid-export, when the CPU is busiest
     Timer {
         interval: 250
         repeat: true
-        running: bar.visible && bar.backdrop !== null && Theme.refractionOn
+        running: bar.visible && bar.backdrop !== null && Theme.refractionOn && !appEditor.exporter.running
         onTriggered: { inputGlass.refreshBackdrop(); modeBox.refreshBackdrop() }
     }
 
