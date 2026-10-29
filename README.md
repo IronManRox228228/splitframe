@@ -53,7 +53,7 @@ more VRAM, or a cloud/second-machine model server for the agents, avoids this.
 You need Visual Studio 2022 Build Tools (C++ workload), CMake 3.25+, Qt 6.8 (`msvc2022_64`) and a
 shared GPL FFmpeg 8.1 build. Details and exact modules are in [`native/README.md`](native/README.md).
 
-1. Clone the repo and check out the `comfy` branch.
+1. Clone the repo and check out the `comfy` branch. [UPDATE: I fast-forwarded main to the comfy branch, so main now reflects everything that the comfy branch has.]
 2. Double-click [`run_build.bat`](run_build.bat) in the repo root. It configures the `debug` preset
    if needed, builds, and opens `native\build\debug\bin\splitframe.exe`.
    It assumes Qt in `C:\Qt\6.8.3\msvc2022_64`, FFmpeg in `C:\dev\ffmpeg-8.1-gpl` and optional
