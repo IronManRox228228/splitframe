@@ -7,7 +7,18 @@ implementation until this one reaches parity; both read and write the same proje
 
 Needs Visual Studio 2022 Build Tools (C++ workload), CMake 3.25+, Qt 6.8 (`msvc2022_64` with
 qtmultimedia, qtshadertools, qtimageformats) and a shared **GPL** FFmpeg build (BtbN `gpl-shared`: libx264 / libx265 are needed for export; the native app is GPL-3.0-or-later, so GPL FFmpeg is fine here).
-Defaults: `QT_ROOT=C:\Qt\6.8.3\msvc2022_64`, `FFMPEG_ROOT=C:\dev\ffmpeg-8.1-gpl`.
+Defaults: `QT_ROOT=C:\Qt\6.8.3\msvc2022_64`, `FFMPEG_ROOT=C:\dev\ffmpeg-8.1-gpl`, `OCIO_ROOT=C:\dev\ocio` (OpenColorIO is optional, see Colour management).
+Set those environment variables first if your copies live elsewhere.
+
+### One click
+
+Double-click `run_build.bat` in the repo root. It configures the `debug` preset if
+`native\build\debug\CMakeCache.txt` does not exist, builds with `-j 8`, then starts
+`native\build\debug\bin\splitframe.exe`. If the build fails it stays open so you can read the first error.
+
+### By hand
+
+Run from `native\`. Presets: `debug`, `release` (RelWithDebInfo), `asan`.
 
 ```
 scripts\dev.cmd cmake --preset debug
@@ -18,8 +29,10 @@ build\debug\bin\splitframe.exe clip.mp4
 build\debug\bin\splitframe.exe --screenshot out.png clip.mp4   # renders, saves the window, quits
 ```
 
-Builds run 4 jobs at a time (`CMakePresets.json`): MSVC uses ~0.5 GB per job and this machine also
-hosts the local model server.
+`scripts\dev.cmd` runs a command inside the MSVC x64 developer environment with Qt, FFmpeg and OpenColorIO on `PATH`.
+
+The build presets in `CMakePresets.json` use 4 jobs (MSVC uses ~0.5 GB per job, and the local model server shares the
+machine). `run_build.bat` overrides that with `-j 8`. Pass `-j <n>` to `cmake --build` to change it.
 
 ## Layout
 
@@ -30,7 +43,7 @@ hosts the local model server.
 | `src/render` | Compositor on QRhi (D3D11 today): one timeline frame to a texture, zero-copy D3D11VA video. Used by preview and export. | core, media |
 | `src/audio` | Mixer, effects, meters, output device. | core, media |
 | `src/export` | Render + encode to file (NVENC when available, else software; QSV/AMF requests map to that same path). | render, audio |
-| `src/agent` | LLM agents: router, specialists, peer bus, harness over any OpenAI-compatible local LLM server (`SF_LLM_*` seam, e.g. llama-server). Chat/Plan modes; Ask mode and plans are not implemented yet. | core, editor, engine |
+| `src/agent` | LLM agents: router, specialists, peer bus, harness over any OpenAI-compatible LLM server (`SF_LLM_*` seam, e.g. llama-server). Four modes: Plan (a plan card, run with `agent.plan.run`), Ask before edits (proposals held until `agent.plan.run` or `agent.plan.skip`), Default, Auto. | core, editor, engine |
 | `src/editor` | Editing logic without Qt Quick: `Project` (document, undo history, selection, save/open/autosave/recovery), `MediaPool`, timeline models, `TimelineController` (drag/trim/split/delete as ops), `Inspector`. | core, media |
 | `src/engine` | Headless engine (`sf_engine`): one typed command surface over open projects, local JSON-RPC API (HTTP + SSE + stdio), MCP server, `splitframe-cli`. | editor, export, render, audio |
 | `src/app` | Qt Quick UI: window, QML panels, painted `TimelineView`, `Editor` facade, `Player`. | everything |
@@ -56,7 +69,7 @@ Without it only the built-in sRGB / BT.709 / BT.1886 / PQ / HLG pipeline is avai
 
 ## Engine, local API, MCP and CLI (M5a)
 
-`src/engine` is the machine front end. `Engine::call(name, args) -> Result` runs one of 52 commands (`engine.commands` /
+`src/engine` is the machine front end. `Engine::call(name, args) -> Result` runs one of its registered commands (`engine.commands` /
 `splitframe-cli commands` list them with JSON schema, `domain` = editor | colour | audio | engine, and `mutates`); errors are values
 (`{code, message, details}`), mutating commands take an `origin` recorded in the history entry. Edits are core ops, so undo/redo and the
 Electron app's op log semantics are unchanged.
@@ -70,22 +83,87 @@ Electron app's op log semantics are unchanged.
 - `splitframe.exe --mcp [project.json]` or `splitframe-cli mcp`: MCP over stdio (tools = the engine commands with `.` written `_`, resources
   `splitframe://timeline|project|assets|frame/{n}`).
 
+## AI / LLM settings
+
+The agent crew talks to any OpenAI-compatible chat server. Each setting is read from its environment variable first; if that is
+empty, from the Windows registry (`HKCU\Software\SplitFrame\SplitFrame`, written by the in-app AI settings dialog) under the same key name.
+
+| Name | Meaning | Default |
+|---|---|---|
+| `SF_LLM_ENDPOINT` | Full chat-completions URL. SplitFrame posts to the URL exactly as given and appends nothing, so include `/v1/chat/completions`. The value `mock` runs the crew offline. | `http://127.0.0.1:8080/v1/chat/completions` |
+| `SF_LLM_MODEL` | Model name sent with each request. | `qwythos-9b-v2` |
+| `SF_LLM_MODEL_FAST`, `SF_LLM_MODEL_DEEP`, `SF_LLM_MODEL_JUDGE` | Model per lane. Order: env var, same-named setting, `ai/modelFast` / `ai/modelDeep` / `ai/modelJudge` setting, then `SF_LLM_MODEL`. | `SF_LLM_MODEL` |
+| `SF_LLM_API_KEY` | Sent as a Bearer token to the endpoint above. Only needed if the server asks for one. | none |
+| `SF_LLM_TIMEOUT_MS` | Timeout of one completion request, in ms. Applies only if above 0. | no limit (Stop still aborts) |
+| `SF_LLM_MOCK_SCRIPT` | Path to a JSON file that scripts the replies when the endpoint is `mock`. Environment variable only (not read from the registry). | none |
+
+Examples (PowerShell; start SplitFrame from the same window):
+
+```
+# Local llama-server running Qwythos v2 9B
+$env:SF_LLM_ENDPOINT = "http://127.0.0.1:8080/v1/chat/completions"
+$env:SF_LLM_MODEL    = "qwythos-9b-v2"
+
+# Google Gemini through its OpenAI-compatible endpoint
+$env:SF_LLM_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+$env:SF_LLM_MODEL    = "gemini-3.5-flash-lite"
+$env:SF_LLM_API_KEY  = "<your-key>"
+```
+
+The Gemini example is the cloud setup the crew was tested with end to end. `splitframe-cli` also accepts
+`--llm-endpoint <url|mock>`, `--llm-model <name>` and `--llm-mock-script <file>` after the subcommand name, and `splitframe-cli agent "<request>"` runs the crew from the command line.
+The app's AI settings dialog edits the same settings (the API key is stored in the registry and shown masked).
+Before an agent turn SplitFrame checks that the endpoint's host and port accept a connection. With no model reachable, the AI commands answer error code `unavailable`.
+
 ## Generate with ComfyUI (open weights)
 
 ### What it does
 Generated shots (image, video, and audio) land directly on the timeline, where the editor's deterministic layers cut, grade, beat-sync, safety-check, and export them. Variants of a shot can be rendered as a contact sheet and picked by letter (e.g., variant `A`, `B`, `C`, etc.) in a single undo step.
 
+### How SplitFrame finds ComfyUI
+SplitFrame uses one of two modes (`src/comfy/comfy_process.cpp`):
+
+- **External:** if `SF_COMFY_URL` (or the registry value `comfy/url`) is set, SplitFrame talks to the ComfyUI already running at that URL and never starts or stops it.
+  If it is not set, the client uses `http://127.0.0.1:8188`.
+- **Managed:** if `SF_COMFY_HOME` and/or `SF_COMFY_PYTHON` (or registry `comfy/home`, `comfy/python`) are set and no URL is, SplitFrame starts ComfyUI itself:
+  `python -s main.py --listen 127.0.0.1 --port <port> --disable-auto-launch`, run in the ComfyUI folder. The port is a free local port that SplitFrame picks each time, not a fixed one.
+  It waits up to 180 s for the server, and stops it when told to or when SplitFrame exits.
+  If no Python is given it looks for `..\python_embeded\python.exe`, then `venv\Scripts\python.exe`, then `.venv\Scripts\python.exe`, relative to the ComfyUI folder.
+  Registry `comfy/autoStart` (default false) starts it with the engine and restarts it after a crash, at most twice in 10 minutes.
+  Commands: `comfy.server.start` (`home`, `python`, `args`, `save`, `timeoutMs`), `comfy.server.stop`, `comfy.server.restart`, `comfy.server.status`, `comfy.server.logs`.
+  The server's output is also written to `comfy\comfy-<date>.log` in the app data folder.
+
+The AI settings dialog has the same ComfyUI fields (URL, folder, Python) and a Test button.
+
+#### ComfyUI folder layout used on the dev machine
+SplitFrame's source does not install ComfyUI or fetch anything. The development machine keeps its own ComfyUI under `%LOCALAPPDATA%\SplitFrame\comfy\`:
+
+```
+%LOCALAPPDATA%\SplitFrame\comfy\
+  runtime\ComfyUI\          ComfyUI itself
+  runtime\python_embeded\   embedded Python (found automatically next to the ComfyUI folder)
+  models\                   checkpoints, diffusion_models, text_encoders, vae, latent_upscale_models, tts
+  workflows\                API-format workflow JSON
+```
+
+To use that layout, set `SF_COMFY_HOME=%LOCALAPPDATA%\SplitFrame\comfy\runtime\ComfyUI`. A ComfyUI Windows portable build has the same
+`ComfyUI` + `python_embeded` side-by-side shape. Which model files you need depends on the workflow you import, and this repo ships no workflows or weights.
+`comfy.ready` and `generate.ready` report any model file a template needs that the running ComfyUI cannot see, and the `models` subfolder it expected it in.
+
 ### Requirements
-- A local ComfyUI server (any recent version) started with:
+- A ComfyUI server (any recent version): one you start yourself, for example
   ```bash
   python main.py --listen 127.0.0.1 --port 8188
   ```
-- Any open-weights video, image, or audio model that you already run in ComfyUI (such as LTX-Video). SplitFrame never downloads model weights.
+  (then set `SF_COMFY_URL=http://127.0.0.1:8188`, or leave it unset to use that default), or one SplitFrame manages (above).
+- Open-weights models that you install yourself (for example LTX video, Z-Image, ACE-Step). SplitFrame never downloads model weights; it only downloads the output files ComfyUI renders.
+- A workflow template per kind of shot. No templates are built in at the moment (`src/engine/comfy_templates` holds only its README). Import one with `comfy.template.import` (below); that folder's README has image, video, speech and music examples.
 
 ### Configuration
-Configure the integration via environment variables:
-- `SF_COMFY_URL`: ComfyUI server URL (default `http://127.0.0.1:8188`).
-- `SF_COMFY_TEMPLATES`: Directory containing user-imported workflow templates.
+Environment variables:
+- `SF_COMFY_URL`: ComfyUI server URL for external mode (default when unset: `http://127.0.0.1:8188`).
+- `SF_COMFY_HOME`, `SF_COMFY_PYTHON`: ComfyUI folder and Python for managed mode.
+- `SF_COMFY_TEMPLATES`: Directory for user-imported workflow templates. Without it, templates are saved in a `comfy_templates` folder in the app data location.
 - `SF_COMFY_OBJECT_INFO`: Optional path to an offline `/object_info` schema dump (used by the test suite and offline environments).
 
 ### Adding your own workflow
