@@ -7,11 +7,23 @@ AI agents (a Director plus specialists) that can drive everything a human can: c
 mix audio, sync to the beat, export. ComfyUI is built in, so the same crew can generate video,
 image and music shots straight onto the timeline.
 
-[Watch the launch video](https://drive.google.com/file/d/1rGyXaAp6waD-r2VynNKSSlEyFFohBwPh/view?usp=sharing)
+[![SplitFrame launch video: open weights, all local, one 8 GB RTX 4060](docs/screenshots/splitframe-launch.jpg)](https://drive.google.com/file/d/1rGyXaAp6waD-r2VynNKSSlEyFFohBwPh/view?usp=sharing)
+
+[Watch the launch video](https://drive.google.com/file/d/1rGyXaAp6waD-r2VynNKSSlEyFFohBwPh/view?usp=sharing) (100 s. Shots by LTX-2.5 and music by ACE-Step 1.5, both generated locally on the 8 GB laptop)
 
 License: [GPL-3.0-or-later](LICENSE) · Native app: C++20, Qt 6.8, FFmpeg · Windows is the only tested platform
 
 ---
+
+## Screenshots
+
+The editor with the Assistant open. The Director plans the job and hands parts to the Editor, Colourist and Audio agents:
+
+![SplitFrame editor with the Assistant panel](docs/screenshots/splitframe-edit.png)
+
+| Colour page: scopes, auto balance, primaries in linear light | Home |
+|---|---|
+| ![Colour page](docs/screenshots/splitframe-colour.png) | ![Home screen](docs/screenshots/splitframe-home.png) |
 
 ## What it is
 
