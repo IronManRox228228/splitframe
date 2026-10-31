@@ -152,6 +152,16 @@ private slots:
     SF_THROWS_MATCH(applyOp(d1, ItemSplit{item.id, 200, newId(S("itm"))}), "outside");
   }
 
+  void splitAndRippleTrimRefuseALockedTrack() {
+    const TimelineDoc doc = makeDoc();
+    const Item item = videoItem(doc, 0, 90);
+    TimelineDoc locked = applyOp(doc, addItem(item)).doc;
+    for (Track& t : locked.tracks)
+      if (t.id == item.trackId) t.locked = true;
+    SF_THROWS_MATCH(applyOp(locked, ItemSplit{item.id, 30, newId(S("itm"))}), "locked");
+    SF_THROWS_MATCH(applyOp(locked, trim(item.id, TrimEdge::Out, 60, true)), "locked");
+  }
+
   // ---- describe('slip / speed / remap ops') ----
   void slipChangesSourceInOnlyAndInverts() {
     const TimelineDoc doc = makeDoc();

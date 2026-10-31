@@ -57,6 +57,14 @@ private slots:
     QVERIFY(specRes.ok);
     QJsonArray specs = specRes.value.toObject().value(QStringLiteral("specialists")).toArray();
     QCOMPARE(specs.size(), 3);
+
+    // "all" includes the Director and is part of the declared schema.
+    const CommandSpec* spec = engine_->find(QStringLiteral("agent.specialists"));
+    QVERIFY(spec);
+    QVERIFY(spec->inputSchema.value(QStringLiteral("properties")).toObject().contains(QStringLiteral("all")));
+    Result allRes = engine_->call(QStringLiteral("agent.specialists"), QJsonObject{{QStringLiteral("all"), true}});
+    QVERIFY(allRes.ok);
+    QCOMPARE(allRes.value.toObject().value(QStringLiteral("specialists")).toArray().size(), 4);
   }
 
   // ---- agent mode get/set ----
@@ -71,6 +79,22 @@ private slots:
 
     Result getRes2 = engine_->call(QStringLiteral("agent.mode.get"));
     QCOMPARE(getRes2.value.toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("plan"));
+  }
+
+  // The undo group is named after the agent and a short form of the request, not the raw message.
+  void undoLabelIsAShortRequest() {
+    harness_->setMode(AgentMode::Auto);
+    mockLlm_->enqueueResponse(QJsonObject{
+      {QStringLiteral("content"), QString()},
+      {QStringLiteral("tool_calls"), QJsonArray{markerCall(QStringLiteral("c1"), 5)}}});
+    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Done.")}});
+    const QString message = QStringLiteral("  add   a marker at frame 5 and make this request far longer than the label should ever be  ");
+    harness_->executeTurn(message);
+    const QString label = engine_->call(QStringLiteral("project.info")).value.toObject().value(QStringLiteral("undoLabel")).toString();
+    QVERIFY2(label.contains(QStringLiteral(": ")), qPrintable(label));
+    QVERIFY2(!label.contains(QStringLiteral("  ")), qPrintable(label));
+    QVERIFY2(label.endsWith(QStringLiteral("\u2026")), qPrintable(label));
+    QVERIFY2(label.size() <= label.indexOf(QStringLiteral(": ")) + 2 + 49, qPrintable(label));
   }
 
   // ---- routing command ----

@@ -210,6 +210,19 @@ private slots:
     QCOMPARE(itemOf(p, QStringLiteral("itm_v2")).startFrame, Frame(120));
     QVERIFY(!i.editProject(QStringLiteral("width"), 1080)); // unchanged: no op
   }
+  void canvasPresetIsOneUndoStep() {
+    Project p;
+    fillProject(p);
+    Inspector i(p);
+    QVERIFY(i.setCanvas(1080, 1920));
+    QCOMPARE(p.doc().project.width, std::int64_t(1080));
+    QCOMPARE(p.doc().project.height, std::int64_t(1920));
+    QVERIFY(p.undo());
+    QCOMPARE(p.doc().project.width, std::int64_t(1920));
+    QCOMPARE(p.doc().project.height, std::int64_t(1080));
+    QVERIFY(!p.canUndo()); // both dimensions were one step
+    QVERIFY(!i.setCanvas(1920, 1080)); // unchanged: no op
+  }
 };
 
 } // namespace tst

@@ -547,8 +547,7 @@ GlassPanel {
                             rightPadding: 8
                             active: root.pv.width === modelData.w && root.pv.height === modelData.h
                             onClicked: {
-                                root.insp.editProject("width", modelData.w)
-                                root.insp.editProject("height", modelData.h)
+                                root.insp.setCanvas(modelData.w, modelData.h)
                             }
                         }
                     }

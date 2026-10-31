@@ -5,6 +5,8 @@
 #include "engine/style_library.h"
 #include "audio/audio_analysis.h"
 
+#include <QFileInfo>
+
 #include <cmath>
 #include <vector>
 
@@ -281,7 +283,9 @@ Result assembleCmd(CallContext& c, const QJsonObject& a) {
       init.durationFrames = fs.endF - fs.startF;
       init.assetId = fs.assetId;
       init.sourceInFrame = static_cast<Frame>(std::llround(fs.srcInSec * fps));
-      init.labels = Labels{QStringLiteral("clip"), std::nullopt};
+      const Asset* shotAsset = c.session->project->asset(fs.assetId);
+      const QString shotName = shotAsset ? QFileInfo(shotAsset->originalName).completeBaseName() : QString();
+      init.labels = Labels{shotName.isEmpty() ? QStringLiteral("clip") : shotName, std::nullopt};
 
       Item itm = createItem(ItemType::Video, init);
       ops.push_back(Op(ItemAdd{itm, false}));

@@ -4,6 +4,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QUrl>
 
 #include <cmath>
 
@@ -109,7 +110,8 @@ void registerSessionCommands(Engine& e) {
     e.add(spec("project.open", "", "engine", false, QStringLiteral("Open a project file (a new session unless `session` names one to replace)."), schema,
                [](CallContext& c, const QJsonObject& a) {
                  Engine& eng = *c.engine;
-                 const QString path = a.value(q("path")).toString();
+                 QString path = a.value(q("path")).toString();
+                 if (path.startsWith(QLatin1String("file:"))) path = QUrl(path).toLocalFile();
                  if (!QFileInfo::exists(path)) return Result::failure(q("not_found"), QStringLiteral("No such file: %1").arg(path));
                  Session* s = a.contains(q("session")) ? eng.session(a.value(q("session")).toString()) : nullptr;
                  if (a.contains(q("session")) && !s) return Result::failure(q("no_session"), QStringLiteral("No session \"%1\".").arg(a.value(q("session")).toString()));

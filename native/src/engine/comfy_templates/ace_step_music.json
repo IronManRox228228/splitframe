@@ -1,0 +1,202 @@
+{
+  "id": "ace_step_music",
+  "name": "ACE-Step 1.5 Turbo",
+  "kind": "music",
+  "outputKind": "audio",
+  "description": "Generate music tracks and background audio from style prompts and tempo using ACE-Step 1.5 Turbo in 32 steps.",
+  "whenToUse": [
+    "music",
+    "soundtrack",
+    "background music",
+    "score",
+    "ambient",
+    "beat",
+    "instrumental"
+  ],
+  "graph": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "acestep_v1.5_turbo.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "DualCLIPLoader",
+      "inputs": {
+        "clip_name1": "qwen_0.6b_ace15.safetensors",
+        "clip_name2": "qwen_1.7b_ace15.safetensors",
+        "device": "default",
+        "type": "ace"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "ace_1.5_vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "shift": 3.0
+      }
+    },
+    "5": {
+      "class_type": "EmptyAceStep1.5LatentAudio",
+      "inputs": {
+        "batch_size": 1,
+        "seconds": 30.0
+      }
+    },
+    "6": {
+      "class_type": "TextEncodeAceStepAudio1.5",
+      "inputs": {
+        "bpm": 120,
+        "clip": [
+          "2",
+          0
+        ],
+        "duration": 30.0,
+        "keyscale": "C major",
+        "language": "en",
+        "lyrics": "",
+        "seed": 0,
+        "tags": "cinematic soundtrack, atmospheric, emotional, instrumental",
+        "timesignature": "4"
+      }
+    },
+    "7": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "6",
+          0
+        ]
+      }
+    },
+    "8": {
+      "class_type": "KSampler",
+      "inputs": {
+        "cfg": 1,
+        "denoise": 1,
+        "latent_image": [
+          "5",
+          0
+        ],
+        "model": [
+          "4",
+          0
+        ],
+        "negative": [
+          "7",
+          0
+        ],
+        "positive": [
+          "6",
+          0
+        ],
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "seed": 0,
+        "steps": 32
+      }
+    },
+    "9": {
+      "class_type": "VAEDecodeAudio",
+      "inputs": {
+        "samples": [
+          "8",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "SaveAudioMP3",
+      "inputs": {
+        "audio": [
+          "9",
+          0
+        ],
+        "filename_prefix": "splitframe/ace_step_music",
+        "quality": "V0"
+      }
+    }
+  },
+  "outputNode": "10",
+  "bindings": {
+    "prompt": {
+      "node": "6",
+      "input": "tags"
+    },
+    "tags": {
+      "node": "6",
+      "input": "tags"
+    },
+    "lyrics": {
+      "node": "6",
+      "input": "lyrics"
+    },
+    "bpm": {
+      "node": "6",
+      "input": "bpm"
+    },
+    "durationSec": {
+      "node": "5",
+      "input": "seconds"
+    },
+    "duration": {
+      "node": "6",
+      "input": "duration"
+    },
+    "seed": {
+      "node": "8",
+      "input": "seed"
+    },
+    "steps": {
+      "node": "8",
+      "input": "steps"
+    }
+  },
+  "requires": {
+    "nodes": [
+      "UNETLoader",
+      "DualCLIPLoader",
+      "VAELoader",
+      "ModelSamplingAuraFlow",
+      "EmptyAceStep1.5LatentAudio",
+      "TextEncodeAceStepAudio1.5",
+      "ConditioningZeroOut",
+      "KSampler",
+      "VAEDecodeAudio",
+      "SaveAudioMP3"
+    ],
+    "models": [
+      {
+        "folder": "diffusion_models",
+        "file": "acestep_v1.5_turbo.safetensors"
+      },
+      {
+        "folder": "text_encoders",
+        "file": "qwen_0.6b_ace15.safetensors"
+      },
+      {
+        "folder": "text_encoders",
+        "file": "qwen_1.7b_ace15.safetensors"
+      },
+      {
+        "folder": "vae",
+        "file": "ace_1.5_vae.safetensors"
+      }
+    ]
+  },
+  "needsUserModel": false
+}

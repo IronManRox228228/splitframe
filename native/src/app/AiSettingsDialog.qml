@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 // Port of editor/AiSettings.tsx, rewritten for the vendor-neutral provider: the OpenAI-compatible model server (SF_LLM_ENDPOINT,
@@ -30,6 +31,8 @@ GDialog {
         comfyUrl.text = cfg.comfyUrl || ""
         comfyHome.text = cfg.comfyHome || ""
         comfyPython.text = cfg.comfyPython || ""
+        comfyAutoStart.checked = Boolean(cfg.comfyAutoStart)
+        modelsDir.text = cfg.modelsDir || ""
         routerKey.text = ""
         comfyResult = ""
         clearKey = false
@@ -44,6 +47,8 @@ GDialog {
             endpoint: endpoint.text, model: model.text, modelFast: fast.text, modelDeep: deep.text, modelJudge: judge.text,
             apiKey: apiKey.text, clearApiKey: clearKey,
             comfyUrl: comfyUrl.text, comfyHome: comfyHome.text, comfyPython: comfyPython.text,
+            comfyAutoStart: comfyAutoStart.checked,
+            modelsDir: modelsDir.text,
             routerKey: routerKey.text, clearRouterKey: clearRouter
         })
         if (ok) { saved(); close() }
@@ -185,6 +190,34 @@ GDialog {
                 GInput { id: comfyPython; Layout.fillWidth: true; placeholderText: "python.exe" }
             }
         }
+        CheckBox {
+            id: comfyAutoStart
+            text: "Start ComfyUI with SplitFrame"
+            contentItem: Text {
+                text: comfyAutoStart.text
+                color: Theme.text
+                font.pixelSize: 12
+                leftPadding: comfyAutoStart.indicator.width + 6
+                verticalAlignment: Text.AlignVCenter
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            Lbl { text: "Models folder" }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                GInput { id: modelsDir; Layout.fillWidth: true; placeholderText: "C:\\dev\\sf-models" }
+                GButton {
+                    text: "Browse\u2026"
+                    small: true
+                    onClicked: modelsFolderDialog.open()
+                }
+            }
+            Env { name: "SF_MODELS_DIR" }
+            Note { text: "Directory for local ML models (hand tracking, ONNX runtime)." }
+        }
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
@@ -211,6 +244,17 @@ GDialog {
             Item { Layout.fillWidth: true }
             GButton { text: "Cancel"; variant: "ghost"; onClicked: dlg.close() }
             GButton { text: "Save"; variant: "primary"; onClicked: dlg.save() }
+        }
+    }
+
+    FolderDialog {
+        id: modelsFolderDialog
+        title: "Select models folder"
+        onAccepted: {
+            let p = selectedFolder.toString()
+            if (p.startsWith("file:///")) p = p.substring(8)
+            else if (p.startsWith("file://")) p = p.substring(7)
+            modelsDir.text = p
         }
     }
 }

@@ -3,6 +3,8 @@
 
 #include "engine/cmd_util.h"
 
+#include <QFileInfo>
+
 #include <algorithm>
 
 namespace sf::engine {
@@ -82,7 +84,8 @@ Result addMedia(CallContext& c, const QJsonObject& a, bool audioOnly) {
   init.assetId = asset->id;
   if (type != ItemType::Image) init.sourceInFrame = srcIn;
   if (a.contains(q("volume"))) init.volume = a.value(q("volume")).toDouble();
-  init.labels = Labels{audioOnly ? QStringLiteral("audio") : QStringLiteral("clip"), std::nullopt};
+  const QString assetName = QFileInfo(asset->originalName).completeBaseName();
+  init.labels = Labels{assetName.isEmpty() ? (audioOnly ? QStringLiteral("audio") : QStringLiteral("clip")) : assetName, std::nullopt};
   const Item item = createItem(type, init);
   return applyAndShow(c, {Op(ItemAdd{item, false})}, audioOnly ? QStringLiteral("addAudio") : QStringLiteral("addClip"), {item.id});
 }
