@@ -223,6 +223,26 @@ private slots:
     QVERIFY(!p.canUndo()); // both dimensions were one step
     QVERIFY(!i.setCanvas(1920, 1080)); // unchanged: no op
   }
+  void renameProject() {
+    Project p;
+    fillProject(p);
+    Inspector i(p);
+    const QString original = p.name();
+    QCOMPARE(original, QStringLiteral("Test project"));
+    QVERIFY(i.editProject(QStringLiteral("name"), QStringLiteral("My New Project")));
+    QCOMPARE(p.name(), QStringLiteral("My New Project"));
+    QCOMPARE(i.projectValues().value(QStringLiteral("name")).toString(), QStringLiteral("My New Project"));
+    // empty or whitespace-only name is ignored
+    QVERIFY(!i.editProject(QStringLiteral("name"), QStringLiteral("")));
+    QVERIFY(!i.editProject(QStringLiteral("name"), QStringLiteral("   ")));
+    QCOMPARE(p.name(), QStringLiteral("My New Project"));
+    // unchanged name is ignored
+    QVERIFY(!i.editProject(QStringLiteral("name"), QStringLiteral("My New Project")));
+    // is one undo step
+    QVERIFY(p.undo());
+    QCOMPARE(p.name(), original);
+    QCOMPARE(i.projectValues().value(QStringLiteral("name")).toString(), original);
+  }
 };
 
 } // namespace tst

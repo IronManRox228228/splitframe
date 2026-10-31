@@ -2805,9 +2805,13 @@ void registerComfyCommands(Engine& e) {
              js::obj({{q("modelId"), js::str(QStringLiteral("Model id 'provider/model'"))},
                       {q("requestId"), js::str(QStringLiteral("request_id from generate.router.submit"))},
                       {q("saveAs"), js::str(QStringLiteral("File path for non-JSON (binary) outputs"))},
+                      {q("outputDir"), js::str(QStringLiteral("Output directory for downloaded files"))},
+                      {q("trackId"), js::str(QStringLiteral("Target track ID"))},
+                      {q("atFrame"), js::integer(QStringLiteral("Start frame on timeline"), 0)},
+                      {q("placeOnTimeline"), js::boolean(QStringLiteral("Place generated asset on timeline (default true)"))},
                       {q("timeoutMs"), js::integer(QStringLiteral("Collect HTTP timeout (default 120000)"))}},
                      {q("modelId"), q("requestId")}),
-             [](CallContext&, const QJsonObject& a) {
+             [](CallContext& c, const QJsonObject& a) {
                const QString modelId = a.value(q("modelId")).toString();
                if (!comfy::RouterClient::splitModelId(modelId, nullptr, nullptr)) {
                  return invalid(QStringLiteral("Invalid modelId '%1': must be 'provider/model'").arg(modelId));
@@ -2825,11 +2829,183 @@ void registerComfyCommands(Engine& e) {
                  });
                }
                if (!rep.ok()) return routerFailure(rep);
-               QJsonObject out{
-                 {q("requestId"), a.value(q("requestId")).toString()},
-                 {q("output"), rep.body}
-               };
-               if (!rep.body.isEmpty()) return Result::success(out);
+
+               if (!rep.body.isEmpty()) {
+                 CallContext ctx = c;
+                 if (!ctx.session && c.engine) {
+                   ctx.session = c.engine->session(a.value(q("session")).toString());
+                 }
+
+                 QStringList remoteUrls;
+                 std::function<void(const QJsonValue&)> findUrls = [&](const QJsonValue& v) {
+                   if (v.isString()) {
+                     const QString s = v.toString();
+                     if (s.startsWith(QLatin1String("http://"), Qt::CaseInsensitive) ||
+                         s.startsWith(QLatin1String("https://"), Qt::CaseInsensitive)) {
+                       if (!remoteUrls.contains(s)) remoteUrls.append(s);
+                     }
+                   } else if (v.isArray()) {
+                     for (const auto& item : v.toArray()) findUrls(item);
+                   } else if (v.isObject()) {
+                     for (const auto& item : v.toObject()) findUrls(item);
+                   }
+                 };
+                 findUrls(rep.body);
+
+                 if (remoteUrls.isEmpty()) {
+                   return Result::success(QJsonObject{
+                     {q("requestId"), a.value(q("requestId")).toString()},
+                     {q("output"), rep.body}
+                   });
+                 }
+
+                 QString outputDir = a.value(q("outputDir")).toString();
+                 if (outputDir.isEmpty()) {
+                   if (ctx.session && ctx.session->project && !ctx.session->project->path().isEmpty()) {
+                     const QFileInfo fi(ctx.session->project->path());
+                     outputDir = fi.dir().filePath(QStringLiteral("generated"));
+                   } else {
+                     outputDir = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(QStringLiteral("generated"));
+                   }
+                 }
+                 outputDir = QDir::toNativeSeparators(QFileInfo(outputDir).absoluteFilePath());
+                 QDir().mkpath(outputDir);
+
+                 QString promptIdSafe = a.value(q("requestId")).toString();
+                 static const QRegularExpression badIdChars(QStringLiteral("[^A-Za-z0-9-]"));
+                 promptIdSafe.replace(badIdChars, QStringLiteral("_"));
+                 if (promptIdSafe.isEmpty()) promptIdSafe = QStringLiteral("req");
+
+                 QSet<QString> usedPaths;
+                 QMap<QString, QString> urlToLocal;
+                 QMap<QString, QString> localToUrl;
+                 QStringList downloadedFiles;
+                 const int dlTimeout = a.value(q("timeoutMs")).toInt(120000);
+
+                 for (const QString& rUrl : remoteUrls) {
+                   QUrl u(rUrl);
+                   QString safeName = QFileInfo(u.path()).fileName();
+                   safeName.remove(QStringLiteral(".."));
+                   safeName.remove(QLatin1Char('/'));
+                   safeName.remove(QLatin1Char('\\'));
+                   safeName.remove(QLatin1Char(':'));
+                   if (safeName.isEmpty()) safeName = QStringLiteral("output.png");
+
+                   const QString base = QFileInfo(safeName).completeBaseName();
+                   QString ext = QFileInfo(safeName).suffix();
+                   if (ext.isEmpty()) ext = QStringLiteral("png");
+
+                   QString destPath = QDir(outputDir).filePath(QStringLiteral("%1_%2").arg(promptIdSafe, safeName));
+                   int counter = 1;
+                   while (usedPaths.contains(destPath) || QFile::exists(destPath)) {
+                     destPath = QDir(outputDir).filePath(QStringLiteral("%1_%2_%3.%4").arg(promptIdSafe, base).arg(counter++).arg(ext));
+                   }
+                   usedPaths.insert(destPath);
+
+                   QString dlErr;
+                   if (!comfy::RouterClient::downloadUrl(u, destPath, &dlErr, dlTimeout)) {
+                     if (dlErr.contains(QStringLiteral("timed out"), Qt::CaseInsensitive) ||
+                         dlErr.contains(QStringLiteral("Host unreachable"), Qt::CaseInsensitive) ||
+                         dlErr.contains(QStringLiteral("Connection refused"), Qt::CaseInsensitive)) {
+                       return Result::failure(q("router_unreachable"), dlErr);
+                     }
+                     if (dlErr.contains(QStringLiteral("401")) || dlErr.contains(QStringLiteral("Unauthorized"), Qt::CaseInsensitive)) {
+                       return Result::failure(q("auth_error"), dlErr);
+                     }
+                     if (dlErr.contains(QStringLiteral("402")) || dlErr.contains(QStringLiteral("Payment Required"), Qt::CaseInsensitive)) {
+                       return Result::failure(q("insufficient_credits"), dlErr);
+                     }
+                     if (dlErr.contains(QStringLiteral("404")) || dlErr.contains(QStringLiteral("Not Found"), Qt::CaseInsensitive)) {
+                       return Result::failure(q("not_found"), dlErr);
+                     }
+                     if (dlErr.startsWith(QStringLiteral("Cannot open")) || dlErr.startsWith(QStringLiteral("Failed to write"))) {
+                       return Result::failure(q("io_error"), dlErr);
+                     }
+                     return Result::failure(q("router_error"), dlErr);
+                   }
+                   urlToLocal.insert(rUrl, destPath);
+                   localToUrl.insert(destPath, rUrl);
+                   downloadedFiles.append(destPath);
+                 }
+
+                 std::function<QJsonValue(const QJsonValue&)> replaceVal = [&](const QJsonValue& v) -> QJsonValue {
+                   if (v.isString()) {
+                     const QString s = v.toString();
+                     auto it = urlToLocal.find(s);
+                     if (it != urlToLocal.end()) return QJsonValue(it.value());
+                     return v;
+                   }
+                   if (v.isArray()) {
+                     QJsonArray arr;
+                     for (const auto& item : v.toArray()) arr.append(replaceVal(item));
+                     return arr;
+                   }
+                   if (v.isObject()) {
+                     QJsonObject obj;
+                     const QJsonObject src = v.toObject();
+                     for (auto it = src.begin(); it != src.end(); ++it) {
+                       obj.insert(it.key(), replaceVal(it.value()));
+                     }
+                     return obj;
+                   }
+                   return v;
+                 };
+                 QJsonObject updatedBody = replaceVal(rep.body).toObject();
+
+                 if (ctx.session && ctx.session->project && ctx.session->pool) {
+                   const bool placeOnTimeline = a.value(q("placeOnTimeline")).toBool(true);
+                   const QString trackId = a.value(q("trackId")).toString();
+                   std::optional<Frame> optAtFrame;
+                   if (a.contains(q("atFrame"))) optAtFrame = a.value(q("atFrame")).toInteger();
+
+                   QJsonObject provBase;
+                   provBase.insert(q("provider"), QStringLiteral("router"));
+                   provBase.insert(q("modelId"), modelId);
+                   provBase.insert(q("requestId"), a.value(q("requestId")).toString());
+                   provBase.insert(q("createdAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+
+                   Result landed = landOutputs(ctx, downloadedFiles, trackId, optAtFrame,
+                                               QStringLiteral("generateRouter"),
+                                               QStringLiteral("image"), QString(), nullptr,
+                                               provBase, placeOnTimeline);
+                   if (!landed.ok) return landed;
+
+                   for (const QString& fPath : downloadedFiles) {
+                     const Asset* asset = findAssetByPath(*ctx.session->project, fPath);
+                     if (!asset) continue;
+                     Asset updated = *asset;
+                     QJsonObject prov = updated.metadata.provenance.value_or(QJsonObject{});
+                     const QString rUrl = localToUrl.value(fPath);
+                     if (!rUrl.isEmpty()) {
+                       prov.insert(q("remoteUrl"), rUrl);
+                       prov.insert(q("url"), rUrl);
+                       updated.metadata.provenance = prov;
+                       ctx.session->project->updateAsset(updated);
+                       appendProvenanceRecord(*ctx.session->project, prov);
+                     }
+                     QFile sc(fPath + QStringLiteral(".sfgen.json"));
+                     if (sc.open(QIODevice::WriteOnly)) {
+                       sc.write(QJsonDocument(prov).toJson(QJsonDocument::Indented));
+                       sc.close();
+                     }
+                   }
+
+                   const QJsonObject landedObj = landed.value.toObject();
+                   return Result::success(QJsonObject{
+                     {q("requestId"), a.value(q("requestId")).toString()},
+                     {q("files"), landedObj.value(q("files"))},
+                     {q("created"), landedObj.value(q("created"))},
+                     {q("sidecars"), landedObj.value(q("sidecars"))},
+                     {q("output"), updatedBody}
+                   });
+                 }
+
+                 return Result::success(QJsonObject{
+                   {q("requestId"), a.value(q("requestId")).toString()},
+                   {q("files"), QJsonArray::fromStringList(downloadedFiles)},
+                   {q("output"), updatedBody}
+                 });
+               }
                // non-JSON output: inline bytes, binary result
                const QString saveAs = a.value(q("saveAs")).toString();
                if (saveAs.isEmpty()) {
@@ -2844,8 +3020,11 @@ void registerComfyCommands(Engine& e) {
                  return Result::failure(q("io_error"), QStringLiteral("Could not write output to %1").arg(saveAs));
                }
                f.close();
-               out.insert(q("file"), saveAs);
-               out.insert(q("bytes"), static_cast<int>(rep.rawBody.size()));
+               QJsonObject out{
+                 {q("requestId"), a.value(q("requestId")).toString()},
+                 {q("file"), saveAs},
+                 {q("bytes"), static_cast<int>(rep.rawBody.size())}
+               };
                return Result::success(out);
              },
              false));

@@ -461,9 +461,9 @@ class FakeComfyServer {
                   b.open(QIODevice::WriteOnly);
                   img.save(&b, "PNG");
                 } else {
-                  QString sampleUrl = QStringLiteral("https://example.invalid/sample.png");
-                  if (mode == QLatin1String("local") || mode == QLatin1String("dl") || mode.startsWith(QLatin1String("router_"))) {
-                    sampleUrl = QStringLiteral("http://127.0.0.1:%1/sample.png").arg(state_->port);
+                  QString sampleUrl = QStringLiteral("http://127.0.0.1:%1/sample.png").arg(state_->port);
+                  if (mode == QLatin1String("dlfail")) {
+                    sampleUrl = QStringLiteral("http://127.0.0.1:%1/nonexistent.png").arg(state_->port);
                   }
                   respBody = QJsonDocument(QJsonObject{
                     {QStringLiteral("result"), QJsonObject{

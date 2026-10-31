@@ -929,8 +929,17 @@ private slots:
 
     const QJsonObject col = ok(Q("generate.router.collect"), {{Q("modelId"), QStringLiteral("test/one")},
         {Q("requestId"), QStringLiteral("req-1")}});
-    QCOMPARE(col.value(Q("output")).toObject().value(Q("result")).toObject().value(Q("sample")).toString(),
-             QStringLiteral("https://example.invalid/sample.png"));
+    const QString sampleLocal = col.value(Q("output")).toObject().value(Q("result")).toObject().value(Q("sample")).toString();
+    QVERIFY(!sampleLocal.isEmpty());
+    QVERIFY(!sampleLocal.startsWith(QLatin1String("http")));
+    QVERIFY(QFile::exists(sampleLocal));
+    QVERIFY(QFile(sampleLocal).size() > 50);
+    const Asset* asset = findAsset(sampleLocal);
+    QVERIFY(asset != nullptr);
+    QCOMPARE(asset->metadata.provenance.value_or(QJsonObject{}).value(Q("remoteUrl")).toString(),
+             QStringLiteral("http://127.0.0.1:%1/sample.png").arg(fake_->port()));
+    QVERIFY(!col.value(Q("files")).toArray().isEmpty());
+    QVERIFY(!col.value(Q("created")).toObject().value(Q("items")).toArray().isEmpty());
 
     const QJsonObject can = ok(Q("generate.router.cancel"), {{Q("modelId"), QStringLiteral("test/one")},
         {Q("requestId"), QStringLiteral("req-1")}});
@@ -972,6 +981,11 @@ private slots:
         {Q("requestId"), QStringLiteral("req-bin")}, {Q("saveAs"), binPath}});
     QCOMPARE(bin.value(Q("file")).toString(), binPath);
     QVERIFY(QFile(binPath).size() > 100);
+
+    const Result rDlFail = tryCall(Q("generate.router.collect"), {{Q("modelId"), QStringLiteral("test/one")},
+        {Q("requestId"), QStringLiteral("req-dlfail")}});
+    QVERIFY(!rDlFail.ok);
+    QCOMPARE(rDlFail.error.code, Q("not_found"));
   }
 
   // Direct RouterClient and provider coverage:
