@@ -74,7 +74,16 @@ Dialog {
             Combo { id: presetBox; model: root.ex.presets }
 
             Label2 { text: "Format" }
-            Combo { id: formatBox; model: root.ex.formats }
+            Combo {
+                id: formatBox
+                model: root.ex.formats
+                // the file name follows the format ("ProRes 422 HQ (MOV)" -> .mov), as the export itself does
+                onActivated: {
+                    const m = currentText.match(/\((\w+)\)\s*$/)
+                    if (m && pathField.text !== "") pathField.text = pathField.text.replace(/\.[^.\\/]*$/, "") + "." + m[1].toLowerCase()
+                    root.refresh()
+                }
+            }
 
             Label2 { text: "Quality" }
             Combo { id: qualityBox; model: ["draft", "standard", "high", "master"]; currentIndex: 1 }
@@ -130,9 +139,12 @@ Dialog {
                 spacing: 14
                 CheckBox {
                     id: hwCheck
-                    text: "GPU encoder (NVENC)"
-                    enabled: !root.ex.running && (formatBox.currentText.startsWith("H.264") || formatBox.currentText.startsWith("HEVC"))
-                    contentItem: Text { text: hwCheck.text; color: Theme.text; font.pixelSize: 12; leftPadding: hwCheck.indicator.width + 6; verticalAlignment: Text.AlignVCenter }
+                    readonly property bool applies: formatBox.currentText.startsWith("H.264") || formatBox.currentText.startsWith("HEVC")
+                    // off for ProRes / DNxHR / WAV: say why, so the dead box reads as intentional
+                    text: applies ? "GPU encoder (NVENC)" : "GPU encoder (NVENC): H.264 / HEVC only"
+                    enabled: !root.ex.running && applies
+                    opacity: applies ? 1 : 0.45
+                    contentItem: Text { text: hwCheck.text; color: hwCheck.applies ? Theme.text : Theme.faint; font.pixelSize: 12; leftPadding: hwCheck.indicator.width + 6; verticalAlignment: Text.AlignVCenter }
                 }
                 CheckBox {
                     id: overwriteCheck

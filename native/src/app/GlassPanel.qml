@@ -8,6 +8,8 @@ Rectangle {
     id: slab
     property bool strong: false
     property Item backdrop: null
+    // re-capture the backdrop whenever it changes (e.g. playing video behind the slab) instead of on refreshBackdrop() only
+    property bool liveBackdrop: false
     readonly property bool refracting: fx.active
     function refreshBackdrop() { fx.refresh() }
 
@@ -21,6 +23,7 @@ Rectangle {
         anchors.fill: parent
         z: -1
         backdrop: slab.backdrop
+        live: slab.liveBackdrop
         radius: slab.radius
         strength: slab.strong ? 16 : 10
         bevel: Math.min(22, slab.radius)

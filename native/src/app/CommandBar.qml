@@ -31,6 +31,7 @@ Item {
             radius: 21
             strong: true
             backdrop: bar.backdrop
+            liveBackdrop: !appEditor.exporter.running
             border.color: input.activeFocus ? Theme.accentRing : Theme.glassBorder
             RowLayout {
                 anchors.fill: parent
@@ -69,14 +70,17 @@ Item {
             radius: 21
             strong: true
             backdrop: bar.backdrop
+            liveBackdrop: !appEditor.exporter.running
             AgentModePill { id: pill; anchors.centerIn: parent; placement: "down"; compact: true }
         }
     }
 
     // the video behind the bar moves: re-capture the small region a few times a second while the bar is on screen.
     // Not while exporting: the preview is still then, and a re-capture re-renders the window content mid-export, when the CPU is busiest
+    // The glass is live (re-captured on every backdrop change, so playback refracts smoothly); this timer only keeps the captured
+    // region lined up when the bar moves without resizing.
     Timer {
-        interval: 250
+        interval: 1000
         repeat: true
         running: bar.visible && bar.backdrop !== null && Theme.refractionOn && !appEditor.exporter.running
         onTriggered: { inputGlass.refreshBackdrop(); modeBox.refreshBackdrop() }
