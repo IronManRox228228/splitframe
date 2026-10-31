@@ -1,0 +1,22 @@
+Three small jobs in SplitFrame (native C++20/Qt 6.8 app in native/; repo root is the current directory, branch comfy).
+
+HARD RULES
+- Another worker is editing and BUILDING this tree right now. Do NOT build, do NOT run cmake/ctest/ninja, do NOT run git (read-only `git show`/`git log` is allowed).
+- Do NOT edit any of these files (the other worker owns them): native/src/engine/cmd_edit.cpp, cmd_assemble.cpp, cmd_storyboard.cpp, cmd_titles.cpp, cmd_audio.cpp, cmd_session.cpp, cmd_comfy.cpp, native/src/agent/*, native/src/app/InspectorPanel.qml, native/src/app/editor.cpp, native/src/app/editor.h, anything under native/tests/. If a job needs one of them, stop that job and say exactly what change is needed instead.
+- No downloads or installs. Never touch .env, docs/SPLITFRAME_PLAN.md, native/tst_*.txt, apps/desktop. Never print API keys/tokens. Never delete or shorten existing comments. Match surrounding style.
+
+JOB 1 - Export dialog, audio-only polish (native/src/app/ExportDialog.qml only).
+When formatBox.currentText starts with "Audio only", the picture settings do nothing: grey out (enabled: false, opacity ~0.45, same pattern as the hwCheck "applies" property already in this file) the Size combo (presetBox) and Quality combo (qualityBox). Keep everything else as is.
+
+JOB 2 - ComfyUI settings in the app's AI settings dialog.
+The sweep found QSettings keys `comfy/autoStart` (bool, default false) and the models directory key (find its exact name in native/src/comfy/comfy_process.cpp ~line 98 and wherever "modelsDir" is read) are read but no UI writes them. Look at native/src/app/AiSettingsDialog.qml and how it already loads/saves the ComfyUI URL / folder / Python fields (follow that exact mechanism). Add an "Start ComfyUI with SplitFrame" checkbox for comfy/autoStart and, if the models-dir key is real and used, a models folder field with Browse, saved the same way. If saving needs a change in editor.cpp/editor.h (forbidden), do NOT edit them; instead write the exact patch you need into your final report.
+
+JOB 3 - Built-in ComfyUI workflow templates in native/src/engine/comfy_templates/.
+The folder only has README.md, so a fresh clone can't generate. Read the README, the template loader in native/src/engine/cmd_comfy.cpp (read-only; search for comfy_templates, SF_COMFY_TEMPLATES_DIR, fromTemplate, template.import, bindings, outputNode, models/required files), and the deleted SD 1.5 templates via `git show 01cdfdb^:native/src/engine/comfy_templates/<file>` to copy the exact on-disk template format (manifest fields + API-format graph).
+Then add built-in templates (API-format graphs, i.e. {"<id>": {"class_type":..., "inputs":{...}}}) for:
+  a) image: Z-Image Turbo, 16 steps by default. Installed files (under %LOCALAPPDATA%\SplitFrame\comfy\models): diffusion_models/z-image-turbo-Q8_0.gguf (GGUF: check runtime\ComfyUI\custom_nodes for ComfyUI-GGUF and use its loader class name exactly), text_encoders/qwen_3_4b_fp8_mixed.safetensors, vae/ae.safetensors.
+  b) music: ACE-Step 1.5 turbo, 32 steps by default. Files: diffusion_models/acestep_v1.5_turbo.safetensors, text_encoders/qwen_0.6b_ace15.safetensors + qwen_1.7b_ace15.safetensors, vae/ace_1.5_vae.safetensors.
+  c) video: LTX-2.5 text-to-video from %LOCALAPPDATA%\SplitFrame\comfy\workflows\ltx25_t2v_api.json (already API format; models for it are not installed now, that's fine - the readiness check reports missing files).
+Reference graphs: ComfyUI's own templates in %LOCALAPPDATA%\SplitFrame\comfy\runtime\python_embeded\Lib\site-packages\comfyui_workflow_templates_json\templates\ (e.g. audio_ace_step1_5_*.json, z_image*.json). Those are UI format; convert to API format carefully. Node class names and input names MUST exist in this ComfyUI: verify against runtime\ComfyUI\comfy_extras/*.py, nodes.py and custom_nodes source (INPUT_TYPES). Bind prompt, seed, steps, width/height (image), duration/length (music, video), frames, as the loader supports. Set whenToUse tags. If the loader needs the template files listed somewhere (CMake, qrc, an index), and that file is not on the forbidden list, add them; if it is forbidden, report it.
+
+FINAL REPORT (plain text): per job DONE/PARTIAL/SKIPPED, files changed, anything that needs a forbidden-file change (exact patch), and any node/input name you could not verify.

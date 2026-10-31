@@ -1,0 +1,30 @@
+READ-ONLY AUDIT. Do not edit, create or delete any file. Do not run git. Do not download or install anything. Do not build. Never open or print .env, API keys, tokens, or registry values named *API_KEY*. Do not touch docs/SPLITFRAME_PLAN.md, native/tst_*.txt, apps/desktop.
+
+Project: SplitFrame, a native C++20/Qt 6.8/FFmpeg video editor in native/ (repo C:\Users\Ashman Das\Documents\OpenCardboard, branch comfy). It has an LLM agent crew (native/src/agent), a headless engine with ~all commands (native/src/engine), ComfyUI integration (native/src/comfy, engine/cmd_comfy.cpp), export (native/src/export), Qt Quick UI (native/src/app). Read README.md and native/README.md first.
+
+Goal: a full sweep for loose ends we can fix in the next 2 days. Find real, user-visible bugs and gaps, ranked by impact. Verify every finding by reading the code; cite file:line. No style nits, no speculative refactors.
+
+Check these known suspects first and say for each: CONFIRMED (with file:line and root cause) / NOT A BUG / CAN'T TELL:
+1. Save As keeps the project name "Untitled video" instead of the new file name.
+2. Clips imported or placed by agents are named just "clip".
+3. Agent undo-history label reads like "Director: hi" (the user's raw chat text) instead of describing the edit.
+4. The Director skipped adding a title on its first pass of a "make a teaser" request.
+5. Export: H.264 with bit depth > 8 (HDR project) silently skips NVENC with no warning.
+6. Export dialog: the "GPU encoder (NVENC)" checkbox stays enabled for ProRes / DNxHR / WAV where NVENC can't apply.
+7. Export speed: colour conversion caps threads at clamp(idealThreadCount/2,1,4) (media/frame_convert.cpp); compositing is single-threaded.
+8. No generation templates ship (native/src/engine/comfy_templates has only a README), so a fresh clone can't generate.
+9. README CLI walkthrough passes "session":"s1" to generate.shot / reshoot.* but those schemas don't declare it - does the call fail (unknown field rejected) or work?
+10. Cross-session agent memory: does any exist? (we believe not)
+11. Comfy Router provider (comfy/comfy_router_client.cpp, provider:"router"): any obvious bug that would break a first real call (URL building, auth header, polling, output download)?
+12. Timeline thumbnail strip after zoom (TimelineView::paintClip) and the CommandBar backdrop recapture during export (CommandBar.qml) - were recently fixed; sanity-check the fixes.
+
+Then do an open sweep: crashes / null derefs, unhandled error paths that leave the UI stuck, settings that are read but never written (or vice versa), UI strings that are wrong or leak internal names, dead buttons/menu items, commands registered but unreachable, agent tool schemas that disagree with handlers, export/import edge cases (odd frame rates, audio-only, VFR), and anything in the README that the code contradicts.
+
+Output (plain text, this exact shape):
+## Known suspects
+1. <CONFIRMED|NOT A BUG|CAN'T TELL> - <one line> - <file:line> - <root cause / fix idea in one line>
+...
+## New findings (ranked, most user-visible first, max 25)
+- [HIGH|MED|LOW] <title> - <file:line> - <what breaks, for whom> - <fix idea, one line> - <effort S/M/L>
+## Quick wins (fixable in < 30 min each)
+- ...
