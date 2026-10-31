@@ -666,7 +666,8 @@ Result landOutputs(CallContext& c, const QStringList& files, const QString& trac
       init.durationFrames = dur;
       init.assetId = asset->id;
       if (type != ItemType::Image) init.sourceInFrame = 0;
-      init.labels = Labels{type == ItemType::Audio ? QStringLiteral("audio") : QStringLiteral("clip"), std::nullopt};
+      const QString assetName = QFileInfo(asset->originalName).completeBaseName();
+      init.labels = Labels{assetName.isEmpty() ? (type == ItemType::Audio ? QStringLiteral("audio") : QStringLiteral("clip")) : assetName, std::nullopt};
 
       Item item = createItem(type, init);
       ops.push_back(Op(ItemAdd{item, false}));
@@ -1353,9 +1354,7 @@ Result reshootPickCmd(CallContext& c, const QJsonObject& a) {
   const qint64 seed = chosenVariant.value(q("seed")).toVariant().toLongLong();
 
   c.session->pool->import({chosenFile});
-  fprintf(stderr, "DBG: after import\n"); fflush(stderr);
   c.session->pool->waitForIdle(60000);
-  fprintf(stderr, "DBG: after waitForIdle\n"); fflush(stderr);
 
   const Asset* newAsset = nullptr;
   const QFileInfo cfi(chosenFile);

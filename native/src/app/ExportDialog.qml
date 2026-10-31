@@ -71,7 +71,13 @@ Dialog {
             Layout.fillWidth: true
 
             Label2 { text: "Size" }
-            Combo { id: presetBox; model: root.ex.presets }
+            Combo {
+                id: presetBox
+                readonly property bool applies: !formatBox.currentText.startsWith("Audio only")
+                enabled: !root.ex.running && applies
+                opacity: applies ? 1 : 0.45
+                model: root.ex.presets
+            }
 
             Label2 { text: "Format" }
             Combo {
@@ -86,7 +92,14 @@ Dialog {
             }
 
             Label2 { text: "Quality" }
-            Combo { id: qualityBox; model: ["draft", "standard", "high", "master"]; currentIndex: 1 }
+            Combo {
+                id: qualityBox
+                readonly property bool applies: !formatBox.currentText.startsWith("Audio only")
+                enabled: !root.ex.running && applies
+                opacity: applies ? 1 : 0.45
+                model: ["draft", "standard", "high", "master"]
+                currentIndex: 1
+            }
 
             Label2 { text: "Save to" }
             RowLayout {

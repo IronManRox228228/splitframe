@@ -234,6 +234,10 @@ bool Specialist::allowsCommand(const engine::CommandSpec& spec) const {
     if (spec.name == QStringLiteral("agent.assign") || spec.name == QStringLiteral("agent.chat")) return true;
     if (spec.name.startsWith(QStringLiteral("storyboard."))) return true;
   }
+  // Titles and recipes live in the shared "style" domain; the Director and Editor own them.
+  if ((kind_ == SpecialistKind::Director || kind_ == SpecialistKind::Editor) && spec.domain == QStringLiteral("style")) return true;
+  // audio.add is the Audio specialist's own operation even though the command is registered under "editor".
+  if (kind_ == SpecialistKind::Audio && spec.name == QStringLiteral("audio.add")) return true;
   if (spec.domain == domain() || spec.domain == QStringLiteral("engine")) return true;
   if (!spec.mutates) return true;
   if (spec.domain == QStringLiteral("comfy")) return true;

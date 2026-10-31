@@ -5,6 +5,8 @@
 #include "core/schema.h"
 #include "core/timeline_doc.h"
 
+#include <QFileInfo>
+
 #include <cmath>
 
 namespace sf::engine {
@@ -338,7 +340,8 @@ void registerStoryboardCommands(Engine& e) {
                    init.durationFrames = durFrames;
                    init.assetId = as->id;
                    if (as->kind == AssetKind::Video) init.sourceInFrame = 0;
-                   init.labels = Labels{QStringLiteral("clip"), std::nullopt};
+                   const QString clipName = QFileInfo(as->originalName).completeBaseName();
+                   init.labels = Labels{clipName.isEmpty() ? QStringLiteral("clip") : clipName, std::nullopt};
                    ops.push_back(ItemAdd{createItem(as->kind == AssetKind::Image ? ItemType::Image : ItemType::Video, init)});
                    ++clipsPlaced;
                  } else {

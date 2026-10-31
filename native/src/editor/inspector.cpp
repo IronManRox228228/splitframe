@@ -365,6 +365,13 @@ QVariantMap Inspector::projectValues() const {
           {QStringLiteral("background"), p.styleConfig.backgroundColor}};
 }
 
+bool Inspector::setCanvas(int width, int height) {
+  const auto& p = project_.doc().project;
+  ProjectSetCanvas c{width, height};
+  if (c.width == p.width && c.height == p.height) return false;
+  return project_.apply(c, QStringLiteral("Set canvas size"));
+}
+
 bool Inspector::editProject(const QString& key, const QVariant& value) {
   const auto& p = project_.doc().project;
   if (key == QLatin1String("name")) {

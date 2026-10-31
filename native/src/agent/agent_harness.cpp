@@ -75,6 +75,12 @@ QJsonObject busyTurn(const AgentGroupScope& g) {
                      {QStringLiteral("response"), g.busyMessage()}};
 }
 
+// A history label should name the request, not paste a whole prompt into the undo menu.
+QString shortRequest(const QString& text) {
+  const QString s = text.simplified();
+  return s.size() > 48 ? s.left(48) + QStringLiteral("\u2026") : s;
+}
+
 } // namespace
 
 void AgentHarness::setLlmClient(std::shared_ptr<LlmClient> llm) {
@@ -193,7 +199,7 @@ QJsonObject AgentHarness::runPending(const QString& sessionId) {
     Specialist* sp = specialist(pending_.specialist);
     QJsonObject groupArgs;
     if (!sess.isEmpty()) groupArgs.insert(QStringLiteral("session"), sess);
-    groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(pending_.message));
+    groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(shortRequest(pending_.message)));
     groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(sp ? sp->name() : QStringLiteral("agent")));
     QJsonArray toolResults;
     {
@@ -376,7 +382,7 @@ QJsonObject AgentHarness::executeTurn(const QString& userMessage, const QString&
   if (!agentCap.isEmpty()) agentCap[0] = agentCap[0].toUpper();
   QJsonObject groupArgs;
   if (!sessionId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessionId);
-  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(agentCap, userMessage));
+  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(agentCap, shortRequest(userMessage)));
   groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(agentName));
 
   QJsonObject turnRes;
@@ -444,7 +450,7 @@ QJsonObject AgentHarness::chat(const QString& userMessage, const QString& sessio
   if (!dirCap.isEmpty()) dirCap[0] = dirCap[0].toUpper();
   QJsonObject groupArgs;
   if (!sessionId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessionId);
-  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(dirCap, userMessage));
+  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(dirCap, shortRequest(userMessage)));
   groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(dirName));
 
   QJsonObject turnRes;
@@ -532,7 +538,7 @@ void AgentHarness::registerCommands(engine::Engine& engine) {
       const QString task = a.value(QStringLiteral("task")).toString();
       QJsonObject groupArgs;
       if (!sessId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessId);
-      groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(targetCap, task));
+      groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(targetCap, shortRequest(task)));
       groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(targetName));
 
       PeerResponse pr;
@@ -677,7 +683,12 @@ void AgentHarness::registerCommands(engine::Engine& engine) {
     .domain = QStringLiteral("engine"),
     .mutates = false,
     .needsSession = false,
-    .inputSchema = QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}},
+    .inputSchema = QJsonObject{
+      {QStringLiteral("type"), QStringLiteral("object")},
+      {QStringLiteral("properties"), QJsonObject{
+        {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}}
+      }}
+    },
     .handler = [this](engine::CallContext&, const QJsonObject& a) {
       QJsonArray list;
       const bool includeDirector = a.value(QStringLiteral("all")).toBool(false);

@@ -13,6 +13,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrl>
 
 #include <atomic>
 
@@ -218,6 +219,14 @@ private slots:
     // reset a session in place
     ok(Q("project.new"), {{Q("session"), second.value(Q("session")).toString()}, {Q("name"), Q("Again")}});
     QCOMPARE(ok(Q("project.info")).value(Q("name")).toString(), Q("Again"));
+  }
+
+  void openFromFileUrl() {
+    const QString path = dir_.filePath(Q("url.sfproj"));
+    QVERIFY(!ok(Q("project.saveAs"), {{Q("path"), path}}).contains(Q("__failed")));
+    const QJsonObject opened = ok(Q("project.open"), {{Q("path"), QUrl::fromLocalFile(path).toString()}});
+    QVERIFY(!opened.contains(Q("__failed")));
+    QVERIFY(!opened.value(Q("session")).toString().isEmpty());
   }
 
   void projectSettings() {
@@ -764,6 +773,11 @@ private slots:
     QVERIFY(!ms.value(Q("valid")).toBool());
     QVERIFY(ms.value(Q("note")).toString().size() > 5);
     QCOMPARE(raw(Q("music.structure"), {}).error.code, Q("invalid_params"));
+    // an item with no audio asset (a text item) is refused, not dereferenced
+    const QJsonObject textRes = ok(Q("text.add"), {{Q("text"), Q("Caption")}, {Q("startFrame"), 0}, {Q("durationFrames"), 30}});
+    const QString textId = textRes.value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
+    QVERIFY(!textId.isEmpty());
+    QCOMPARE(raw(Q("music.structure"), {{Q("itemId"), textId}}).error.code, Q("invalid_params"));
     QVERIFY(e_->describe(Q("audio")).size() >= 5);
   }
 
@@ -781,6 +795,19 @@ private slots:
     QStringList r;
     for (const QJsonValue& v : check.value(Q("violations")).toArray()) r << v.toObject().value(Q("rule")).toString();
     return r;
+  }
+
+  void clipLabelsUseTheAssetName() {
+    // A name with dots keeps every part but the extension ("scene.final.v2", not "scene").
+    const QString dotted = dir_.filePath(QStringLiteral("scene.final.v2.mp4"));
+    QVERIFY(QFile::copy(story_, dotted));
+    ok(Q("media.import"), {{Q("paths"), QJsonArray{dotted}}});
+    const QString story = assetNamed(Q("scene.final.v2.mp4"));
+    QVERIFY(!story.isEmpty());
+    const QString id = addClip(story, 0, 30, 0);
+    QVERIFY(!id.isEmpty());
+    const QJsonObject labels = ok(Q("item.get"), {{Q("itemId"), id}}).value(Q("labels")).toObject();
+    QCOMPARE(labels.value(Q("name")).toString(), Q("scene.final.v2"));
   }
 
   void measuredEditing() {

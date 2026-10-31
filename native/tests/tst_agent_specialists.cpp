@@ -79,6 +79,8 @@ private slots:
   void domainEnforcement() {
     Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get());
     Specialist colourist(SpecialistKind::Colourist, engine_.get(), bus_.get());
+    Specialist audio(SpecialistKind::Audio, engine_.get(), bus_.get());
+    Specialist director(SpecialistKind::Director, engine_.get(), bus_.get());
 
     // 1. Editor can execute an "engine" command
     Result rEngine = editor.executeCommand(QStringLiteral("timeline.get"));
@@ -148,6 +150,24 @@ private slots:
     Result rHub = editor.executeCommand(QStringLiteral("genhub.set"));
     QVERIFY(!rHub.ok);
     QCOMPARE(rHub.error.code, QStringLiteral("domain_forbidden"));
+
+    // 6. Titles and recipes are in the shared "style" domain: the Director and Editor own them.
+    const CommandSpec* titleSpec = engine_->find(QStringLiteral("title.apply"));
+    const CommandSpec* recipeSpec = engine_->find(QStringLiteral("recipe.apply"));
+    QVERIFY(titleSpec && recipeSpec);
+    QVERIFY(director.allowsCommand(*titleSpec));
+    QVERIFY(editor.allowsCommand(*titleSpec));
+    QVERIFY(editor.allowsCommand(*recipeSpec));
+    QVERIFY(!colourist.allowsCommand(*titleSpec));
+    QVERIFY(!audio.allowsCommand(*titleSpec));
+    QVERIFY(director.executeCommand(QStringLiteral("title.apply")).error.code != QStringLiteral("domain_forbidden"));
+
+    // 7. The Audio specialist can add its own audio clips even though audio.add is registered under "editor".
+    const CommandSpec* audioAdd = engine_->find(QStringLiteral("audio.add"));
+    QVERIFY(audioAdd);
+    QVERIFY(audio.allowsCommand(*audioAdd));
+    QVERIFY(!colourist.allowsCommand(*audioAdd));
+    QVERIFY(audio.executeCommand(QStringLiteral("audio.add")).error.code != QStringLiteral("domain_forbidden"));
   }
 
   // ---- peer request delegation (real command routing, no canned replies) ----

@@ -47,6 +47,7 @@ public:
 
   // ---- project settings ----
   Q_INVOKABLE bool editProject(const QString& key, const QVariant& value);
+  Q_INVOKABLE bool setCanvas(int width, int height);
   Q_INVOKABLE QVariantMap projectValues() const;
 
 signals:
