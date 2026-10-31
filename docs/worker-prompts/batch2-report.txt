@@ -1,0 +1,2158 @@
+[0m
+> build · deepseek-v4.1-flash-free
+I'll start by reading the relevant files to confirm each finding.
+[0m⚙ [0mexecute {"code":"const cmds = [\n  [\"edit\", {path: \"native/src/engine/cmd_edit.cpp\"}],\n  [\"assemble\", {path: \"native/src/engine/cmd_assemble.cpp\"}],\n  [\"storyboard\", {path: \"native/src/engine/cmd_storyboard.cpp\"}],\n  [\"harness\", {path: \"native/src/agent/agent_harness.cpp\"}],\n  [\"specialist\", {path: \"native/src/agent/specialist.cpp\"}],\n];\nconst results = await Promise.all(cmds.map(([k, a]) => tools.read(a)));\nfor (let i = 0; i < results.length; i++) {\n  console.log(\"=== \" + cmds[i][0] + \" ===\");\n  console.log(results[i].content);\n}\n"} 
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_edit.cpp 
+[0m→ [0mRead native/src/agent/agent_harness.cpp 
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/specialist.cpp 
+[0m→ [0mRead native/src/engine/cmd_audio.cpp [90m[offset=500, limit=150][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_session.cpp [90m[offset=80, limit=70][0m
+[0m→ [0mRead native/src/engine/cmd_assemble.cpp [90m[offset=250, limit=70][0m
+[0m→ [0mRead native/src/engine/cmd_storyboard.cpp [90m[offset=310, limit=60][0m
+[0m→ [0mRead native/src/engine/cmd_comfy.cpp [90m[offset=1340, limit=40][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/app/InspectorPanel.qml [90m[limit=100, offset=500][0m
+[0m→ [0mRead native/src/engine/cmd_titles.cpp [90m[limit=80, offset=460][0m
+[0m✱ [0mGrep "struct Asset|QString name|QString path|completeBaseName" [90min native/src/engine · 7 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "struct Asset" [90min native/src · 5 matches[0m
+[0m✱ [0mGrep "editProject|editProject\(" [90min native/src · 13 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/core/schema.h [90m[offset=500, limit=60][0m
+[0m→ [0mRead native/src/editor/inspector.h 
+[0m→ [0mRead native/src/editor/inspector.cpp [90m[offset=300, limit=140][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "originalName" [90min native/src · 12 matches[0m
+[0m✱ [0mGrep "Labels\{" [90min native/src · 9 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_assemble.cpp [90m[limit=120, offset=140][0m
+[0m→ [0mRead native/src/engine/cmd_comfy.cpp [90m[limit=50, offset=635][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGlob "native/tests/**/*.cpp" [90m79 matches[0m
+[0m✱ [0mGrep "labels|"clip"|originalName" [90min native/tests · 100 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_trim_split.cpp 
+[0m✱ [0mGrep "locked" [90min native/src/core · 21 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/core/apply.cpp [90m[limit=110, offset=55][0m
+[0m→ [0mRead native/src/core/apply.cpp [90m[limit=50, offset=700][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_util.cpp 
+[0m✱ [0mGrep "applyToSession|enforceLocks" [90min native/src · 35 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "locked|Locked" [90min native/tests · 100 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_assembly.cpp 
+[0m✱ [0mGrep "project\.open|music\.structure|structure" [90min native/tests · 28 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_agent_specialists.cpp 
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=240][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=120, offset=740][0m
+[0m→ [0mRead native/tests/tst_agent_harness.cpp [90m[limit=180, offset=180][0m
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=80, offset=1620][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_agent_harness.cpp [90m[limit=200, offset=360][0m
+[0m→ [0mRead native/tests/tst_agent_harness.cpp [90m[limit=180, offset=1][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_session.cpp [90m[limit=120, offset=150][0m
+[0m✱ [0mGrep "session\.group|group\.label|undoLabel|setLabel|updateLabel" [90min native/src · 23 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "recipe\.apply|registerRecipe|"style"" [90min native/src/engine · 35 matches[0m
+[0m✱ [0mGrep "title\.apply|recipe\.apply" [90min native/tests · 11 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/engine.cpp [90m[limit=120, offset=180][0m
+[0m✱ [0mGrep "inputSchema|session" [90min native/src/engine/engine.cpp · 38 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_audio.cpp [90m[limit=50, offset=1][0m
+[0m→ [0mRead native/src/engine/cmd_assemble.cpp [90m[limit=40, offset=1][0m
+[0m→ [0mRead native/src/engine/cmd_session.cpp [90m[limit=40][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_storyboard.cpp [90m[limit=20][0m
+[0m→ [0mRead native/src/engine/cmd_comfy.cpp [90m[limit=30][0m
+[0m→ [0mRead native/src/engine/cmd_titles.cpp [90m[limit=30][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=100, offset=670][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=60, offset=615][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "bool audible|audible\(" [90min native/src · 7 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/test_helpers.h [90m[limit=80][0m
+[0m✱ [0mGrep "SF_THROWS_MATCH|makeDoc|videoItem" [90min native/tests/test_helpers.h · 3 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/test_helpers.h [90m[limit=30, offset=120][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "item\.get" [90min native/src/engine/cmd_timeline.cpp · 0 matches[0m
+[0m✱ [0mGrep "labels|name" [90min native/src/engine/cmd_timeline.cpp · 6 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep ""item.get"" [90min native/src · 1 match[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_read.cpp [90m[limit=30, offset=90][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "labels" [90min native/src/core/schema.cpp · 15 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_inspector.cpp [90m[limit=120][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "editProject|canvas|width|height" [90min native/tests/tst_inspector.cpp · 13 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_inspector.cpp [90m[limit=35, offset=188][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/editor/project.cpp [90m[limit=80, offset=110][0m
+[0m✱ [0mGrep "bool Project::apply|apply\(const std::vector<Op>|apply\(" [90min native/src/editor/project.cpp · 2 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/editor/project.cpp [90m[limit=60, offset=55][0m
+> build · deepseek-v4.1-flash-free
+Now making the fixes. Starting with item 1 (clip labels).
+[0m← [0mEdit native/src/engine/cmd_edit.cpp
+Index: native/src/engine/cmd_edit.cpp
+===================================================================
+--- native/src/engine/cmd_edit.cpp
++++ native/src/engine/cmd_edit.cpp
+@@ -2,8 +2,10 @@
+ // colour (item.color.set), audio (mixer.*, item.audio.set), undo / redo.
+ 
+ #include "engine/cmd_util.h"
+ 
++#include <QFileInfo>
++
+ #include <algorithm>
+ 
+ namespace sf::engine {
+ 
+
+[0m← [0mEdit native/src/engine/cmd_assemble.cpp
+Index: native/src/engine/cmd_assemble.cpp
+===================================================================
+--- native/src/engine/cmd_assemble.cpp
++++ native/src/engine/cmd_assemble.cpp
+@@ -4,8 +4,10 @@
+ #include "engine/cmd_util.h"
+ #include "engine/style_library.h"
+ #include "audio/audio_analysis.h"
+ 
++#include <QFileInfo>
++
+ #include <cmath>
+ #include <vector>
+ 
+ namespace sf::engine {
+
+[0m← [0mEdit native/src/engine/cmd_assemble.cpp
+Index: native/src/engine/cmd_assemble.cpp
+===================================================================
+--- native/src/engine/cmd_assemble.cpp
++++ native/src/engine/cmd_assemble.cpp
+@@ -282,9 +282,11 @@
+       init.startFrame = fs.startF;
+       init.durationFrames = fs.endF - fs.startF;
+       init.assetId = fs.assetId;
+       init.sourceInFrame = static_cast<Frame>(std::llround(fs.srcInSec * fps));
+-      init.labels = Labels{QStringLiteral("clip"), std::nullopt};
++      const Asset* shotAsset = c.session->project->asset(fs.assetId);
++      const QString shotName = shotAsset ? QFileInfo(shotAsset->originalName).completeBaseName() : QString();
++      init.labels = Labels{shotName.isEmpty() ? QStringLiteral("clip") : shotName, std::nullopt};
+ 
+       Item itm = createItem(ItemType::Video, init);
+       ops.push_back(Op(ItemAdd{itm, false}));
+     }
+
+[0m← [0mEdit native/src/engine/cmd_edit.cpp
+Index: native/src/engine/cmd_edit.cpp
+===================================================================
+--- native/src/engine/cmd_edit.cpp
++++ native/src/engine/cmd_edit.cpp
+@@ -83,9 +83,10 @@
+   init.durationFrames = dur;
+   init.assetId = asset->id;
+   if (type != ItemType::Image) init.sourceInFrame = srcIn;
+   if (a.contains(q("volume"))) init.volume = a.value(q("volume")).toDouble();
+-  init.labels = Labels{audioOnly ? QStringLiteral("audio") : QStringLiteral("clip"), std::nullopt};
++  const QString assetName = QFileInfo(asset->originalName).completeBaseName();
++  init.labels = Labels{assetName.isEmpty() ? (audioOnly ? QStringLiteral("audio") : QStringLiteral("clip")) : assetName, std::nullopt};
+   const Item item = createItem(type, init);
+   return applyAndShow(c, {Op(ItemAdd{item, false})}, audioOnly ? QStringLiteral("addAudio") : QStringLiteral("addClip"), {item.id});
+ }
+ 
+
+[0m← [0mEdit native/src/engine/cmd_storyboard.cpp
+Index: native/src/engine/cmd_storyboard.cpp
+===================================================================
+--- native/src/engine/cmd_storyboard.cpp
++++ native/src/engine/cmd_storyboard.cpp
+@@ -4,8 +4,10 @@
+ #include "core/ops.h"
+ #include "core/schema.h"
+ #include "core/timeline_doc.h"
+ 
++#include <QFileInfo>
++
+ #include <cmath>
+ 
+ namespace sf::engine {
+ 
+
+[0m← [0mEdit native/src/engine/cmd_comfy.cpp
+Index: native/src/engine/cmd_comfy.cpp
+===================================================================
+--- native/src/engine/cmd_comfy.cpp
++++ native/src/engine/cmd_comfy.cpp
+@@ -665,9 +665,10 @@
+       init.startFrame = start;
+       init.durationFrames = dur;
+       init.assetId = asset->id;
+       if (type != ItemType::Image) init.sourceInFrame = 0;
+-      init.labels = Labels{type == ItemType::Audio ? QStringLiteral("audio") : QStringLiteral("clip"), std::nullopt};
++      const QString assetName = QFileInfo(asset->originalName).completeBaseName();
++      init.labels = Labels{assetName.isEmpty() ? (type == ItemType::Audio ? QStringLiteral("audio") : QStringLiteral("clip")) : assetName, std::nullopt};
+ 
+       Item item = createItem(type, init);
+       ops.push_back(Op(ItemAdd{item, false}));
+       doc.items.push_back(item);
+
+[0m← [0mEdit native/src/engine/cmd_storyboard.cpp
+Index: native/src/engine/cmd_storyboard.cpp
+===================================================================
+--- native/src/engine/cmd_storyboard.cpp
++++ native/src/engine/cmd_storyboard.cpp
+@@ -339,9 +339,10 @@
+                    init.startFrame = curFrame;
+                    init.durationFrames = durFrames;
+                    init.assetId = as->id;
+                    if (as->kind == AssetKind::Video) init.sourceInFrame = 0;
+-                   init.labels = Labels{QStringLiteral("clip"), std::nullopt};
++                   const QString clipName = QFileInfo(as->originalName).completeBaseName();
++                   init.labels = Labels{clipName.isEmpty() ? QStringLiteral("clip") : clipName, std::nullopt};
+                    ops.push_back(ItemAdd{createItem(as->kind == AssetKind::Image ? ItemType::Image : ItemType::Video, init)});
+                    ++clipsPlaced;
+                  } else {
+                    TextProps tp;
+
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -74,8 +74,14 @@
+                      {QStringLiteral("error"), QStringLiteral("agent_busy")},
+                      {QStringLiteral("response"), g.busyMessage()}};
+ }
+ 
++// A history label should name the request, not paste a whole prompt into the undo menu.
++QString shortRequest(const QString& text) {
++  const QString s = text.simplified();
++  return s.size() > 48 ? s.left(48) + QStringLiteral("\u2026") : s;
++}
++
+ } // namespace
+ 
+ void AgentHarness::setLlmClient(std::shared_ptr<LlmClient> llm) {
+   llm_ = std::move(llm);
+
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -198,9 +198,9 @@
+   if (pending_.kind == PendingKind::Ask) {
+     Specialist* sp = specialist(pending_.specialist);
+     QJsonObject groupArgs;
+     if (!sess.isEmpty()) groupArgs.insert(QStringLiteral("session"), sess);
+-    groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(pending_.message));
++    groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(shortRequest(pending_.message)));
+     groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(sp ? sp->name() : QStringLiteral("agent")));
+     QJsonArray toolResults;
+     {
+       AgentGroupScope group(engine_, groupArgs);
+
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -381,9 +381,9 @@
+   QString agentCap = agentName;
+   if (!agentCap.isEmpty()) agentCap[0] = agentCap[0].toUpper();
+   QJsonObject groupArgs;
+   if (!sessionId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessionId);
+-  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(agentCap, userMessage));
++  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(agentCap, shortRequest(userMessage)));
+   groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(agentName));
+ 
+   QJsonObject turnRes;
+   {
+
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -449,9 +449,9 @@
+   QString dirCap = dirName;
+   if (!dirCap.isEmpty()) dirCap[0] = dirCap[0].toUpper();
+   QJsonObject groupArgs;
+   if (!sessionId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessionId);
+-  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(dirCap, userMessage));
++  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(dirCap, shortRequest(userMessage)));
+   groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(dirName));
+ 
+   QJsonObject turnRes;
+   {
+
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -537,9 +537,9 @@
+       if (!targetCap.isEmpty()) targetCap[0] = targetCap[0].toUpper();
+       const QString task = a.value(QStringLiteral("task")).toString();
+       QJsonObject groupArgs;
+       if (!sessId.isEmpty()) groupArgs.insert(QStringLiteral("session"), sessId);
+-      groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(targetCap, task));
++      groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(targetCap, shortRequest(task)));
+       groupArgs.insert(QStringLiteral("actor"), QStringLiteral("agent:%1").arg(targetName));
+ 
+       PeerResponse pr;
+       {
+
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -682,9 +682,14 @@
+     .description = QStringLiteral("List the specialist agents with their domain ownership and slot IDs."),
+     .domain = QStringLiteral("engine"),
+     .mutates = false,
+     .needsSession = false,
+-    .inputSchema = QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}},
++    .inputSchema = QJsonObject{
++      {QStringLiteral("type"), QStringLiteral("object")},
++      {QStringLiteral("properties"), QJsonObject{
++        {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}
++      }}
++    },
+     .handler = [this](engine::CallContext&, const QJsonObject& a) {
+       QJsonArray list;
+       const bool includeDirector = a.value(QStringLiteral("all")).toBool(false);
+       for (const auto& [kind, sp] : specialists_) {
+
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/agent/specialist.cpp
+Index: native/src/agent/specialist.cpp
+===================================================================
+--- native/src/agent/specialist.cpp
++++ native/src/agent/specialist.cpp
+@@ -233,8 +233,12 @@
+     if (spec.domain == QStringLiteral("director")) return true;
+     if (spec.name == QStringLiteral("agent.assign") || spec.name == QStringLiteral("agent.chat")) return true;
+     if (spec.name.startsWith(QStringLiteral("storyboard."))) return true;
+   }
++  // Titles and recipes live in the shared "style" domain; the Director and Editor own them.
++  if ((kind_ == SpecialistKind::Director || kind_ == SpecialistKind::Editor) && spec.domain == QStringLiteral("style")) return true;
++  // audio.add is the Audio specialist's own operation even though the command is registered under "editor".
++  if (kind_ == SpecialistKind::Audio && spec.name == QStringLiteral("audio.add")) return true;
+   if (spec.domain == domain() || spec.domain == QStringLiteral("engine")) return true;
+   if (!spec.mutates) return true;
+   if (spec.domain == QStringLiteral("comfy")) return true;
+   if (spec.name.startsWith(QStringLiteral("generate.")) || spec.name.startsWith(QStringLiteral("comfy."))) return true;
+
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/engine/cmd_session.cpp
+Index: native/src/engine/cmd_session.cpp
+===================================================================
+--- native/src/engine/cmd_session.cpp
++++ native/src/engine/cmd_session.cpp
+@@ -3,8 +3,9 @@
+ #include "engine/cmd_util.h"
+ 
+ #include <QDir>
+ #include <QFileInfo>
++#include <QUrl>
+ 
+ #include <cmath>
+ 
+ namespace sf::engine {
+
+[0m← [0mEdit native/src/engine/cmd_comfy.cpp
+Index: native/src/engine/cmd_comfy.cpp
+===================================================================
+--- native/src/engine/cmd_comfy.cpp
++++ native/src/engine/cmd_comfy.cpp
+@@ -1353,11 +1353,9 @@
+   const QString chosenFile = chosenVariant.value(q("file")).toString();
+   const qint64 seed = chosenVariant.value(q("seed")).toVariant().toLongLong();
+ 
+   c.session->pool->import({chosenFile});
+-  fprintf(stderr, "DBG: after import\n"); fflush(stderr);
+   c.session->pool->waitForIdle(60000);
+-  fprintf(stderr, "DBG: after waitForIdle\n"); fflush(stderr);
+ 
+   const Asset* newAsset = nullptr;
+   const QFileInfo cfi(chosenFile);
+   for (const Asset& as : c.session->project->assets()) {
+
+[0m← [0mEdit native/src/engine/cmd_session.cpp
+Index: native/src/engine/cmd_session.cpp
+===================================================================
+--- native/src/engine/cmd_session.cpp
++++ native/src/engine/cmd_session.cpp
+@@ -109,9 +109,10 @@
+                                  {q("path")});
+     e.add(spec("project.open", "", "engine", false, QStringLiteral("Open a project file (a new session unless `session` names one to replace)."), schema,
+                [](CallContext& c, const QJsonObject& a) {
+                  Engine& eng = *c.engine;
+-                 const QString path = a.value(q("path")).toString();
++                 QString path = a.value(q("path")).toString();
++                 if (path.startsWith(QLatin1String("file:"))) path = QUrl(path).toLocalFile();
+                  if (!QFileInfo::exists(path)) return Result::failure(q("not_found"), QStringLiteral("No such file: %1").arg(path));
+                  Session* s = a.contains(q("session")) ? eng.session(a.value(q("session")).toString()) : nullptr;
+                  if (a.contains(q("session")) && !s) return Result::failure(q("no_session"), QStringLiteral("No session \"%1\".").arg(a.value(q("session")).toString()));
+                  const bool fresh = !s;
+
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/core/ops.h [90m[limit=20, offset=60][0m
+[0m✱ [0mGrep "struct ProjectSetCanvas" [90min native/src/core/ops.h · 1 match[0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/editor/inspector.h
+Index: native/src/editor/inspector.h
+===================================================================
+--- native/src/editor/inspector.h
++++ native/src/editor/inspector.h
+@@ -46,8 +46,9 @@
+   Q_INVOKABLE bool setEffectParam(const QString& effectId, double value, bool live = false);
+ 
+   // ---- project settings ----
+   Q_INVOKABLE bool editProject(const QString& key, const QVariant& value);
++  Q_INVOKABLE bool setCanvas(int width, int height);
+   Q_INVOKABLE QVariantMap projectValues() const;
+ 
+ signals:
+   void changed();
+
+[0m← [0mEdit native/src/app/InspectorPanel.qml
+Index: native/src/app/InspectorPanel.qml
+===================================================================
+--- native/src/app/InspectorPanel.qml
++++ native/src/app/InspectorPanel.qml
+@@ -546,10 +546,9 @@
+                             leftPadding: 8
+                             rightPadding: 8
+                             active: root.pv.width === modelData.w && root.pv.height === modelData.h
+                             onClicked: {
+-                                root.insp.editProject("width", modelData.w)
+-                                root.insp.editProject("height", modelData.h)
++                                root.insp.setCanvas(modelData.w, modelData.h)
+                             }
+                         }
+                     }
+                 }
+
+[0m← [0mEdit native/src/editor/inspector.cpp
+Index: native/src/editor/inspector.cpp
+===================================================================
+--- native/src/editor/inspector.cpp
++++ native/src/editor/inspector.cpp
+@@ -364,8 +364,15 @@
+           {QStringLiteral("fps"), static_cast<qlonglong>(p.fps)},
+           {QStringLiteral("background"), p.styleConfig.backgroundColor}};
+ }
+ 
++bool Inspector::setCanvas(int width, int height) {
++  const auto& p = project_.doc().project;
++  ProjectSetCanvas c{width, height};
++  if (c.width == p.width && c.height == p.height) return false;
++  return project_.apply(c, QStringLiteral("Set canvas size"));
++}
++
+ bool Inspector::editProject(const QString& key, const QVariant& value) {
+   const auto& p = project_.doc().project;
+   if (key == QLatin1String("name")) {
+     const QString name = value.toString().trimmed();
+
+> build · deepseek-v4.1-flash-free
+Now adding tests. First the engine tests (items 1, 5, 6).
+[0m← [0mEdit native/tests/tst_engine.cpp
+Index: native/tests/tst_engine.cpp
+===================================================================
+--- native/tests/tst_engine.cpp
++++ native/tests/tst_engine.cpp
+@@ -12,8 +12,9 @@
+ #include <QJsonDocument>
+ #include <QSignalSpy>
+ #include <QTemporaryDir>
+ #include <QTest>
++#include <QUrl>
+ 
+ #include <atomic>
+ 
+ using namespace sf;
+
+[0m← [0mEdit native/tests/tst_engine.cpp
+Index: native/tests/tst_engine.cpp
+===================================================================
+--- native/tests/tst_engine.cpp
++++ native/tests/tst_engine.cpp
+@@ -220,8 +220,16 @@
+     ok(Q("project.new"), {{Q("session"), second.value(Q("session")).toString()}, {Q("name"), Q("Again")}});
+     QCOMPARE(ok(Q("project.info")).value(Q("name")).toString(), Q("Again"));
+   }
+ 
++  void openFromFileUrl() {
++    const QString path = dir_.filePath(Q("url.sfproj"));
++    QVERIFY(!ok(Q("project.saveAs"), {{Q("path"), path}}).contains(Q("__failed")));
++    const QJsonObject opened = ok(Q("project.open"), {{Q("path"), QUrl::fromLocalFile(path).toString()}});
++    QVERIFY(!opened.contains(Q("__failed")));
++    QVERIFY(!opened.value(Q("session")).toString().isEmpty());
++  }
++
+   void projectSettings() {
+     ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("m")}});
+     QJsonObject r = ok(Q("project.settings.set"), {{Q("aspect"), Q("9:16")}, {Q("shortSidePx"), 360}, {Q("fps"), 30}, {Q("name"), Q("Vertical")}});
+     QVERIFY(r.value(Q("applied")).toInt() >= 3);
+
+[0m← [0mEdit native/tests/tst_engine.cpp
+Index: native/tests/tst_engine.cpp
+===================================================================
+--- native/tests/tst_engine.cpp
++++ native/tests/tst_engine.cpp
+@@ -791,8 +791,18 @@
+     for (const QJsonValue& v : check.value(Q("violations")).toArray()) r << v.toObject().value(Q("rule")).toString();
+     return r;
+   }
+ 
++  void clipLabelsUseTheAssetName() {
++    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_}}});
++    const QString story = assetNamed(Q("story.mp4"));
++    QVERIFY(!story.isEmpty());
++    const QString id = addClip(story, 0, 30, 0);
++    QVERIFY(!id.isEmpty());
++    const QJsonObject labels = ok(Q("item.get"), {{Q("itemId"), id}}).value(Q("labels")).toObject();
++    QCOMPARE(labels.value(Q("name")).toString(), Q("story"));
++  }
++
+   void measuredEditing() {
+     ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, talk_, beats_}}});
+     const QString story = assetNamed(Q("story.mp4")), beats = assetNamed(Q("beats.wav"));
+     QVERIFY(!story.isEmpty() && !beats.isEmpty());
+
+[0m← [0mEdit native/tests/tst_engine.cpp
+Index: native/tests/tst_engine.cpp
+===================================================================
+--- native/tests/tst_engine.cpp
++++ native/tests/tst_engine.cpp
+@@ -772,8 +772,13 @@
+     const QJsonObject ms = ok(Q("music.structure"), {{Q("assetId"), firstAsset(Q("audio"))}});
+     QVERIFY(!ms.value(Q("valid")).toBool());
+     QVERIFY(ms.value(Q("note")).toString().size() > 5);
+     QCOMPARE(raw(Q("music.structure"), {}).error.code, Q("invalid_params"));
++    // an item with no audio asset (a text item) is refused, not dereferenced
++    const QJsonObject textRes = ok(Q("text.add"), {{Q("text"), Q("Caption")}, {Q("startFrame"), 0}, {Q("durationFrames"), 30}});
++    const QString textId = textRes.value(Q("created")).toObject().value(Q("items")).toArray().at(0).toString();
++    QVERIFY(!textId.isEmpty());
++    QCOMPARE(raw(Q("music.structure"), {{Q("itemId"), textId}}).error.code, Q("invalid_params"));
+     QVERIFY(e_->describe(Q("audio")).size() >= 5);
+   }
+ 
+ 
+
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/tests/tst_agent_specialists.cpp
+Index: native/tests/tst_agent_specialists.cpp
+===================================================================
+--- native/tests/tst_agent_specialists.cpp
++++ native/tests/tst_agent_specialists.cpp
+@@ -78,8 +78,10 @@
+   // ---- strict domain enforcement ----
+   void domainEnforcement() {
+     Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get());
+     Specialist colourist(SpecialistKind::Colourist, engine_.get(), bus_.get());
++    Specialist audio(SpecialistKind::Audio, engine_.get(), bus_.get());
++    Specialist director(SpecialistKind::Director, engine_.get(), bus_.get());
+ 
+     // 1. Editor can execute an "engine" command
+     Result rEngine = editor.executeCommand(QStringLiteral("timeline.get"));
+     QVERIFY(rEngine.ok);
+
+[0m← [0mEdit native/tests/tst_trim_split.cpp
+Index: native/tests/tst_trim_split.cpp
+===================================================================
+--- native/tests/tst_trim_split.cpp
++++ native/tests/tst_trim_split.cpp
+@@ -151,8 +151,18 @@
+     const TimelineDoc d1 = applyOp(doc, addItem(item)).doc;
+     SF_THROWS_MATCH(applyOp(d1, ItemSplit{item.id, 200, newId(S("itm"))}), "outside");
+   }
+ 
++  void splitAndRippleTrimRefuseALockedTrack() {
++    const TimelineDoc doc = makeDoc();
++    const Item item = videoItem(doc, 0, 90);
++    TimelineDoc locked = applyOp(doc, addItem(item)).doc;
++    for (Track& t : locked.tracks)
++      if (t.id == item.trackId) t.locked = true;
++    SF_THROWS_MATCH(applyOp(locked, ItemSplit{item.id, 30, newId(S("itm"))}), "locked");
++    SF_THROWS_MATCH(applyOp(locked, trim(item.id, TrimEdge::Out, 60, true)), "locked");
++  }
++
+   // ---- describe('slip / speed / remap ops') ----
+   void slipChangesSourceInOnlyAndInverts() {
+     const TimelineDoc doc = makeDoc();
+     const Item item = videoItem(doc, 0, 90, [](ItemInit& i) { i.sourceInFrame = 0; });
+
+[0m← [0mEdit native/tests/tst_agent_specialists.cpp
+Index: native/tests/tst_agent_specialists.cpp
+===================================================================
+--- native/tests/tst_agent_specialists.cpp
++++ native/tests/tst_agent_specialists.cpp
+@@ -149,8 +149,26 @@
+     QVERIFY(!editor.allowsCommand(*genhubSpec));
+     Result rHub = editor.executeCommand(QStringLiteral("genhub.set"));
+     QVERIFY(!rHub.ok);
+     QCOMPARE(rHub.error.code, QStringLiteral("domain_forbidden"));
++
++    // 6. Titles and recipes are in the shared "style" domain: the Director and Editor own them.
++    const CommandSpec* titleSpec = engine_->find(QStringLiteral("title.apply"));
++    const CommandSpec* recipeSpec = engine_->find(QStringLiteral("recipe.apply"));
++    QVERIFY(titleSpec && recipeSpec);
++    QVERIFY(director.allowsCommand(*titleSpec));
++    QVERIFY(editor.allowsCommand(*titleSpec));
++    QVERIFY(editor.allowsCommand(*recipeSpec));
++    QVERIFY(!colourist.allowsCommand(*titleSpec));
++    QVERIFY(!audio.allowsCommand(*titleSpec));
++    QVERIFY(director.executeCommand(QStringLiteral("title.apply")).error.code != QStringLiteral("domain_forbidden"));
++
++    // 7. The Audio specialist can add its own audio clips even though audio.add is registered under "editor".
++    const CommandSpec* audioAdd = engine_->find(QStringLiteral("audio.add"));
++    QVERIFY(audioAdd);
++    QVERIFY(audio.allowsCommand(*audioAdd));
++    QVERIFY(!colourist.allowsCommand(*audioAdd));
++    QVERIFY(audio.executeCommand(QStringLiteral("audio.add")).error.code != QStringLiteral("domain_forbidden"));
+   }
+ 
+   // ---- peer request delegation (real command routing, no canned replies) ----
+   void peerRequestDelegation() {
+
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGrep "marker" [90min native/src/agent/router.cpp · 0 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/tests/tst_agent_harness.cpp
+Index: native/tests/tst_agent_harness.cpp
+===================================================================
+--- native/tests/tst_agent_harness.cpp
++++ native/tests/tst_agent_harness.cpp
+@@ -56,8 +56,16 @@
+     Result specRes = engine_->call(QStringLiteral("agent.specialists"));
+     QVERIFY(specRes.ok);
+     QJsonArray specs = specRes.value.toObject().value(QStringLiteral("specialists")).toArray();
+     QCOMPARE(specs.size(), 3);
++
++    // "all" includes the Director and is part of the declared schema.
++    const CommandSpec* spec = engine_->find(QStringLiteral("agent.specialists"));
++    QVERIFY(spec);
++    QVERIFY(spec->inputSchema.value(QStringLiteral("properties")).toObject().contains(QStringLiteral("all")));
++    Result allRes = engine_->call(QStringLiteral("agent.specialists"), QJsonObject{{QStringLiteral("all"), true}});
++    QVERIFY(allRes.ok);
++    QCOMPARE(allRes.value.toObject().value(QStringLiteral("specialists")).toArray().size(), 4);
+   }
+ 
+   // ---- agent mode get/set ----
+   void modeManagement() {
+
+[0m← [0mEdit native/tests/tst_agent_harness.cpp
+Index: native/tests/tst_agent_harness.cpp
+===================================================================
+--- native/tests/tst_agent_harness.cpp
++++ native/tests/tst_agent_harness.cpp
+@@ -67,10 +67,9 @@
+     QCOMPARE(allRes.value.toObject().value(QStringLiteral("specialists")).toArray().size(), 4);
+   }
+ 
+   // ---- agent mode get/set ----
+-  void modeManagement() {
+-    Result getRes = engine_->call(QStringLiteral("agent.mode.get"));
++  void modeManagement() {    Result getRes = engine_->call(QStringLiteral("agent.mode.get"));
+     QVERIFY(getRes.ok);
+     QCOMPARE(getRes.value.toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("default"));
+ 
+     Result setRes = engine_->call(QStringLiteral("agent.mode.set"), QJsonObject{{QStringLiteral("mode"), QStringLiteral("plan")}});
+
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_agent_harness.cpp [90m[limit=35, offset=60][0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/tests/tst_agent_harness.cpp
+Index: native/tests/tst_agent_harness.cpp
+===================================================================
+--- native/tests/tst_agent_harness.cpp
++++ native/tests/tst_agent_harness.cpp
+@@ -67,9 +67,10 @@
+     QCOMPARE(allRes.value.toObject().value(QStringLiteral("specialists")).toArray().size(), 4);
+   }
+ 
+   // ---- agent mode get/set ----
+-  void modeManagement() {    Result getRes = engine_->call(QStringLiteral("agent.mode.get"));
++  void modeManagement() {
++    Result getRes = engine_->call(QStringLiteral("agent.mode.get"));
+     QVERIFY(getRes.ok);
+     QCOMPARE(getRes.value.toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("default"));
+ 
+     Result setRes = engine_->call(QStringLiteral("agent.mode.set"), QJsonObject{{QStringLiteral("mode"), QStringLiteral("plan")}});
+
+[0m← [0mEdit native/tests/tst_agent_harness.cpp
+Index: native/tests/tst_agent_harness.cpp
+===================================================================
+--- native/tests/tst_agent_harness.cpp
++++ native/tests/tst_agent_harness.cpp
+@@ -80,8 +80,24 @@
+     Result getRes2 = engine_->call(QStringLiteral("agent.mode.get"));
+     QCOMPARE(getRes2.value.toObject().value(QStringLiteral("mode")).toString(), QStringLiteral("plan"));
+   }
+ 
++  // The undo group is named after the agent and a short form of the request, not the raw message.
++  void undoLabelIsAShortRequest() {
++    harness_->setMode(AgentMode::Auto);
++    mockLlm_->enqueueResponse(QJsonObject{
++      {QStringLiteral("content"), QString()},
++      {QStringLiteral("tool_calls"), QJsonArray{markerCall(QStringLiteral("c1"), 5)}}});
++    mockLlm_->setDefaultResponse(QJsonObject{{QStringLiteral("content"), QStringLiteral("Done.")}});
++    const QString message = QStringLiteral("  add   a marker at frame 5 and make this request far longer than the label should ever be  ");
++    harness_->executeTurn(message);
++    const QString label = engine_->call(QStringLiteral("project.info")).value.toObject().value(QStringLiteral("undoLabel")).toString();
++    QVERIFY2(label.contains(QStringLiteral(": ")), qPrintable(label));
++    QVERIFY2(!label.contains(QStringLiteral("  ")), qPrintable(label));
++    QVERIFY2(label.endsWith(QStringLiteral("\u2026")), qPrintable(label));
++    QVERIFY2(label.size() <= label.indexOf(QStringLiteral(": ")) + 2 + 49, qPrintable(label));
++  }
++
+   // ---- routing command ----
+   void agentRouteCommand() {
+     Result r = engine_->call(QStringLiteral("agent.route"), QJsonObject{
+       {QStringLiteral("message"), QStringLiteral("apply a teal and orange LUT and duck music")}
+
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/tests/tst_inspector.cpp
+Index: native/tests/tst_inspector.cpp
+===================================================================
+--- native/tests/tst_inspector.cpp
++++ native/tests/tst_inspector.cpp
+@@ -209,8 +209,21 @@
+     QCOMPARE(p.doc().project.fps, std::int64_t(30));
+     QCOMPARE(itemOf(p, QStringLiteral("itm_v2")).startFrame, Frame(120));
+     QVERIFY(!i.editProject(QStringLiteral("width"), 1080)); // unchanged: no op
+   }
++  void canvasPresetIsOneUndoStep() {
++    Project p;
++    fillProject(p);
++    Inspector i(p);
++    QVERIFY(i.setCanvas(1080, 1920));
++    QCOMPARE(p.doc().project.width, std::int64_t(1080));
++    QCOMPARE(p.doc().project.height, std::int64_t(1920));
++    QVERIFY(p.undo());
++    QCOMPARE(p.doc().project.width, std::int64_t(1920));
++    QCOMPARE(p.doc().project.height, std::int64_t(1080));
++    QVERIFY(!p.canUndo()); // both dimensions were one step
++    QVERIFY(!i.setCanvas(1920, 1080)); // unchanged: no op
++  }
+ };
+ 
+ } // namespace tst
+ using tst::TstInspector;
+
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/specialist.cpp [90m[limit=20, offset=228][0m
+[0m→ [0mRead native/src/engine/cmd_assemble.cpp [90m[limit=20, offset=276][0m
+[0m→ [0mRead native/src/engine/cmd_edit.cpp [90m[limit=20, offset=78][0m
+[0m→ [0mRead native/src/engine/cmd_storyboard.cpp [90m[limit=18, offset=333][0m
+[0m→ [0mRead native/src/engine/cmd_comfy.cpp [90m[limit=15, offset=662][0m
+> build · deepseek-v4.1-flash-free
+[0m✱ [0mGlob "native/scripts/*" [90m2 matches[0m
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8
+[0/2] Re-checking globbed directories...
+[1/379] Copying the OpenColorIO runtime next to the binaries
+[2/379] Generating .qsb/shaders/layer.vert.qsb
+[3/379] Generating .qsb/shaders/layer.frag.qsb
+[4/379] Generating .qsb/shaders/output.frag.qsb
+[5/379] Generating .qsb/fx/fx.vert.qsb
+[6/379] Generating .qsb/fx/shaders/camera_shake.frag.qsb
+[7/379] Generating .qsb/fx/shaders/chromatic_aberration.frag.qsb
+[8/379] Generating .qsb/fx/shaders/crossfade.frag.qsb
+[9/379] Generating .qsb/fx/shaders/crt.frag.qsb
+[10/379] Generating .qsb/fx/shaders/defocus.frag.qsb
+[11/379] Generating .qsb/fx/shaders/directional_blur.frag.qsb
+[12/379] Generating .qsb/fx/shaders/duotone.frag.qsb
+[13/379] Generating .qsb/fx/shaders/dither.frag.qsb
+[14/379] Generating .qsb/fx/shaders/edge_detect.frag.qsb
+[15/379] Generating .qsb/fx/shaders/film_grain.frag.qsb
+[16/379] Generating .qsb/fx/shaders/gaussian_blur.frag.qsb
+[17/379] Generating .qsb/fx/shaders/gl_advanced_mosaic.frag.qsb
+[18/379] Generating .qsb/fx/shaders/gl_angular.frag.qsb
+[19/379] Generating .qsb/fx/shaders/gl_block_dissolve.frag.qsb
+[20/379] Generating .qsb/fx/shaders/gl_book_flip.frag.qsb
+[21/379] Generating .qsb/fx/shaders/gl_bounce.frag.qsb
+[22/379] Generating .qsb/fx/shaders/gl_bow_tie_horizontal.frag.qsb
+[23/379] Generating .qsb/fx/shaders/gl_bow_tie_vertical.frag.qsb
+[24/379] Generating .qsb/fx/shaders/gl_bow_tie_with_parameter.frag.qsb
+[25/379] Generating .qsb/fx/shaders/gl_box.frag.qsb
+[26/379] Generating .qsb/fx/shaders/gl_burn.frag.qsb
+[27/379] Generating .qsb/fx/shaders/gl_burn_0.frag.qsb
+[28/379] Generating .qsb/fx/shaders/gl_butterfly_wave_scrawler.frag.qsb
+[29/379] Generating .qsb/fx/shaders/gl_cannabisleaf.frag.qsb
+[30/379] Generating .qsb/fx/shaders/gl_chessboard.frag.qsb
+[31/379] Generating .qsb/fx/shaders/gl_circle.frag.qsb
+[32/379] Generating .qsb/fx/shaders/gl_circle_crop.frag.qsb
+[33/379] Generating .qsb/fx/shaders/gl_circleopen.frag.qsb
+[34/379] Generating .qsb/fx/shaders/gl_colour_distance.frag.qsb
+[35/379] Generating .qsb/fx/shaders/gl_colorphase.frag.qsb
+[36/379] Generating .qsb/fx/shaders/gl_coord_from_in.frag.qsb
+[37/379] Generating .qsb/fx/shaders/gl_crazy_parametric_fun.frag.qsb
+[38/379] Generating .qsb/fx/shaders/gl_crosshatch.frag.qsb
+[39/379] Generating .qsb/fx/shaders/gl_cross_zoom.frag.qsb
+[40/379] Generating .qsb/fx/shaders/gl_crosswarp.frag.qsb
+[41/379] Generating .qsb/fx/shaders/gl_cube.frag.qsb
+[42/379] Generating .qsb/fx/shaders/gl_defocus_blur.frag.qsb
+[43/379] Generating .qsb/fx/shaders/gl_directional.frag.qsb
+[44/379] Generating .qsb/fx/shaders/gl_directional_easing.frag.qsb
+[45/379] Generating .qsb/fx/shaders/gl_directionalwarp.frag.qsb
+[46/379] Generating .qsb/fx/shaders/gl_directional_scaled.frag.qsb
+[47/379] Generating .qsb/fx/shaders/gl_directionalwipe.frag.qsb
+[48/379] Generating .qsb/fx/shaders/gl_displacement.frag.qsb
+[49/379] Generating .qsb/fx/shaders/gl_dissolve.frag.qsb
+[50/379] Generating .qsb/fx/shaders/gl_doom_screen_transition.frag.qsb
+[51/379] Generating .qsb/fx/shaders/gl_doorway.frag.qsb
+[52/379] Generating .qsb/fx/shaders/gl_dreamy.frag.qsb
+[53/379] Generating .qsb/fx/shaders/gl_dreamy_zoom.frag.qsb
+[54/379] Generating .qsb/fx/shaders/gl_edge_transition.frag.qsb
+[55/379] Generating .qsb/fx/shaders/gl_drop_zone_flicker.frag.qsb
+[56/379] Generating .qsb/fx/shaders/gl_fade.frag.qsb
+[57/379] Generating .qsb/fx/shaders/gl_fadecolor.frag.qsb
+[58/379] Generating .qsb/fx/shaders/gl_fadegrayscale.frag.qsb
+[59/379] Generating .qsb/fx/shaders/gl_flyeye.frag.qsb
+[60/379] Generating .qsb/fx/shaders/gl_fold.frag.qsb
+[61/379] Generating .qsb/fx/shaders/gl_film_burn.frag.qsb
+[62/379] Generating .qsb/fx/shaders/gl_fragment.frag.qsb
+[63/379] Generating .qsb/fx/shaders/gl_glitch_memories.frag.qsb
+[64/379] Generating .qsb/fx/shaders/gl_glitch_displace.frag.qsb
+[65/379] Generating .qsb/fx/shaders/gl_grid_flip.frag.qsb
+[66/379] Generating .qsb/fx/shaders/gl_heart.frag.qsb
+[67/379] Generating .qsb/fx/shaders/gl_horizontal_close.frag.qsb
+[68/379] Generating .qsb/fx/shaders/gl_horizontal_open.frag.qsb
+[69/379] Generating .qsb/fx/shaders/gl_hsv_fade.frag.qsb
+[70/379] Generating .qsb/fx/shaders/gl_kaleidoscope.frag.qsb
+[71/379] Generating .qsb/fx/shaders/gl_inverted_page_curl.frag.qsb
+[72/379] Generating .qsb/fx/shaders/gl_hexagonalize.frag.qsb
+[73/379] Generating .qsb/fx/shaders/gl_left_right.frag.qsb
+[74/379] Generating .qsb/fx/shaders/gl_linear_blur.frag.qsb
+[75/379] Generating .qsb/fx/shaders/gl_luma.frag.qsb
+[76/379] Generating .qsb/fx/shaders/gl_luminance_melt.frag.qsb
+[77/379] Generating .qsb/fx/shaders/gl_morph.frag.qsb
+[78/379] Generating .qsb/fx/shaders/gl_mosaic.frag.qsb
+[79/379] Generating .qsb/fx/shaders/gl_mosaic_transition.frag.qsb
+[80/379] Generating .qsb/fx/shaders/gl_multiply_blend.frag.qsb
+[81/379] Generating .qsb/fx/shaders/gl_old_tv_lost_signal.frag.qsb
+[82/379] Generating .qsb/fx/shaders/gl_overexposure.frag.qsb
+[83/379] Generating .qsb/fx/shaders/gl_parametric_glitch.frag.qsb
+[84/379] Generating .qsb/fx/shaders/gl_perlin.frag.qsb
+[85/379] Generating .qsb/fx/shaders/gl_pinwheel.frag.qsb
+[86/379] Generating .qsb/fx/shaders/gl_pixelize.frag.qsb
+[87/379] Generating .qsb/fx/shaders/gl_polka_dots_curtain.frag.qsb
+[88/379] Generating .qsb/fx/shaders/gl_polar_function.frag.qsb
+[89/379] Generating .qsb/fx/shaders/gl_power_kaleido.frag.qsb
+[90/379] Generating .qsb/fx/shaders/gl_puzzle_right.frag.qsb
+[91/379] Generating .qsb/fx/shaders/gl_random_noise_x.frag.qsb
+[92/379] Generating .qsb/fx/shaders/gl_randomsquares.frag.qsb
+[93/379] Generating .qsb/fx/shaders/gl_rectangle.frag.qsb
+[94/379] Generating .qsb/fx/shaders/gl_rectangle_crop.frag.qsb
+[95/379] Generating .qsb/fx/shaders/gl_radial.frag.qsb
+[96/379] Generating .qsb/fx/shaders/gl_revolve_left.frag.qsb
+[97/379] Generating .qsb/fx/shaders/gl_ripple.frag.qsb
+[98/379] Generating .qsb/fx/shaders/gl_rolls.frag.qsb
+[99/379] Generating .qsb/fx/shaders/gl_rotate_scale_vanish.frag.qsb
+[100/379] Generating .qsb/fx/shaders/gl_rotate_transition.frag.qsb
+[101/379] Generating .qsb/fx/shaders/gl_scale_in.frag.qsb
+[102/379] Generating .qsb/fx/shaders/gl_simple_flip.frag.qsb
+[103/379] Generating .qsb/fx/shaders/gl_simple_zoom.frag.qsb
+[104/379] Generating .qsb/fx/shaders/gl_simple_zoom_out.frag.qsb
+[105/379] Generating .qsb/fx/shaders/gl_rotate_scale_fade.frag.qsb
+[106/379] Generating .qsb/fx/shaders/gl_slides.frag.qsb
+[107/379] Generating .qsb/fx/shaders/gl_split_slide_in_horizontal.frag.qsb
+[108/379] Generating .qsb/fx/shaders/gl_split_slide_in_out_horizontal.frag.qsb
+[109/379] Generating .qsb/fx/shaders/gl_split_slide_in_out_vertical.frag.qsb
+[110/379] Generating .qsb/fx/shaders/gl_split_slide_in_vertical.frag.qsb
+[111/379] Generating .qsb/fx/shaders/gl_split_slide_out_horizontal.frag.qsb
+[112/379] Generating .qsb/fx/shaders/gl_split_slide_out_vertical.frag.qsb
+[113/379] Generating .qsb/fx/shaders/gl_squareswire.frag.qsb
+[114/379] Generating .qsb/fx/shaders/gl_squeeze.frag.qsb
+[115/379] Generating .qsb/fx/shaders/gl_star_wipe.frag.qsb
+[116/379] Generating .qsb/fx/shaders/gl_static_fade.frag.qsb
+[117/379] Generating .qsb/fx/shaders/gl_static_wipe.frag.qsb
+[118/379] Generating .qsb/fx/shaders/gl_stereo_viewer.frag.qsb
+[119/379] Generating .qsb/fx/shaders/gl_swap.frag.qsb
+[120/379] Generating .qsb/fx/shaders/gl_strip_datamosh_glitch.frag.qsb
+[121/379] Generating .qsb/fx/shaders/gl_swirl.frag.qsb
+[122/379] Generating .qsb/fx/shaders/gl_tangent_motion_blur.frag.qsb
+[123/379] Generating .qsb/fx/shaders/gl_tiles_wave.frag.qsb
+[124/379] Generating .qsb/fx/shaders/gl_top_bottom.frag.qsb
+[125/379] Generating .qsb/fx/shaders/gl_tv_static.frag.qsb
+[126/379] Generating .qsb/fx/shaders/gl_undulating_burn_out.frag.qsb
+[127/379] Generating .qsb/fx/shaders/gl_vertical_close.frag.qsb
+[128/379] Generating .qsb/fx/shaders/gl_vertical_open.frag.qsb
+[129/379] Generating .qsb/fx/shaders/gl_water_drop.frag.qsb
+[130/379] Generating .qsb/fx/shaders/gl_wind.frag.qsb
+[131/379] Generating .qsb/fx/shaders/gl_windowblinds.frag.qsb
+[132/379] Generating .qsb/fx/shaders/gl_windowslice.frag.qsb
+[133/379] Generating .qsb/fx/shaders/gl_wipe_down.frag.qsb
+[134/379] Generating .qsb/fx/shaders/gl_wipe_left.frag.qsb
+[135/379] Generating .qsb/fx/shaders/gl_wipe_right.frag.qsb
+[136/379] Generating .qsb/fx/shaders/gl_wipe_up.frag.qsb
+[137/379] Generating .qsb/fx/shaders/gl_x_axis_translation.frag.qsb
+[138/379] Generating .qsb/fx/shaders/gl_zoom_in_circles.frag.qsb
+[139/379] Generating .qsb/fx/shaders/gl_zoom_in_out.frag.qsb
+[140/379] Generating .qsb/fx/shaders/gl_zoom_left_wipe.frag.qsb
+[141/379] Generating .qsb/fx/shaders/gl_zoom_right_wipe.frag.qsb
+[142/379] Generating .qsb/fx/shaders/glow.frag.qsb
+[143/379] Generating .qsb/fx/shaders/god_rays.frag.qsb
+[144/379] Generating .qsb/fx/shaders/halftone.frag.qsb
+[145/379] Generating .qsb/fx/shaders/invert.frag.qsb
+[146/379] Generating .qsb/fx/shaders/kaleidoscope.frag.qsb
+[147/379] Generating .qsb/fx/shaders/lens_distortion.frag.qsb
+[148/379] Generating .qsb/fx/shaders/lens_flare_simple.frag.qsb
+[149/379] Generating .qsb/fx/shaders/light_leak.frag.qsb
+[150/379] Generating .qsb/fx/shaders/mirror.frag.qsb
+[151/379] Generating .qsb/fx/shaders/pixelate.frag.qsb
+[152/379] Generating .qsb/fx/shaders/posterize.frag.qsb
+[153/379] Generating .qsb/fx/shaders/polygon_mask.frag.qsb
+[154/379] Generating .qsb/fx/shaders/radial_blur.frag.qsb
+[155/379] Generating .qsb/fx/shaders/rgb_split_glitch.frag.qsb
+[156/379] Generating .qsb/fx/shaders/sharpen.frag.qsb
+[157/379] Generating .qsb/fx/shaders/swirl.frag.qsb
+[158/379] Generating .qsb/fx/shaders/threshold.frag.qsb
+[159/379] Generating .qsb/fx/shaders/tilt_shift.frag.qsb
+[160/379] Generating .qsb/fx/shaders/vhs.frag.qsb
+[161/379] Generating .qsb/fx/shaders/vignette.frag.qsb
+[162/379] Running rcc for resource sf_render_shaders
+[163/379] Generating .qsb/fx/shaders/wave_warp.frag.qsb
+[164/379] Generating .qsb/fx/shaders/wipe.frag.qsb
+[165/379] Copying onnxruntime.dll next to the executables
+[166/379] Copying splitframe qml sources into build dir
+[167/379] Running utility command for sf_ort_dlls
+[168/379] Running rcc for resource sf_render_fx_shaders
+[169/379] Running qmlimportscanner for splitframe
+The system cannot find the file specified.
+[170/379] Automatic MOC and UIC for target tst_trim_split
+[171/378] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_shaders.cpp.obj
+[172/378] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_fx_shaders.cpp.obj
+[173/378] Linking CXX static library src\render\sf_render.lib
+[174/378] Linking CXX executable bin\tst_playback_clock.exe
+[175/378] Linking CXX executable bin\tst_colour_analysis.exe
+[176/378] Linking CXX executable bin\tst_layout.exe
+[177/378] Linking CXX executable bin\tst_color.exe
+[178/378] Linking CXX executable bin\tst_compositor.exe
+[179/378] Linking CXX executable bin\tst_effects.exe
+[180/378] Automatic MOC and UIC for target sf_editor
+[181/378] Linking CXX executable bin\bench_compositor.exe
+[182/378] Building CXX object tests\CMakeFiles\tst_trim_split.dir\tst_trim_split.cpp.obj
+[183/378] Linking CXX executable bin\tst_trim_split.exe
+[184/378] Building CXX object src\editor\CMakeFiles\sf_editor.dir\sf_editor_autogen\mocs_compilation.cpp.obj
+[185/378] Building CXX object src\editor\CMakeFiles\sf_editor.dir\inspector.cpp.obj
+[186/378] Linking CXX static library src\editor\sf_editor.lib
+[187/378] Automatic MOC and UIC for target sf_engine
+[188/377] Automatic MOC and UIC for target sf_agent
+[189/376] Linking CXX executable bin\tst_timeline_math.exe
+[190/376] Linking CXX executable bin\tst_export.exe
+[191/376] Automatic MOC and UIC for target tst_inspector
+[192/375] Linking CXX executable bin\tst_media_pool.exe
+[193/375] Linking CXX executable bin\tst_timeline_model.exe
+[194/375] Linking CXX executable bin\tst_timeline_controller.exe
+[195/375] Linking CXX executable bin\tst_project.exe
+[196/375] Linking CXX executable bin\tst_proxy.exe
+[197/375] Building CXX object src\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj
+FAILED: src/agent/CMakeFiles/sf_agent.dir/agent_harness.cpp.obj 
+C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NETWORK_LIB -DQT_SQL_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\build\debug\src\agent\sf_agent_autogen\include" -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\engine\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\editor\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\core\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\media\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\export\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\render\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\audio\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\sys\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\jobs\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\comfy\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\index\.." -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include -external:IC:\Qt\6.8.3\msvc2022_64\mkspecs\win32-msvc -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include\QtNetwork -external:IC:\Qt\6.8.3\msvc2022_64\include\QtSql -external:IC:\dev\ffmpeg-8.1-gpl\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi -Zc:__cplusplus -permissive- -utf-8 /W4 /permissive- /utf-8 /Zc:__cplusplus /WX /showIncludes /Fosrc\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj /Fdsrc\agent\CMakeFiles\sf_agent.dir\sf_agent.pdb /FS -c "C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp"
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(687): error C7556: cannot mix designated-initializers with non-designated-initializers
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(706): error C3329: syntax error: expected '}' not ')'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(706): error C2143: syntax error: missing ')' before ';'
+[198/375] Building CXX object src\agent\CMakeFiles\sf_agent.dir\specialist.cpp.obj
+[199/375] Building CXX object tests\CMakeFiles\tst_inspector.dir\tst_inspector.cpp.obj
+ninja: build stopped: subcommand failed.
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/agent_harness.cpp [90m[limit=35, offset=678][0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -686,9 +686,9 @@
+     .inputSchema = QJsonObject{
+       {QStringLiteral("type"), QStringLiteral("object")},
+       {QStringLiteral("properties"), QJsonObject{
+         {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}
+-      }}
++      }},
+     },
+     .handler = [this](engine::CallContext&, const QJsonObject& a) {
+       QJsonArray list;
+       const bool includeDirector = a.value(QStringLiteral("all")).toBool(false);
+
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8
+[0/2] Re-checking globbed directories...
+[1/363] Copying the OpenColorIO runtime next to the binaries
+[2/363] Generating .qsb/shaders/layer.frag.qsb
+[3/363] Generating .qsb/shaders/layer.vert.qsb
+[4/363] Generating .qsb/fx/fx.vert.qsb
+[5/363] Generating .qsb/shaders/output.frag.qsb
+[6/363] Generating .qsb/fx/shaders/camera_shake.frag.qsb
+[7/363] Generating .qsb/fx/shaders/chromatic_aberration.frag.qsb
+[8/363] Generating .qsb/fx/shaders/crossfade.frag.qsb
+[9/363] Generating .qsb/fx/shaders/crt.frag.qsb
+[10/363] Generating .qsb/fx/shaders/defocus.frag.qsb
+[11/363] Generating .qsb/fx/shaders/directional_blur.frag.qsb
+[12/363] Generating .qsb/fx/shaders/duotone.frag.qsb
+[13/363] Generating .qsb/fx/shaders/edge_detect.frag.qsb
+[14/363] Generating .qsb/fx/shaders/film_grain.frag.qsb
+[15/363] Generating .qsb/fx/shaders/gaussian_blur.frag.qsb
+[16/363] Generating .qsb/fx/shaders/dither.frag.qsb
+[17/363] Generating .qsb/fx/shaders/gl_advanced_mosaic.frag.qsb
+[18/363] Generating .qsb/fx/shaders/gl_angular.frag.qsb
+[19/363] Generating .qsb/fx/shaders/gl_block_dissolve.frag.qsb
+[20/363] Generating .qsb/fx/shaders/gl_book_flip.frag.qsb
+[21/363] Generating .qsb/fx/shaders/gl_bounce.frag.qsb
+[22/363] Generating .qsb/fx/shaders/gl_bow_tie_horizontal.frag.qsb
+[23/363] Generating .qsb/fx/shaders/gl_bow_tie_vertical.frag.qsb
+[24/363] Generating .qsb/fx/shaders/gl_bow_tie_with_parameter.frag.qsb
+[25/363] Generating .qsb/fx/shaders/gl_box.frag.qsb
+[26/363] Generating .qsb/fx/shaders/gl_burn.frag.qsb
+[27/363] Generating .qsb/fx/shaders/gl_burn_0.frag.qsb
+[28/363] Generating .qsb/fx/shaders/gl_butterfly_wave_scrawler.frag.qsb
+[29/363] Generating .qsb/fx/shaders/gl_cannabisleaf.frag.qsb
+[30/363] Generating .qsb/fx/shaders/gl_chessboard.frag.qsb
+[31/363] Generating .qsb/fx/shaders/gl_circle.frag.qsb
+[32/363] Generating .qsb/fx/shaders/gl_circle_crop.frag.qsb
+[33/363] Generating .qsb/fx/shaders/gl_circleopen.frag.qsb
+[34/363] Generating .qsb/fx/shaders/gl_colorphase.frag.qsb
+[35/363] Generating .qsb/fx/shaders/gl_colour_distance.frag.qsb
+[36/363] Generating .qsb/fx/shaders/gl_coord_from_in.frag.qsb
+[37/363] Generating .qsb/fx/shaders/gl_crazy_parametric_fun.frag.qsb
+[38/363] Generating .qsb/fx/shaders/gl_cross_zoom.frag.qsb
+[39/363] Generating .qsb/fx/shaders/gl_crosshatch.frag.qsb
+[40/363] Generating .qsb/fx/shaders/gl_crosswarp.frag.qsb
+[41/363] Generating .qsb/fx/shaders/gl_cube.frag.qsb
+[42/363] Generating .qsb/fx/shaders/gl_defocus_blur.frag.qsb
+[43/363] Generating .qsb/fx/shaders/gl_directional.frag.qsb
+[44/363] Generating .qsb/fx/shaders/gl_directional_easing.frag.qsb
+[45/363] Generating .qsb/fx/shaders/gl_directional_scaled.frag.qsb
+[46/363] Generating .qsb/fx/shaders/gl_directionalwarp.frag.qsb
+[47/363] Generating .qsb/fx/shaders/gl_directionalwipe.frag.qsb
+[48/363] Generating .qsb/fx/shaders/gl_displacement.frag.qsb
+[49/363] Generating .qsb/fx/shaders/gl_dissolve.frag.qsb
+[50/363] Generating .qsb/fx/shaders/gl_doom_screen_transition.frag.qsb
+[51/363] Generating .qsb/fx/shaders/gl_doorway.frag.qsb
+[52/363] Generating .qsb/fx/shaders/gl_dreamy.frag.qsb
+[53/363] Generating .qsb/fx/shaders/gl_dreamy_zoom.frag.qsb
+[54/363] Generating .qsb/fx/shaders/gl_drop_zone_flicker.frag.qsb
+[55/363] Generating .qsb/fx/shaders/gl_edge_transition.frag.qsb
+[56/363] Generating .qsb/fx/shaders/gl_fade.frag.qsb
+[57/363] Generating .qsb/fx/shaders/gl_fadecolor.frag.qsb
+[58/363] Generating .qsb/fx/shaders/gl_fadegrayscale.frag.qsb
+[59/363] Generating .qsb/fx/shaders/gl_film_burn.frag.qsb
+[60/363] Generating .qsb/fx/shaders/gl_flyeye.frag.qsb
+[61/363] Generating .qsb/fx/shaders/gl_fragment.frag.qsb
+[62/363] Generating .qsb/fx/shaders/gl_glitch_displace.frag.qsb
+[63/363] Generating .qsb/fx/shaders/gl_glitch_memories.frag.qsb
+[64/363] Generating .qsb/fx/shaders/gl_fold.frag.qsb
+[65/363] Generating .qsb/fx/shaders/gl_grid_flip.frag.qsb
+[66/363] Generating .qsb/fx/shaders/gl_heart.frag.qsb
+[67/363] Generating .qsb/fx/shaders/gl_hexagonalize.frag.qsb
+[68/363] Generating .qsb/fx/shaders/gl_horizontal_close.frag.qsb
+[69/363] Generating .qsb/fx/shaders/gl_horizontal_open.frag.qsb
+[70/363] Generating .qsb/fx/shaders/gl_hsv_fade.frag.qsb
+[71/363] Generating .qsb/fx/shaders/gl_inverted_page_curl.frag.qsb
+[72/363] Generating .qsb/fx/shaders/gl_kaleidoscope.frag.qsb
+[73/363] Generating .qsb/fx/shaders/gl_left_right.frag.qsb
+[74/363] Generating .qsb/fx/shaders/gl_linear_blur.frag.qsb
+[75/363] Generating .qsb/fx/shaders/gl_luma.frag.qsb
+[76/363] Generating .qsb/fx/shaders/gl_luminance_melt.frag.qsb
+[77/363] Generating .qsb/fx/shaders/gl_morph.frag.qsb
+[78/363] Generating .qsb/fx/shaders/gl_mosaic.frag.qsb
+[79/363] Generating .qsb/fx/shaders/gl_mosaic_transition.frag.qsb
+[80/363] Generating .qsb/fx/shaders/gl_multiply_blend.frag.qsb
+[81/363] Generating .qsb/fx/shaders/gl_old_tv_lost_signal.frag.qsb
+[82/363] Generating .qsb/fx/shaders/gl_overexposure.frag.qsb
+[83/363] Generating .qsb/fx/shaders/gl_parametric_glitch.frag.qsb
+[84/363] Generating .qsb/fx/shaders/gl_perlin.frag.qsb
+[85/363] Generating .qsb/fx/shaders/gl_pinwheel.frag.qsb
+[86/363] Generating .qsb/fx/shaders/gl_pixelize.frag.qsb
+[87/363] Generating .qsb/fx/shaders/gl_polar_function.frag.qsb
+[88/363] Generating .qsb/fx/shaders/gl_polka_dots_curtain.frag.qsb
+[89/363] Generating .qsb/fx/shaders/gl_power_kaleido.frag.qsb
+[90/363] Generating .qsb/fx/shaders/gl_puzzle_right.frag.qsb
+[91/363] Generating .qsb/fx/shaders/gl_radial.frag.qsb
+[92/363] Generating .qsb/fx/shaders/gl_random_noise_x.frag.qsb
+[93/363] Generating .qsb/fx/shaders/gl_randomsquares.frag.qsb
+[94/363] Generating .qsb/fx/shaders/gl_rectangle.frag.qsb
+[95/363] Generating .qsb/fx/shaders/gl_rectangle_crop.frag.qsb
+[96/363] Generating .qsb/fx/shaders/gl_revolve_left.frag.qsb
+[97/363] Generating .qsb/fx/shaders/gl_ripple.frag.qsb
+[98/363] Generating .qsb/fx/shaders/gl_rolls.frag.qsb
+[99/363] Generating .qsb/fx/shaders/gl_rotate_scale_fade.frag.qsb
+[100/363] Generating .qsb/fx/shaders/gl_rotate_scale_vanish.frag.qsb
+[101/363] Generating .qsb/fx/shaders/gl_rotate_transition.frag.qsb
+[102/363] Generating .qsb/fx/shaders/gl_scale_in.frag.qsb
+[103/363] Generating .qsb/fx/shaders/gl_simple_flip.frag.qsb
+[104/363] Generating .qsb/fx/shaders/gl_simple_zoom.frag.qsb
+[105/363] Generating .qsb/fx/shaders/gl_simple_zoom_out.frag.qsb
+[106/363] Generating .qsb/fx/shaders/gl_slides.frag.qsb
+[107/363] Generating .qsb/fx/shaders/gl_split_slide_in_horizontal.frag.qsb
+[108/363] Generating .qsb/fx/shaders/gl_split_slide_in_out_horizontal.frag.qsb
+[109/363] Generating .qsb/fx/shaders/gl_split_slide_in_out_vertical.frag.qsb
+[110/363] Generating .qsb/fx/shaders/gl_split_slide_in_vertical.frag.qsb
+[111/363] Generating .qsb/fx/shaders/gl_split_slide_out_horizontal.frag.qsb
+[112/363] Generating .qsb/fx/shaders/gl_split_slide_out_vertical.frag.qsb
+[113/363] Generating .qsb/fx/shaders/gl_squareswire.frag.qsb
+[114/363] Generating .qsb/fx/shaders/gl_squeeze.frag.qsb
+[115/363] Generating .qsb/fx/shaders/gl_star_wipe.frag.qsb
+[116/363] Generating .qsb/fx/shaders/gl_static_fade.frag.qsb
+[117/363] Generating .qsb/fx/shaders/gl_static_wipe.frag.qsb
+[118/363] Generating .qsb/fx/shaders/gl_stereo_viewer.frag.qsb
+[119/363] Generating .qsb/fx/shaders/gl_strip_datamosh_glitch.frag.qsb
+[120/363] Generating .qsb/fx/shaders/gl_swap.frag.qsb
+[121/363] Generating .qsb/fx/shaders/gl_swirl.frag.qsb
+[122/363] Generating .qsb/fx/shaders/gl_tangent_motion_blur.frag.qsb
+[123/363] Generating .qsb/fx/shaders/gl_top_bottom.frag.qsb
+[124/363] Generating .qsb/fx/shaders/gl_tiles_wave.frag.qsb
+[125/363] Generating .qsb/fx/shaders/gl_tv_static.frag.qsb
+[126/363] Generating .qsb/fx/shaders/gl_undulating_burn_out.frag.qsb
+[127/363] Generating .qsb/fx/shaders/gl_vertical_close.frag.qsb
+[128/363] Generating .qsb/fx/shaders/gl_vertical_open.frag.qsb
+[129/363] Generating .qsb/fx/shaders/gl_water_drop.frag.qsb
+[130/363] Generating .qsb/fx/shaders/gl_wind.frag.qsb
+[131/363] Generating .qsb/fx/shaders/gl_windowblinds.frag.qsb
+[132/363] Generating .qsb/fx/shaders/gl_windowslice.frag.qsb
+[133/363] Generating .qsb/fx/shaders/gl_wipe_down.frag.qsb
+[134/363] Generating .qsb/fx/shaders/gl_wipe_left.frag.qsb
+[135/363] Generating .qsb/fx/shaders/gl_wipe_right.frag.qsb
+[136/363] Generating .qsb/fx/shaders/gl_wipe_up.frag.qsb
+[137/363] Generating .qsb/fx/shaders/gl_x_axis_translation.frag.qsb
+[138/363] Generating .qsb/fx/shaders/gl_zoom_in_circles.frag.qsb
+[139/363] Generating .qsb/fx/shaders/gl_zoom_in_out.frag.qsb
+[140/363] Generating .qsb/fx/shaders/gl_zoom_left_wipe.frag.qsb
+[141/363] Generating .qsb/fx/shaders/gl_zoom_right_wipe.frag.qsb
+[142/363] Generating .qsb/fx/shaders/glow.frag.qsb
+[143/363] Generating .qsb/fx/shaders/god_rays.frag.qsb
+[144/363] Generating .qsb/fx/shaders/halftone.frag.qsb
+[145/363] Generating .qsb/fx/shaders/invert.frag.qsb
+[146/363] Generating .qsb/fx/shaders/kaleidoscope.frag.qsb
+[147/363] Generating .qsb/fx/shaders/lens_distortion.frag.qsb
+[148/363] Generating .qsb/fx/shaders/lens_flare_simple.frag.qsb
+[149/363] Generating .qsb/fx/shaders/light_leak.frag.qsb
+[150/363] Generating .qsb/fx/shaders/pixelate.frag.qsb
+[151/363] Generating .qsb/fx/shaders/mirror.frag.qsb
+[152/363] Generating .qsb/fx/shaders/polygon_mask.frag.qsb
+[153/363] Generating .qsb/fx/shaders/posterize.frag.qsb
+[154/363] Generating .qsb/fx/shaders/radial_blur.frag.qsb
+[155/363] Generating .qsb/fx/shaders/rgb_split_glitch.frag.qsb
+[156/363] Generating .qsb/fx/shaders/sharpen.frag.qsb
+[157/363] Generating .qsb/fx/shaders/swirl.frag.qsb
+[158/363] Generating .qsb/fx/shaders/threshold.frag.qsb
+[159/363] Generating .qsb/fx/shaders/tilt_shift.frag.qsb
+[160/363] Generating .qsb/fx/shaders/vhs.frag.qsb
+[161/363] Running rcc for resource sf_render_shaders
+[162/363] Generating .qsb/fx/shaders/vignette.frag.qsb
+[163/363] Generating .qsb/fx/shaders/wave_warp.frag.qsb
+[164/363] Copying onnxruntime.dll next to the executables
+[165/363] Generating .qsb/fx/shaders/wipe.frag.qsb
+[166/363] Running utility command for sf_ort_dlls
+[167/363] Running rcc for resource sf_render_fx_shaders
+[168/363] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_shaders.cpp.obj
+[169/363] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_fx_shaders.cpp.obj
+[170/363] Linking CXX static library src\render\sf_render.lib
+[171/363] Automatic MOC and UIC for target sf_agent
+[172/362] Linking CXX executable bin\tst_playback_clock.exe
+[173/362] Linking CXX executable bin\tst_layout.exe
+[174/362] Linking CXX executable bin\tst_colour_analysis.exe
+[175/362] Linking CXX executable bin\tst_timeline_math.exe
+[176/362] Linking CXX executable bin\tst_compositor.exe
+[177/362] Linking CXX executable bin\tst_color.exe
+[178/362] Linking CXX executable bin\tst_effects.exe
+[179/362] Linking CXX executable bin\tst_project.exe
+[180/362] Linking CXX executable bin\tst_timeline_model.exe
+[181/362] Linking CXX executable bin\tst_timeline_controller.exe
+[182/362] Linking CXX executable bin\tst_media_pool.exe
+[183/362] Linking CXX executable bin\tst_export.exe
+[184/362] Linking CXX executable bin\tst_proxy.exe
+[185/362] Linking CXX executable bin\bench_compositor.exe
+[186/362] Linking CXX executable bin\tst_inspector.exe
+[187/362] Building CXX object src\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj
+FAILED: src/agent/CMakeFiles/sf_agent.dir/agent_harness.cpp.obj 
+C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NETWORK_LIB -DQT_SQL_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\build\debug\src\agent\sf_agent_autogen\include" -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\engine\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\editor\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\core\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\media\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\export\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\render\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\audio\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\sys\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\jobs\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\comfy\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\index\.." -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include -external:IC:\Qt\6.8.3\msvc2022_64\mkspecs\win32-msvc -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include\QtNetwork -external:IC:\Qt\6.8.3\msvc2022_64\include\QtSql -external:IC:\dev\ffmpeg-8.1-gpl\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi -Zc:__cplusplus -permissive- -utf-8 /W4 /permissive- /utf-8 /Zc:__cplusplus /WX /showIncludes /Fosrc\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj /Fdsrc\agent\CMakeFiles\sf_agent.dir\sf_agent.pdb /FS -c "C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp"
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(687): error C7556: cannot mix designated-initializers with non-designated-initializers
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(706): error C3329: syntax error: expected '}' not ')'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(706): error C2143: syntax error: missing ')' before ';'
+ninja: build stopped: subcommand failed.
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/agent_harness.cpp [90m[limit=30, offset=679][0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -687,9 +687,8 @@
+       {QStringLiteral("type"), QStringLiteral("object")},
+       {QStringLiteral("properties"), QJsonObject{
+         {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}
+       }},
+-    },
+     .handler = [this](engine::CallContext&, const QJsonObject& a) {
+       QJsonArray list;
+       const bool includeDirector = a.value(QStringLiteral("all")).toBool(false);
+       for (const auto& [kind, sp] : specialists_) {
+
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8
+[0/2] Re-checking globbed directories...
+[1/363] Copying the OpenColorIO runtime next to the binaries
+[2/363] Generating .qsb/shaders/layer.vert.qsb
+[3/363] Generating .qsb/shaders/layer.frag.qsb
+[4/363] Generating .qsb/shaders/output.frag.qsb
+[5/363] Generating .qsb/fx/fx.vert.qsb
+[6/363] Generating .qsb/fx/shaders/camera_shake.frag.qsb
+[7/363] Generating .qsb/fx/shaders/chromatic_aberration.frag.qsb
+[8/363] Generating .qsb/fx/shaders/crossfade.frag.qsb
+[9/363] Generating .qsb/fx/shaders/crt.frag.qsb
+[10/363] Generating .qsb/fx/shaders/defocus.frag.qsb
+[11/363] Generating .qsb/fx/shaders/directional_blur.frag.qsb
+[12/363] Generating .qsb/fx/shaders/dither.frag.qsb
+[13/363] Generating .qsb/fx/shaders/duotone.frag.qsb
+[14/363] Generating .qsb/fx/shaders/film_grain.frag.qsb
+[15/363] Generating .qsb/fx/shaders/edge_detect.frag.qsb
+[16/363] Generating .qsb/fx/shaders/gaussian_blur.frag.qsb
+[17/363] Generating .qsb/fx/shaders/gl_advanced_mosaic.frag.qsb
+[18/363] Generating .qsb/fx/shaders/gl_angular.frag.qsb
+[19/363] Generating .qsb/fx/shaders/gl_block_dissolve.frag.qsb
+[20/363] Generating .qsb/fx/shaders/gl_book_flip.frag.qsb
+[21/363] Generating .qsb/fx/shaders/gl_bounce.frag.qsb
+[22/363] Generating .qsb/fx/shaders/gl_bow_tie_horizontal.frag.qsb
+[23/363] Generating .qsb/fx/shaders/gl_bow_tie_vertical.frag.qsb
+[24/363] Generating .qsb/fx/shaders/gl_bow_tie_with_parameter.frag.qsb
+[25/363] Generating .qsb/fx/shaders/gl_box.frag.qsb
+[26/363] Generating .qsb/fx/shaders/gl_burn.frag.qsb
+[27/363] Generating .qsb/fx/shaders/gl_burn_0.frag.qsb
+[28/363] Generating .qsb/fx/shaders/gl_butterfly_wave_scrawler.frag.qsb
+[29/363] Generating .qsb/fx/shaders/gl_cannabisleaf.frag.qsb
+[30/363] Generating .qsb/fx/shaders/gl_chessboard.frag.qsb
+[31/363] Generating .qsb/fx/shaders/gl_circle.frag.qsb
+[32/363] Generating .qsb/fx/shaders/gl_circle_crop.frag.qsb
+[33/363] Generating .qsb/fx/shaders/gl_circleopen.frag.qsb
+[34/363] Generating .qsb/fx/shaders/gl_colorphase.frag.qsb
+[35/363] Generating .qsb/fx/shaders/gl_colour_distance.frag.qsb
+[36/363] Generating .qsb/fx/shaders/gl_coord_from_in.frag.qsb
+[37/363] Generating .qsb/fx/shaders/gl_crazy_parametric_fun.frag.qsb
+[38/363] Generating .qsb/fx/shaders/gl_crosshatch.frag.qsb
+[39/363] Generating .qsb/fx/shaders/gl_cross_zoom.frag.qsb
+[40/363] Generating .qsb/fx/shaders/gl_crosswarp.frag.qsb
+[41/363] Generating .qsb/fx/shaders/gl_cube.frag.qsb
+[42/363] Generating .qsb/fx/shaders/gl_defocus_blur.frag.qsb
+[43/363] Generating .qsb/fx/shaders/gl_directional.frag.qsb
+[44/363] Generating .qsb/fx/shaders/gl_directional_easing.frag.qsb
+[45/363] Generating .qsb/fx/shaders/gl_directional_scaled.frag.qsb
+[46/363] Generating .qsb/fx/shaders/gl_directionalwarp.frag.qsb
+[47/363] Generating .qsb/fx/shaders/gl_directionalwipe.frag.qsb
+[48/363] Generating .qsb/fx/shaders/gl_displacement.frag.qsb
+[49/363] Generating .qsb/fx/shaders/gl_dissolve.frag.qsb
+[50/363] Generating .qsb/fx/shaders/gl_doom_screen_transition.frag.qsb
+[51/363] Generating .qsb/fx/shaders/gl_doorway.frag.qsb
+[52/363] Generating .qsb/fx/shaders/gl_dreamy.frag.qsb
+[53/363] Generating .qsb/fx/shaders/gl_dreamy_zoom.frag.qsb
+[54/363] Generating .qsb/fx/shaders/gl_drop_zone_flicker.frag.qsb
+[55/363] Generating .qsb/fx/shaders/gl_edge_transition.frag.qsb
+[56/363] Generating .qsb/fx/shaders/gl_fade.frag.qsb
+[57/363] Generating .qsb/fx/shaders/gl_fadecolor.frag.qsb
+[58/363] Generating .qsb/fx/shaders/gl_fadegrayscale.frag.qsb
+[59/363] Generating .qsb/fx/shaders/gl_film_burn.frag.qsb
+[60/363] Generating .qsb/fx/shaders/gl_flyeye.frag.qsb
+[61/363] Generating .qsb/fx/shaders/gl_fold.frag.qsb
+[62/363] Generating .qsb/fx/shaders/gl_fragment.frag.qsb
+[63/363] Generating .qsb/fx/shaders/gl_glitch_memories.frag.qsb
+[64/363] Generating .qsb/fx/shaders/gl_glitch_displace.frag.qsb
+[65/363] Generating .qsb/fx/shaders/gl_grid_flip.frag.qsb
+[66/363] Generating .qsb/fx/shaders/gl_heart.frag.qsb
+[67/363] Generating .qsb/fx/shaders/gl_hexagonalize.frag.qsb
+[68/363] Generating .qsb/fx/shaders/gl_horizontal_close.frag.qsb
+[69/363] Generating .qsb/fx/shaders/gl_horizontal_open.frag.qsb
+[70/363] Generating .qsb/fx/shaders/gl_hsv_fade.frag.qsb
+[71/363] Generating .qsb/fx/shaders/gl_kaleidoscope.frag.qsb
+[72/363] Generating .qsb/fx/shaders/gl_inverted_page_curl.frag.qsb
+[73/363] Generating .qsb/fx/shaders/gl_left_right.frag.qsb
+[74/363] Generating .qsb/fx/shaders/gl_linear_blur.frag.qsb
+[75/363] Generating .qsb/fx/shaders/gl_luma.frag.qsb
+[76/363] Generating .qsb/fx/shaders/gl_luminance_melt.frag.qsb
+[77/363] Generating .qsb/fx/shaders/gl_morph.frag.qsb
+[78/363] Generating .qsb/fx/shaders/gl_mosaic.frag.qsb
+[79/363] Generating .qsb/fx/shaders/gl_mosaic_transition.frag.qsb
+[80/363] Generating .qsb/fx/shaders/gl_multiply_blend.frag.qsb
+[81/363] Generating .qsb/fx/shaders/gl_old_tv_lost_signal.frag.qsb
+[82/363] Generating .qsb/fx/shaders/gl_overexposure.frag.qsb
+[83/363] Generating .qsb/fx/shaders/gl_parametric_glitch.frag.qsb
+[84/363] Generating .qsb/fx/shaders/gl_perlin.frag.qsb
+[85/363] Generating .qsb/fx/shaders/gl_pinwheel.frag.qsb
+[86/363] Generating .qsb/fx/shaders/gl_pixelize.frag.qsb
+[87/363] Generating .qsb/fx/shaders/gl_polar_function.frag.qsb
+[88/363] Generating .qsb/fx/shaders/gl_polka_dots_curtain.frag.qsb
+[89/363] Generating .qsb/fx/shaders/gl_power_kaleido.frag.qsb
+[90/363] Generating .qsb/fx/shaders/gl_puzzle_right.frag.qsb
+[91/363] Generating .qsb/fx/shaders/gl_random_noise_x.frag.qsb
+[92/363] Generating .qsb/fx/shaders/gl_radial.frag.qsb
+[93/363] Generating .qsb/fx/shaders/gl_randomsquares.frag.qsb
+[94/363] Generating .qsb/fx/shaders/gl_rectangle.frag.qsb
+[95/363] Generating .qsb/fx/shaders/gl_rectangle_crop.frag.qsb
+[96/363] Generating .qsb/fx/shaders/gl_revolve_left.frag.qsb
+[97/363] Generating .qsb/fx/shaders/gl_ripple.frag.qsb
+[98/363] Generating .qsb/fx/shaders/gl_rolls.frag.qsb
+[99/363] Generating .qsb/fx/shaders/gl_rotate_scale_fade.frag.qsb
+[100/363] Generating .qsb/fx/shaders/gl_rotate_scale_vanish.frag.qsb
+[101/363] Generating .qsb/fx/shaders/gl_rotate_transition.frag.qsb
+[102/363] Generating .qsb/fx/shaders/gl_scale_in.frag.qsb
+[103/363] Generating .qsb/fx/shaders/gl_simple_flip.frag.qsb
+[104/363] Generating .qsb/fx/shaders/gl_simple_zoom.frag.qsb
+[105/363] Generating .qsb/fx/shaders/gl_simple_zoom_out.frag.qsb
+[106/363] Generating .qsb/fx/shaders/gl_slides.frag.qsb
+[107/363] Generating .qsb/fx/shaders/gl_split_slide_in_horizontal.frag.qsb
+[108/363] Generating .qsb/fx/shaders/gl_split_slide_in_out_horizontal.frag.qsb
+[109/363] Generating .qsb/fx/shaders/gl_split_slide_in_out_vertical.frag.qsb
+[110/363] Generating .qsb/fx/shaders/gl_split_slide_in_vertical.frag.qsb
+[111/363] Generating .qsb/fx/shaders/gl_split_slide_out_horizontal.frag.qsb
+[112/363] Generating .qsb/fx/shaders/gl_split_slide_out_vertical.frag.qsb
+[113/363] Generating .qsb/fx/shaders/gl_squareswire.frag.qsb
+[114/363] Generating .qsb/fx/shaders/gl_squeeze.frag.qsb
+[115/363] Generating .qsb/fx/shaders/gl_static_fade.frag.qsb
+[116/363] Generating .qsb/fx/shaders/gl_star_wipe.frag.qsb
+[117/363] Generating .qsb/fx/shaders/gl_static_wipe.frag.qsb
+[118/363] Generating .qsb/fx/shaders/gl_stereo_viewer.frag.qsb
+[119/363] Generating .qsb/fx/shaders/gl_strip_datamosh_glitch.frag.qsb
+[120/363] Generating .qsb/fx/shaders/gl_swap.frag.qsb
+[121/363] Generating .qsb/fx/shaders/gl_swirl.frag.qsb
+[122/363] Generating .qsb/fx/shaders/gl_tangent_motion_blur.frag.qsb
+[123/363] Generating .qsb/fx/shaders/gl_tiles_wave.frag.qsb
+[124/363] Generating .qsb/fx/shaders/gl_top_bottom.frag.qsb
+[125/363] Generating .qsb/fx/shaders/gl_tv_static.frag.qsb
+[126/363] Generating .qsb/fx/shaders/gl_undulating_burn_out.frag.qsb
+[127/363] Generating .qsb/fx/shaders/gl_vertical_close.frag.qsb
+[128/363] Generating .qsb/fx/shaders/gl_vertical_open.frag.qsb
+[129/363] Generating .qsb/fx/shaders/gl_water_drop.frag.qsb
+[130/363] Generating .qsb/fx/shaders/gl_wind.frag.qsb
+[131/363] Generating .qsb/fx/shaders/gl_windowblinds.frag.qsb
+[132/363] Generating .qsb/fx/shaders/gl_windowslice.frag.qsb
+[133/363] Generating .qsb/fx/shaders/gl_wipe_down.frag.qsb
+[134/363] Generating .qsb/fx/shaders/gl_wipe_left.frag.qsb
+[135/363] Generating .qsb/fx/shaders/gl_wipe_right.frag.qsb
+[136/363] Generating .qsb/fx/shaders/gl_wipe_up.frag.qsb
+[137/363] Generating .qsb/fx/shaders/gl_x_axis_translation.frag.qsb
+[138/363] Generating .qsb/fx/shaders/gl_zoom_in_circles.frag.qsb
+[139/363] Generating .qsb/fx/shaders/gl_zoom_in_out.frag.qsb
+[140/363] Generating .qsb/fx/shaders/gl_zoom_left_wipe.frag.qsb
+[141/363] Generating .qsb/fx/shaders/gl_zoom_right_wipe.frag.qsb
+[142/363] Generating .qsb/fx/shaders/glow.frag.qsb
+[143/363] Generating .qsb/fx/shaders/god_rays.frag.qsb
+[144/363] Generating .qsb/fx/shaders/halftone.frag.qsb
+[145/363] Generating .qsb/fx/shaders/invert.frag.qsb
+[146/363] Generating .qsb/fx/shaders/kaleidoscope.frag.qsb
+[147/363] Generating .qsb/fx/shaders/lens_distortion.frag.qsb
+[148/363] Generating .qsb/fx/shaders/lens_flare_simple.frag.qsb
+[149/363] Generating .qsb/fx/shaders/light_leak.frag.qsb
+[150/363] Generating .qsb/fx/shaders/mirror.frag.qsb
+[151/363] Generating .qsb/fx/shaders/pixelate.frag.qsb
+[152/363] Generating .qsb/fx/shaders/polygon_mask.frag.qsb
+[153/363] Generating .qsb/fx/shaders/posterize.frag.qsb
+[154/363] Generating .qsb/fx/shaders/radial_blur.frag.qsb
+[155/363] Generating .qsb/fx/shaders/rgb_split_glitch.frag.qsb
+[156/363] Generating .qsb/fx/shaders/sharpen.frag.qsb
+[157/363] Generating .qsb/fx/shaders/swirl.frag.qsb
+[158/363] Generating .qsb/fx/shaders/threshold.frag.qsb
+[159/363] Generating .qsb/fx/shaders/tilt_shift.frag.qsb
+[160/363] Running rcc for resource sf_render_shaders
+[161/363] Generating .qsb/fx/shaders/vhs.frag.qsb
+[162/363] Generating .qsb/fx/shaders/vignette.frag.qsb
+[163/363] Generating .qsb/fx/shaders/wave_warp.frag.qsb
+[164/363] Generating .qsb/fx/shaders/wipe.frag.qsb
+[165/363] Copying onnxruntime.dll next to the executables
+[166/363] Running utility command for sf_ort_dlls
+[167/363] Running rcc for resource sf_render_fx_shaders
+[168/363] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_shaders.cpp.obj
+[169/363] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_fx_shaders.cpp.obj
+[170/363] Linking CXX static library src\render\sf_render.lib
+[171/363] Automatic MOC and UIC for target sf_agent
+[172/362] Linking CXX executable bin\tst_playback_clock.exe
+[173/362] Linking CXX executable bin\tst_layout.exe
+[174/362] Linking CXX executable bin\tst_colour_analysis.exe
+[175/362] Linking CXX executable bin\tst_timeline_math.exe
+[176/362] Linking CXX executable bin\tst_compositor.exe
+[177/362] Linking CXX executable bin\tst_color.exe
+[178/362] Linking CXX executable bin\tst_effects.exe
+[179/362] Linking CXX executable bin\tst_project.exe
+[180/362] Linking CXX executable bin\tst_timeline_model.exe
+[181/362] Linking CXX executable bin\tst_timeline_controller.exe
+[182/362] Linking CXX executable bin\tst_inspector.exe
+[183/362] Linking CXX executable bin\tst_media_pool.exe
+[184/362] Linking CXX executable bin\tst_export.exe
+[185/362] Linking CXX executable bin\tst_proxy.exe
+[186/362] Linking CXX executable bin\bench_compositor.exe
+[187/362] Building CXX object src\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj
+FAILED: src/agent/CMakeFiles/sf_agent.dir/agent_harness.cpp.obj 
+C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NETWORK_LIB -DQT_SQL_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\build\debug\src\agent\sf_agent_autogen\include" -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\engine\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\editor\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\core\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\media\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\export\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\render\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\audio\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\sys\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\jobs\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\comfy\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\index\.." -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include -external:IC:\Qt\6.8.3\msvc2022_64\mkspecs\win32-msvc -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include\QtNetwork -external:IC:\Qt\6.8.3\msvc2022_64\include\QtSql -external:IC:\dev\ffmpeg-8.1-gpl\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi -Zc:__cplusplus -permissive- -utf-8 /W4 /permissive- /utf-8 /Zc:__cplusplus /WX /showIncludes /Fosrc\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj /Fdsrc\agent\CMakeFiles\sf_agent.dir\sf_agent.pdb /FS -c "C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp"
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(688): error C7556: cannot mix designated-initializers with non-designated-initializers
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(705): error C3329: syntax error: expected '}' not ')'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(686): error C2440: '<function-style-cast>': cannot convert from 'initializer list' to 'QJsonObject'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(686): note: 'QJsonObject::QJsonObject(std::initializer_list<std::pair<QString,QJsonValue>>)': cannot convert argument 1 from 'initializer list' to 'std::initializer_list<std::pair<QString,QJsonValue>>'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(686): note: Element '2': no conversion from 'initializer list' to 'std::pair<QString,QJsonValue>'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(686): note: while trying to match the argument list '(initializer list)'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(705): error C2059: syntax error: ';'
+ninja: build stopped: subcommand failed.
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/agent_harness.cpp [90m[limit=15, offset=685][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/agent_harness.cpp [90m[offset=650, limit=70][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/agent_harness.cpp [90m[limit=20, offset=715][0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -686,9 +686,10 @@
+     .inputSchema = QJsonObject{
+       {QStringLiteral("type"), QStringLiteral("object")},
+       {QStringLiteral("properties"), QJsonObject{
+         {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}
+-      }},
++      }}
++    },
+     .handler = [this](engine::CallContext&, const QJsonObject& a) {
+       QJsonArray list;
+       const bool includeDirector = a.value(QStringLiteral("all")).toBool(false);
+       for (const auto& [kind, sp] : specialists_) {
+
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8
+[0/2] Re-checking globbed directories...
+[1/363] Copying the OpenColorIO runtime next to the binaries
+[2/363] Generating .qsb/shaders/layer.vert.qsb
+[3/363] Generating .qsb/shaders/layer.frag.qsb
+[4/363] Generating .qsb/shaders/output.frag.qsb
+[5/363] Generating .qsb/fx/shaders/camera_shake.frag.qsb
+[6/363] Generating .qsb/fx/fx.vert.qsb
+[7/363] Generating .qsb/fx/shaders/chromatic_aberration.frag.qsb
+[8/363] Generating .qsb/fx/shaders/crossfade.frag.qsb
+[9/363] Generating .qsb/fx/shaders/crt.frag.qsb
+[10/363] Generating .qsb/fx/shaders/defocus.frag.qsb
+[11/363] Generating .qsb/fx/shaders/directional_blur.frag.qsb
+[12/363] Generating .qsb/fx/shaders/dither.frag.qsb
+[13/363] Generating .qsb/fx/shaders/duotone.frag.qsb
+[14/363] Generating .qsb/fx/shaders/edge_detect.frag.qsb
+[15/363] Generating .qsb/fx/shaders/film_grain.frag.qsb
+[16/363] Generating .qsb/fx/shaders/gl_advanced_mosaic.frag.qsb
+[17/363] Generating .qsb/fx/shaders/gl_angular.frag.qsb
+[18/363] Generating .qsb/fx/shaders/gl_block_dissolve.frag.qsb
+[19/363] Generating .qsb/fx/shaders/gl_book_flip.frag.qsb
+[20/363] Generating .qsb/fx/shaders/gl_bounce.frag.qsb
+[21/363] Generating .qsb/fx/shaders/gaussian_blur.frag.qsb
+[22/363] Generating .qsb/fx/shaders/gl_bow_tie_horizontal.frag.qsb
+[23/363] Generating .qsb/fx/shaders/gl_bow_tie_vertical.frag.qsb
+[24/363] Generating .qsb/fx/shaders/gl_box.frag.qsb
+[25/363] Generating .qsb/fx/shaders/gl_burn.frag.qsb
+[26/363] Generating .qsb/fx/shaders/gl_burn_0.frag.qsb
+[27/363] Generating .qsb/fx/shaders/gl_butterfly_wave_scrawler.frag.qsb
+[28/363] Generating .qsb/fx/shaders/gl_cannabisleaf.frag.qsb
+[29/363] Generating .qsb/fx/shaders/gl_bow_tie_with_parameter.frag.qsb
+[30/363] Generating .qsb/fx/shaders/gl_chessboard.frag.qsb
+[31/363] Generating .qsb/fx/shaders/gl_circle.frag.qsb
+[32/363] Generating .qsb/fx/shaders/gl_circle_crop.frag.qsb
+[33/363] Generating .qsb/fx/shaders/gl_circleopen.frag.qsb
+[34/363] Generating .qsb/fx/shaders/gl_colorphase.frag.qsb
+[35/363] Generating .qsb/fx/shaders/gl_coord_from_in.frag.qsb
+[36/363] Generating .qsb/fx/shaders/gl_crazy_parametric_fun.frag.qsb
+[37/363] Generating .qsb/fx/shaders/gl_crosshatch.frag.qsb
+[38/363] Generating .qsb/fx/shaders/gl_crosswarp.frag.qsb
+[39/363] Generating .qsb/fx/shaders/gl_cube.frag.qsb
+[40/363] Generating .qsb/fx/shaders/gl_colour_distance.frag.qsb
+[41/363] Generating .qsb/fx/shaders/gl_defocus_blur.frag.qsb
+[42/363] Generating .qsb/fx/shaders/gl_directional.frag.qsb
+[43/363] Generating .qsb/fx/shaders/gl_cross_zoom.frag.qsb
+[44/363] Generating .qsb/fx/shaders/gl_directional_easing.frag.qsb
+[45/363] Generating .qsb/fx/shaders/gl_directional_scaled.frag.qsb
+[46/363] Generating .qsb/fx/shaders/gl_directionalwarp.frag.qsb
+[47/363] Generating .qsb/fx/shaders/gl_directionalwipe.frag.qsb
+[48/363] Generating .qsb/fx/shaders/gl_displacement.frag.qsb
+[49/363] Generating .qsb/fx/shaders/gl_dissolve.frag.qsb
+[50/363] Generating .qsb/fx/shaders/gl_doom_screen_transition.frag.qsb
+[51/363] Generating .qsb/fx/shaders/gl_doorway.frag.qsb
+[52/363] Generating .qsb/fx/shaders/gl_dreamy.frag.qsb
+[53/363] Generating .qsb/fx/shaders/gl_dreamy_zoom.frag.qsb
+[54/363] Generating .qsb/fx/shaders/gl_drop_zone_flicker.frag.qsb
+[55/363] Generating .qsb/fx/shaders/gl_edge_transition.frag.qsb
+[56/363] Generating .qsb/fx/shaders/gl_fadegrayscale.frag.qsb
+[57/363] Generating .qsb/fx/shaders/gl_film_burn.frag.qsb
+[58/363] Generating .qsb/fx/shaders/gl_flyeye.frag.qsb
+[59/363] Generating .qsb/fx/shaders/gl_fold.frag.qsb
+[60/363] Generating .qsb/fx/shaders/gl_fade.frag.qsb
+[61/363] Generating .qsb/fx/shaders/gl_fragment.frag.qsb
+[62/363] Generating .qsb/fx/shaders/gl_fadecolor.frag.qsb
+[63/363] Generating .qsb/fx/shaders/gl_glitch_displace.frag.qsb
+[64/363] Generating .qsb/fx/shaders/gl_glitch_memories.frag.qsb
+[65/363] Generating .qsb/fx/shaders/gl_grid_flip.frag.qsb
+[66/363] Generating .qsb/fx/shaders/gl_heart.frag.qsb
+[67/363] Generating .qsb/fx/shaders/gl_horizontal_open.frag.qsb
+[68/363] Generating .qsb/fx/shaders/gl_horizontal_close.frag.qsb
+[69/363] Generating .qsb/fx/shaders/gl_hsv_fade.frag.qsb
+[70/363] Generating .qsb/fx/shaders/gl_inverted_page_curl.frag.qsb
+[71/363] Generating .qsb/fx/shaders/gl_kaleidoscope.frag.qsb
+[72/363] Generating .qsb/fx/shaders/gl_left_right.frag.qsb
+[73/363] Generating .qsb/fx/shaders/gl_hexagonalize.frag.qsb
+[74/363] Generating .qsb/fx/shaders/gl_linear_blur.frag.qsb
+[75/363] Generating .qsb/fx/shaders/gl_luminance_melt.frag.qsb
+[76/363] Generating .qsb/fx/shaders/gl_morph.frag.qsb
+[77/363] Generating .qsb/fx/shaders/gl_mosaic_transition.frag.qsb
+[78/363] Generating .qsb/fx/shaders/gl_multiply_blend.frag.qsb
+[79/363] Generating .qsb/fx/shaders/gl_luma.frag.qsb
+[80/363] Generating .qsb/fx/shaders/gl_parametric_glitch.frag.qsb
+[81/363] Generating .qsb/fx/shaders/gl_mosaic.frag.qsb
+[82/363] Generating .qsb/fx/shaders/gl_pinwheel.frag.qsb
+[83/363] Generating .qsb/fx/shaders/gl_old_tv_lost_signal.frag.qsb
+[84/363] Generating .qsb/fx/shaders/gl_pixelize.frag.qsb
+[85/363] Generating .qsb/fx/shaders/gl_overexposure.frag.qsb
+[86/363] Generating .qsb/fx/shaders/gl_perlin.frag.qsb
+[87/363] Generating .qsb/fx/shaders/gl_power_kaleido.frag.qsb
+[88/363] Generating .qsb/fx/shaders/gl_puzzle_right.frag.qsb
+[89/363] Generating .qsb/fx/shaders/gl_radial.frag.qsb
+[90/363] Generating .qsb/fx/shaders/gl_random_noise_x.frag.qsb
+[91/363] Generating .qsb/fx/shaders/gl_polar_function.frag.qsb
+[92/363] Generating .qsb/fx/shaders/gl_randomsquares.frag.qsb
+[93/363] Generating .qsb/fx/shaders/gl_polka_dots_curtain.frag.qsb
+[94/363] Generating .qsb/fx/shaders/gl_rectangle.frag.qsb
+[95/363] Generating .qsb/fx/shaders/gl_revolve_left.frag.qsb
+[96/363] Generating .qsb/fx/shaders/gl_rotate_scale_fade.frag.qsb
+[97/363] Generating .qsb/fx/shaders/gl_rolls.frag.qsb
+[98/363] Generating .qsb/fx/shaders/gl_rotate_scale_vanish.frag.qsb
+[99/363] Generating .qsb/fx/shaders/gl_rectangle_crop.frag.qsb
+[100/363] Generating .qsb/fx/shaders/gl_rotate_transition.frag.qsb
+[101/363] Generating .qsb/fx/shaders/gl_scale_in.frag.qsb
+[102/363] Generating .qsb/fx/shaders/gl_ripple.frag.qsb
+[103/363] Generating .qsb/fx/shaders/gl_simple_flip.frag.qsb
+[104/363] Generating .qsb/fx/shaders/gl_simple_zoom.frag.qsb
+[105/363] Generating .qsb/fx/shaders/gl_split_slide_in_out_horizontal.frag.qsb
+[106/363] Generating .qsb/fx/shaders/gl_split_slide_in_vertical.frag.qsb
+[107/363] Generating .qsb/fx/shaders/gl_split_slide_out_horizontal.frag.qsb
+[108/363] Generating .qsb/fx/shaders/gl_simple_zoom_out.frag.qsb
+[109/363] Generating .qsb/fx/shaders/gl_slides.frag.qsb
+[110/363] Generating .qsb/fx/shaders/gl_split_slide_in_horizontal.frag.qsb
+[111/363] Generating .qsb/fx/shaders/gl_squareswire.frag.qsb
+[112/363] Generating .qsb/fx/shaders/gl_split_slide_in_out_vertical.frag.qsb
+[113/363] Generating .qsb/fx/shaders/gl_star_wipe.frag.qsb
+[114/363] Generating .qsb/fx/shaders/gl_split_slide_out_vertical.frag.qsb
+[115/363] Generating .qsb/fx/shaders/gl_static_fade.frag.qsb
+[116/363] Generating .qsb/fx/shaders/gl_static_wipe.frag.qsb
+[117/363] Generating .qsb/fx/shaders/gl_stereo_viewer.frag.qsb
+[118/363] Generating .qsb/fx/shaders/gl_squeeze.frag.qsb
+[119/363] Generating .qsb/fx/shaders/gl_swap.frag.qsb
+[120/363] Generating .qsb/fx/shaders/gl_strip_datamosh_glitch.frag.qsb
+[121/363] Generating .qsb/fx/shaders/gl_swirl.frag.qsb
+[122/363] Generating .qsb/fx/shaders/gl_tiles_wave.frag.qsb
+[123/363] Generating .qsb/fx/shaders/gl_top_bottom.frag.qsb
+[124/363] Generating .qsb/fx/shaders/gl_undulating_burn_out.frag.qsb
+[125/363] Generating .qsb/fx/shaders/gl_vertical_close.frag.qsb
+[126/363] Generating .qsb/fx/shaders/gl_vertical_open.frag.qsb
+[127/363] Generating .qsb/fx/shaders/gl_tangent_motion_blur.frag.qsb
+[128/363] Generating .qsb/fx/shaders/gl_water_drop.frag.qsb
+[129/363] Generating .qsb/fx/shaders/gl_wind.frag.qsb
+[130/363] Generating .qsb/fx/shaders/gl_windowblinds.frag.qsb
+[131/363] Generating .qsb/fx/shaders/gl_tv_static.frag.qsb
+[132/363] Generating .qsb/fx/shaders/gl_windowslice.frag.qsb
+[133/363] Generating .qsb/fx/shaders/gl_wipe_down.frag.qsb
+[134/363] Generating .qsb/fx/shaders/gl_wipe_left.frag.qsb
+[135/363] Generating .qsb/fx/shaders/gl_wipe_right.frag.qsb
+[136/363] Generating .qsb/fx/shaders/gl_wipe_up.frag.qsb
+[137/363] Generating .qsb/fx/shaders/gl_x_axis_translation.frag.qsb
+[138/363] Generating .qsb/fx/shaders/gl_zoom_in_circles.frag.qsb
+[139/363] Generating .qsb/fx/shaders/gl_zoom_in_out.frag.qsb
+[140/363] Generating .qsb/fx/shaders/gl_zoom_left_wipe.frag.qsb
+[141/363] Generating .qsb/fx/shaders/gl_zoom_right_wipe.frag.qsb
+[142/363] Generating .qsb/fx/shaders/glow.frag.qsb
+[143/363] Generating .qsb/fx/shaders/god_rays.frag.qsb
+[144/363] Generating .qsb/fx/shaders/halftone.frag.qsb
+[145/363] Generating .qsb/fx/shaders/invert.frag.qsb
+[146/363] Generating .qsb/fx/shaders/kaleidoscope.frag.qsb
+[147/363] Generating .qsb/fx/shaders/lens_distortion.frag.qsb
+[148/363] Generating .qsb/fx/shaders/lens_flare_simple.frag.qsb
+[149/363] Generating .qsb/fx/shaders/light_leak.frag.qsb
+[150/363] Generating .qsb/fx/shaders/pixelate.frag.qsb
+[151/363] Generating .qsb/fx/shaders/polygon_mask.frag.qsb
+[152/363] Generating .qsb/fx/shaders/posterize.frag.qsb
+[153/363] Generating .qsb/fx/shaders/radial_blur.frag.qsb
+[154/363] Generating .qsb/fx/shaders/rgb_split_glitch.frag.qsb
+[155/363] Generating .qsb/fx/shaders/mirror.frag.qsb
+[156/363] Generating .qsb/fx/shaders/sharpen.frag.qsb
+[157/363] Generating .qsb/fx/shaders/swirl.frag.qsb
+[158/363] Generating .qsb/fx/shaders/threshold.frag.qsb
+[159/363] Generating .qsb/fx/shaders/tilt_shift.frag.qsb
+[160/363] Generating .qsb/fx/shaders/vhs.frag.qsb
+[161/363] Running rcc for resource sf_render_shaders
+[162/363] Generating .qsb/fx/shaders/vignette.frag.qsb
+[163/363] Copying onnxruntime.dll next to the executables
+[164/363] Generating .qsb/fx/shaders/wipe.frag.qsb
+[165/363] Running utility command for sf_ort_dlls
+[166/363] Generating .qsb/fx/shaders/wave_warp.frag.qsb
+[167/363] Running rcc for resource sf_render_fx_shaders
+[168/363] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_shaders.cpp.obj
+[169/363] Building CXX object src\render\CMakeFiles\sf_render.dir\.qt\rcc\qrc_sf_render_fx_shaders.cpp.obj
+[170/363] Linking CXX static library src\render\sf_render.lib
+[171/363] Automatic MOC and UIC for target sf_agent
+[172/362] Linking CXX executable bin\tst_playback_clock.exe
+[173/362] Linking CXX executable bin\tst_layout.exe
+[174/362] Linking CXX executable bin\tst_colour_analysis.exe
+[175/362] Linking CXX executable bin\tst_compositor.exe
+[176/362] Linking CXX executable bin\tst_color.exe
+[177/362] Linking CXX executable bin\tst_timeline_math.exe
+[178/362] Linking CXX executable bin\tst_effects.exe
+[179/362] Linking CXX executable bin\tst_project.exe
+[180/362] Linking CXX executable bin\tst_timeline_model.exe
+[181/362] Linking CXX executable bin\tst_timeline_controller.exe
+[182/362] Linking CXX executable bin\tst_inspector.exe
+[183/362] Linking CXX executable bin\tst_media_pool.exe
+[184/362] Linking CXX executable bin\tst_export.exe
+[185/362] Linking CXX executable bin\tst_proxy.exe
+[186/362] Linking CXX executable bin\bench_compositor.exe
+[187/362] Building CXX object src\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj
+FAILED: src/agent/CMakeFiles/sf_agent.dir/agent_harness.cpp.obj 
+C:\PROGRA~2\MICROS~2\2022\BUILDT~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe  /nologo /TP -DQT_CORE_LIB -DQT_GUI_LIB -DQT_NETWORK_LIB -DQT_SQL_LIB -DUNICODE -DWIN32 -DWIN64 -D_ENABLE_EXTENDED_ALIGNED_STORAGE -D_UNICODE -D_WIN64 -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\build\debug\src\agent\sf_agent_autogen\include" -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\engine\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\editor\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\core\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\media\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\export\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\render\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\audio\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\sys\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\jobs\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\comfy\.." -I"C:\Users\Ashman Das\Documents\OpenCardboard\native\src\index\.." -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include -external:IC:\Qt\6.8.3\msvc2022_64\mkspecs\win32-msvc -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtGui\6.8.3\QtGui -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3 -external:IC:\Qt\6.8.3\msvc2022_64\include\QtCore\6.8.3\QtCore -external:IC:\Qt\6.8.3\msvc2022_64\include\QtNetwork -external:IC:\Qt\6.8.3\msvc2022_64\include\QtSql -external:IC:\dev\ffmpeg-8.1-gpl\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi -Zc:__cplusplus -permissive- -utf-8 /W4 /permissive- /utf-8 /Zc:__cplusplus /WX /showIncludes /Fosrc\agent\CMakeFiles\sf_agent.dir\agent_harness.cpp.obj /Fdsrc\agent\CMakeFiles\sf_agent.dir\sf_agent.pdb /FS -c "C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp"
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(687): error C7556: cannot mix designated-initializers with non-designated-initializers
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(706): error C3329: syntax error: expected '}' not ')'
+C:\Users\Ashman Das\Documents\OpenCardboard\native\src\agent\agent_harness.cpp(706): error C2143: syntax error: missing ')' before ';'
+ninja: build stopped: subcommand failed.
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/agent/agent_harness.cpp [90m[limit=30, offset=678][0m
+> build · deepseek-v4.1-flash-free
+[0m$ [0msed -n '686,692p' src/agent/agent_harness.cpp | cat -A | cut -c1-400
+.inputSchema = QJsonObject{$
+      {QStringLiteral("type"), QStringLiteral("object")},$
+      {QStringLiteral("properties"), QJsonObject{$
+        {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}$
+      }}$
+    },$
+    .handler = [this](engine::CallContext&, const QJsonObject& a) {$
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/src/agent/agent_harness.cpp
+Index: native/src/agent/agent_harness.cpp
+===================================================================
+--- native/src/agent/agent_harness.cpp
++++ native/src/agent/agent_harness.cpp
+@@ -685,9 +685,9 @@
+     .needsSession = false,
+     .inputSchema = QJsonObject{
+       {QStringLiteral("type"), QStringLiteral("object")},
+       {QStringLiteral("properties"), QJsonObject{
+-        {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}
++        {QStringLiteral("all"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("description"), QStringLiteral("Include the Director in the list.")}}}
+       }}
+     },
+     .handler = [this](engine::CallContext&, const QJsonObject& a) {
+       QJsonArray list;
+
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8 2>&1 | tail -60
+[214/274] Building CXX object tests\CMakeFiles\tst_timeline_view.dir\__\src\app\editor.cpp.obj
+[215/274] Building CXX object tests\CMakeFiles\tst_pages.dir\__\src\app\colour_page.cpp.obj
+[216/274] Building CXX object tests\CMakeFiles\tst_ai_gui.dir\tst_ai_gui_autogen\mocs_compilation.cpp.obj
+[217/274] Building CXX object tests\CMakeFiles\tst_timeline_view.dir\__\src\app\colour_page.cpp.obj
+[218/274] Building CXX object src\app\CMakeFiles\splitframe.dir\splitframe_autogen\mocs_compilation.cpp.obj
+[219/274] Building CXX object src\app\CMakeFiles\splitframe.dir\.qt\rcc\qrc_splitframe_raw_qml_0.cpp.obj
+[220/274] Building CXX object src\app\CMakeFiles\splitframe.dir\.qt\rcc\qrc_glass_shaders.cpp.obj
+[221/274] Building CXX object src\app\CMakeFiles\splitframe.dir\.rcc\qmlcache\splitframe_InspectorPanel_qml.cpp.obj
+[222/274] Building CXX object src\app\CMakeFiles\splitframe.dir\.rcc\qmlcache\splitframe_ExportDialog_qml.cpp.obj
+[223/274] Building CXX object src\app\CMakeFiles\splitframe.dir\.rcc\qmlcache\splitframe_AiSettingsDialog_qml.cpp.obj
+[224/274] Building CXX object src\app\CMakeFiles\splitframe.dir\splitframe_qmltyperegistrations.cpp.obj
+[225/274] Building CXX object src\app\CMakeFiles\splitframe.dir\main.cpp.obj
+[226/274] Building CXX object src\app\CMakeFiles\splitframe.dir\editor.cpp.obj
+[227/274] Building CXX object src\app\CMakeFiles\splitframe.dir\colour_page.cpp.obj
+[228/274] Building CXX object tests\CMakeFiles\tst_ai_gui.dir\tst_ai_gui.cpp.obj
+[229/274] Linking CXX executable bin\splitframe.exe
+[230/274] Linking CXX executable bin\tst_timeline_view.exe
+[231/274] Linking CXX executable bin\tst_export_cli.exe
+[232/274] Linking CXX executable bin\tst_ui_smoke.exe
+[233/274] Linking CXX executable bin\tst_timeline_analysis.exe
+[234/274] Linking CXX executable bin\tst_safety.exe
+[235/274] Linking CXX executable bin\tst_hand_quad.exe
+[236/274] Building CXX object tests\CMakeFiles\tst_ai_gui.dir\__\src\app\editor.cpp.obj
+[237/274] Building CXX object tests\CMakeFiles\tst_ai_gui.dir\__\src\app\colour_page.cpp.obj
+[238/274] Linking CXX executable bin\tst_pages.exe
+[239/274] Building CXX object tests\CMakeFiles\tst_engine.dir\tst_engine.cpp.obj
+[240/274] Linking CXX executable bin\tst_assembly.exe
+[241/274] Linking CXX executable bin\tst_style_library.exe
+[242/274] Linking CXX executable bin\tst_comfy_run.exe
+[243/274] Linking CXX executable bin\tst_comfy_process.exe
+[244/274] Linking CXX executable bin\tst_generate.exe
+[245/274] Linking CXX executable bin\tst_engine.exe
+[246/274] Linking CXX executable bin\tst_system_profile.exe
+[247/274] Linking CXX executable bin\tst_ai_gui.exe
+[248/274] Linking CXX executable bin\tst_cli.exe
+[249/274] Linking CXX executable bin\tst_agent_router.exe
+[250/274] Building CXX object tests\CMakeFiles\tst_agent_specialists.dir\tst_agent_specialists.cpp.obj
+[251/274] Linking CXX executable bin\tst_agent_peer_bus.exe
+[252/274] Linking CXX executable bin\tst_recipes.exe
+[253/274] Linking CXX executable bin\tst_titles.exe
+[254/274] Building CXX object tests\CMakeFiles\tst_agent_harness.dir\tst_agent_harness.cpp.obj
+[255/274] Linking CXX executable bin\tst_api_http.exe
+[256/274] Linking CXX executable bin\tst_llm_wire.exe
+[257/274] Linking CXX executable bin\tst_mcp.exe
+[258/274] Linking CXX executable bin\tst_index_catalog.exe
+[259/274] Linking CXX executable bin\tst_index_video.exe
+[260/274] Linking CXX executable bin\tst_ai_wire.exe
+[261/274] Linking CXX executable bin\tst_index_audio.exe
+[262/274] Linking CXX executable bin\tst_index_ocr.exe
+[263/274] Linking CXX executable bin\tst_agent_specialists.exe
+[264/274] Linking CXX executable bin\tst_index_manager.exe
+[265/274] Linking CXX executable bin\tst_copilot_lint.exe
+[266/274] Linking CXX executable bin\tst_agent_harness.exe
+[267/274] Linking CXX executable bin\tst_agent_crew.exe
+[268/274] Linking CXX executable bin\tst_agent_trace.exe
+[269/274] Linking CXX executable bin\tst_copilot_review.exe
+[270/274] Linking CXX executable bin\tst_copilot_branch.exe
+[271/274] Linking CXX executable bin\tst_copilot_suggest.exe
+[272/274] Linking CXX executable bin\tst_index_commands.exe
+[273/274] Linking CXX executable bin\tst_copilot_commands.exe
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8 2>&1 | tail -5
+[225/230] Linking CXX executable bin\tst_copilot_suggest.exe
+[226/230] Linking CXX executable bin\tst_copilot_review.exe
+[227/230] Linking CXX executable bin\tst_index_commands.exe
+[228/230] Linking CXX executable bin\bench_compositor.exe
+[229/230] Linking CXX executable bin\tst_copilot_commands.exe
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd ctest --preset debug -j 8 --output-on-failure 2>&1 | tail -80
+36/77 Test #45: tst_timeline_analysis ............   Passed    0.08 sec
+      Start 40: tst_audio_output
+37/77 Test #28: tst_media_pool ...................   Passed    0.81 sec
+      Start 66: tst_llm_wire
+38/77 Test #72: tst_index_manager ................   Passed    0.52 sec
+      Start 62: tst_agent_specialists
+39/77 Test #66: tst_llm_wire .....................   Passed    0.59 sec
+      Start 21: tst_colour_analysis
+40/77 Test #62: tst_agent_specialists ............   Passed    0.57 sec
+      Start 69: tst_index_audio
+41/77 Test #21: tst_colour_analysis ..............   Passed    0.12 sec
+      Start 37: tst_music_fit
+42/77 Test #37: tst_music_fit ....................   Passed    0.04 sec
+      Start 34: tst_audio_dsp
+43/77 Test #69: tst_index_audio ..................   Passed    0.27 sec
+      Start 68: tst_index_video
+44/77 Test #40: tst_audio_output .................   Passed    1.08 sec
+      Start 24: tst_project
+45/77 Test #34: tst_audio_dsp ....................   Passed    0.33 sec
+      Start 71: tst_index_commands
+46/77 Test #68: tst_index_video ..................   Passed    0.24 sec
+      Start 26: tst_timeline_controller
+47/77 Test #71: tst_index_commands ...............   Passed    0.18 sec
+      Start  2: tst_probe
+48/77 Test #56: tst_api_http .....................   Passed    5.55 sec
+      Start 77: tst_copilot_commands
+49/77 Test #26: tst_timeline_controller ..........   Passed    0.19 sec
+      Start 27: tst_inspector
+50/77 Test #24: tst_project ......................   Passed    0.39 sec
+      Start 67: tst_index_catalog
+51/77 Test #77: tst_copilot_commands .............   Passed    0.13 sec
+      Start 70: tst_index_ocr
+52/77 Test  #2: tst_probe ........................   Passed    0.20 sec
+      Start 38: tst_mixer_schema
+53/77 Test #27: tst_inspector ....................   Passed    0.13 sec
+      Start 74: tst_copilot_branch
+54/77 Test #67: tst_index_catalog ................   Passed    0.13 sec
+      Start 10: tst_schema
+55/77 Test #38: tst_mixer_schema .................   Passed    0.07 sec
+      Start 75: tst_copilot_suggest
+56/77 Test #74: tst_copilot_branch ...............   Passed    0.07 sec
+      Start 61: tst_agent_peer_bus
+57/77 Test #70: tst_index_ocr ....................   Passed    0.12 sec
+      Start 60: tst_agent_router
+58/77 Test #75: tst_copilot_suggest ..............   Passed    0.06 sec
+      Start 15: tst_trim_split
+59/77 Test #10: tst_schema .......................   Passed    0.09 sec
+      Start 11: tst_core
+60/77 Test #61: tst_agent_peer_bus ...............   Passed    0.09 sec
+      Start 39: tst_clap_host
+61/77 Test #60: tst_agent_router .................   Passed    0.08 sec
+      Start 13: tst_invariants
+62/77 Test #11: tst_core .........................   Passed    0.06 sec
+      Start 23: tst_timeline_math
+63/77 Test #15: tst_trim_split ...................   Passed    0.09 sec
+      Start 17: tst_playback_clock
+64/77 Test #13: tst_invariants ...................   Passed    0.07 sec
+      Start 12: tst_history_ripple
+65/77 Test #39: tst_clap_host ....................   Passed    0.09 sec
+      Start 76: tst_copilot_review
+66/77 Test #12: tst_history_ripple ...............   Passed    0.05 sec
+      Start 73: tst_copilot_lint
+67/77 Test #76: tst_copilot_review ...............   Passed    0.05 sec
+      Start 14: tst_snap
+68/77 Test #17: tst_playback_clock ...............   Passed    0.11 sec
+      Start 18: tst_layout
+69/77 Test #23: tst_timeline_math ................   Passed    0.15 sec
+      Start  1: tst_time
+70/77 Test #18: tst_layout .......................   Passed    0.04 sec
+71/77 Test #73: tst_copilot_lint .................   Passed    0.14 sec
+72/77 Test #14: tst_snap .........................   Passed    0.15 sec
+73/77 Test  #1: tst_time .........................   Passed    0.14 sec
+74/77 Test #36: tst_audio_analysis ...............   Passed   49.21 sec
+75/77 Test #51: tst_comfy_process ................   Passed   49.50 sec
+76/77 Test #44: tst_engine .......................   Passed   72.61 sec
+77/77 Test #32: tst_ui_smoke .....................   Passed   87.19 sec
+
+100% tests passed, 0 tests failed out of 77
+
+Total Test time (real) =  87.24 sec
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "completeBaseName\|shortRequest\|file:\|setCanvas" src/engine/cmd_edit.cpp src/engine/cmd_assemble.cpp src/engine/cmd_storyboard.cpp src/engine/cmd_comfy.cpp src/engine/cmd_session.cpp src/agent/agent_harness.cpp src/editor/inspector.h src/editor/inspector.cpp src/agent/specialist.cpp | head -40
+src/engine/cmd_edit.cpp:87:  const QString assetName = QFileInfo(asset->originalName).completeBaseName();
+src/engine/cmd_edit.cpp:293:             QStringLiteral("Apply raw core ops (the same JSON the project history stores: item.add, item.move, track.add, marker.add, project.setCanvas, mixer.set, ... or batch) as ONE atomic "
+src/engine/cmd_assemble.cpp:287:      const QString shotName = shotAsset ? QFileInfo(shotAsset->originalName).completeBaseName() : QString();
+src/engine/cmd_storyboard.cpp:343:                   const QString clipName = QFileInfo(as->originalName).completeBaseName();
+src/engine/cmd_comfy.cpp:128:      return Result::failure(q("unavailable"), QStringLiteral("Could not read schema file: %1").arg(objPath),
+src/engine/cmd_comfy.cpp:669:      const QString assetName = QFileInfo(asset->originalName).completeBaseName();
+src/engine/cmd_comfy.cpp:1664:                   return invalid(QStringLiteral("Could not read graph file: %1").arg(path));
+src/engine/cmd_comfy.cpp:2031:                   return Result::failure(q("io_error"), QStringLiteral("Could not read graph file: %1").arg(p));
+src/engine/cmd_session.cpp:114:                 if (path.startsWith(QLatin1String("file:"))) path = QUrl(path).toLocalFile();
+src/engine/cmd_session.cpp:115:                 if (!QFileInfo::exists(path)) return Result::failure(q("not_found"), QStringLiteral("No such file: %1").arg(path));
+src/engine/cmd_session.cpp:177:                 ops.append(QJsonObject{{q("type"), q("project.setCanvas")}, {q("width"), target->first}, {q("height"), target->second}});
+src/agent/agent_harness.cpp:79:QString shortRequest(const QString& text) {
+src/agent/agent_harness.cpp:202:    groupArgs.insert(QStringLiteral("label"), QStringLiteral("Agent: %1").arg(shortRequest(pending_.message)));
+src/agent/agent_harness.cpp:385:  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(agentCap, shortRequest(userMessage)));
+src/agent/agent_harness.cpp:453:  groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(dirCap, shortRequest(userMessage)));
+src/agent/agent_harness.cpp:541:      groupArgs.insert(QStringLiteral("label"), QStringLiteral("%1: %2").arg(targetCap, shortRequest(task)));
+src/editor/inspector.h:50:  Q_INVOKABLE bool setCanvas(int width, int height);
+src/editor/inspector.cpp:368:bool Inspector::setCanvas(int width, int height) {
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "DBG:" src/engine/cmd_comfy.cpp; grep -n "style\|audio.add" src/agent/specialist.cpp | head -20; grep -n "setCanvas" src/app/InspectorPanel.qml; grep -n "fileUrl\|file:\|originalName\|locked\|shortRequest\|agent.specialists\|textOnly\|all.*Director" tests/tst_engine.cpp tests/tst_trim_split.cpp tests/tst_agent_harness.cpp tests/tst_inspector.cpp | head -40
+71:        "Prompt craft: Write generation prompts describing voice character, cadence, style, acoustic environment, instrumentation, BPM, and mood on Lane deep.\n"
+232:    if (spec.name == QStringLiteral("edit.assemble") || spec.name == QStringLiteral("audio.add")) return true;
+237:  // Titles and recipes live in the shared "style" domain; the Director and Editor own them.
+238:  if ((kind_ == SpecialistKind::Director || kind_ == SpecialistKind::Editor) && spec.domain == QStringLiteral("style")) return true;
+239:  // audio.add is the Audio specialist's own operation even though the command is registered under "editor".
+240:  if (kind_ == SpecialistKind::Audio && spec.name == QStringLiteral("audio.add")) return true;
+609:                                   "otherwise approve. Never invent style or ordering rules.");
+550:                                root.insp.setCanvas(modelData.w, modelData.h)
+tests/tst_trim_split.cpp:158:    TimelineDoc locked = applyOp(doc, addItem(item)).doc;
+tests/tst_trim_split.cpp:159:    for (Track& t : locked.tracks)
+tests/tst_trim_split.cpp:160:      if (t.id == item.trackId) t.locked = true;
+tests/tst_trim_split.cpp:161:    SF_THROWS_MATCH(applyOp(locked, ItemSplit{item.id, 30, newId(S("itm"))}), "locked");
+tests/tst_trim_split.cpp:162:    SF_THROWS_MATCH(applyOp(locked, trim(item.id, TrimEdge::Out, 60, true)), "locked");
+tests/tst_agent_harness.cpp:52:    QVERIFY(engine_->find(QStringLiteral("agent.specialists")) != nullptr);
+tests/tst_agent_harness.cpp:55:    // Call agent.specialists
+tests/tst_agent_harness.cpp:56:    Result specRes = engine_->call(QStringLiteral("agent.specialists"));
+tests/tst_agent_harness.cpp:61:    // "all" includes the Director and is part of the declared schema.
+tests/tst_agent_harness.cpp:62:    const CommandSpec* spec = engine_->find(QStringLiteral("agent.specialists"));
+tests/tst_agent_harness.cpp:65:    Result allRes = engine_->call(QStringLiteral("agent.specialists"), QJsonObject{{QStringLiteral("all"), true}});
+tests/tst_agent_harness.cpp:366:      // mid-run the human is locked out
+tests/tst_agent_harness.cpp:456:    v.originalName = QStringLiteral("beach_sunset.mp4");
+tests/tst_agent_harness.cpp:484:      a.originalName = QStringLiteral("clip_%1.mp4").arg(i);
+tests/tst_agent_harness.cpp:485:      a.path = a.originalName;
+tests/tst_inspector.cpp:178:  void lockedTrackRejectsInspectorEdits() {
+tests/tst_inspector.cpp:183:    lock.patch.locked = true;
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "completeBaseName\|beach_sunset\|file:///\|project.open\|audio.add\|text item\|without\|label" tests/tst_engine.cpp | head -30; grep -n "setCanvas\|one undo\|undo" tests/tst_inspector.cpp | head -20
+61:// Counts its calls and returns the asset path: the scheduler's genericity without any decoding.
+183:    r = raw(Q("project.open"), {{Q("path"), dir_.filePath(Q("missing.json"))}});
+202:    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("m")}});
+209:    ok(Q("marker.add"), {{Q("frame"), 4}, {Q("label"), Q("m2")}});
+211:    const QJsonObject second = ok(Q("project.open"), {{Q("path"), path}});
+227:    const QJsonObject opened = ok(Q("project.open"), {{Q("path"), QUrl::fromLocalFile(path).toString()}});
+233:    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("m")}});
+277:    ok(Q("audio.add"), {{Q("assetId"), audio}, {Q("durationFrames"), 40}, {Q("volume"), 0.5}});
+278:    QCOMPARE(raw(Q("audio.add"), {{Q("assetId"), video}}).error.code, Q("invalid_params"));
+282:    ok(Q("marker.add"), {{Q("frame"), 12}, {Q("label"), Q("beat")}});
+325:    ok(Q("item.update"), {{Q("itemId"), clipId}, {Q("patch"), QJsonObject{{Q("transform"), QJsonObject{{Q("scale"), 0.5}}}, {Q("labels"), QJsonObject{{Q("name"), Q("renamed")}}}}}});
+401:    const QJsonArray ops{QJsonObject{{Q("type"), Q("marker.add")}, {Q("marker"), QJsonObject{{Q("id"), Q("mrk_0123456789abcdef")}, {Q("frame"), 1}, {Q("label"), Q("a")}}}},
+409:    // and the same batch without the bad op applies as ONE undo step
+410:    const QJsonObject good = ok(Q("ops.apply"), {{Q("ops"), QJsonArray{ops.at(0), ops.at(1)}}, {Q("label"), Q("two ops")}});
+422:    ok(Q("session.group.begin"), {{Q("label"), Q("Editor: tidy")}, {Q("actor"), Q("agent:editor")}});
+425:      QJsonObject args{{Q("frame"), 5}, {Q("label"), Q("human")}};
+438:    QCOMPARE(raw(Q("session.group.begin"), {{Q("label"), Q("mine")}}).error.code, Q("agent_busy"));
+443:    QVERIFY(raw(Q("marker.add"), {{Q("frame"), 6}, {Q("label"), Q("agent")}, {Q("origin"), Q("agent:editor")}}).ok);
+450:    QVERIFY(raw(Q("marker.add"), {{Q("frame"), 5}, {Q("label"), Q("human")}}).ok);
+455:    ok(Q("marker.add"), {{Q("frame"), 1}, {Q("label"), Q("before the agent")}}); // a human step made earlier
+456:    ok(Q("session.group.begin"), {{Q("label"), Q("Editor: two markers")}, {Q("actor"), Q("agent:editor")}});
+457:    ok(Q("marker.add"), {{Q("frame"), 2}, {Q("label"), Q("a")}, {Q("origin"), Q("agent:editor")}});
+458:    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("b")}, {Q("origin"), Q("agent:editor")}});
+471:    ok(Q("marker.add"), {{Q("frame"), 1}, {Q("label"), Q("user-ish")}});
+472:    ok(Q("ops.apply"), {{Q("ops"), QJsonArray{QJsonObject{{Q("type"), Q("project.rename")}, {Q("name"), Q("By agent")}}}}, {Q("label"), Q("rename")}, {Q("origin"), Q("agent:editor")}});
+479:    QCOMPARE(entries.at(1).toObject().value(Q("label")).toString(), Q("rename"));
+504:    ok(Q("audio.add"), {{Q("assetId"), audio}, {Q("durationFrames"), 50}});
+666:    ok(Q("audio.add"), {{Q("assetId"), firstAsset(Q("audio"))}});
+696:    // check before: the two tones sit at the same level, the music ends without a fade, the loudness is far from -14
+776:    // an item with no audio asset (a text item) is refused, not dereferenced
+46:    QVERIFY(p.undo());
+59:    QVERIFY(p.undo());
+61:    QVERIFY(p.undo());
+160:    QVERIFY(p.undo()); // the whole drag
+175:    QVERIFY(p.undo()); // one step for both
+208:    QVERIFY(p.undo());
+217:    QVERIFY(i.setCanvas(1080, 1920));
+220:    QVERIFY(p.undo());
+224:    QVERIFY(!i.setCanvas(1920, 1080)); // unchanged: no op
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "clipName\|name().*clip\|Q(\"clip\")\|track item name\|item name\|displayName\|originalName" tests/tst_engine.cpp | head -20
+(no output)
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -rn "completeBaseName\|beach_sunset\|clip_" tests/*.cpp | head -20
+tests/tst_agent_harness.cpp:456:    v.originalName = QStringLiteral("beach_sunset.mp4");
+tests/tst_agent_harness.cpp:457:    v.path = QStringLiteral("beach_sunset.mp4");
+tests/tst_agent_harness.cpp:469:    QVERIFY(sys.contains(QStringLiteral("beach_sunset.mp4")));
+tests/tst_agent_harness.cpp:484:      a.originalName = QStringLiteral("clip_%1.mp4").arg(i);
+tests/tst_agent_harness.cpp:493:    QVERIFY(sys.contains(QStringLiteral("clip_39.mp4")));
+tests/tst_agent_harness.cpp:494:    QVERIFY(sys.contains(QStringLiteral("clip_44.mp4"))); // every asset is listed, no cap
+tests/tst_agent_trace.cpp:312:      .args = QJsonObject{{QStringLiteral("clipId"), QStringLiteral("clip_1")}},
+tests/tst_cli.cpp:29:  QString project_, clip_;
+tests/tst_cli.cpp:68:    clip_ = dir_.filePath(Q("clip.mp4"));
+tests/tst_cli.cpp:71:                        Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), Q("-c:a"), Q("aac"), Q("-shortest"), clip_}, &log), qPrintable(log));
+tests/tst_engine.cpp:79:  QString clip_, music_, story_, talk_, beats_, gray_, vert_;
+tests/tst_engine.cpp:106:    clip_ = dir_.filePath(QStringLiteral("clip.mp4"));
+tests/tst_engine.cpp:110:                        Q("-preset"), Q("ultrafast"), Q("-pix_fmt"), Q("yuv420p"), Q("-c:a"), Q("aac"), Q("-shortest"), clip_}, &log), qPrintable(log));
+tests/tst_engine.cpp:257:    QJsonObject imp = ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_, music_, dir_.filePath(Q("nope.mp4"))}}});
+tests/tst_engine.cpp:261:    QCOMPARE(ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}}).value(Q("duplicates")).toArray().size(), 1);
+tests/tst_engine.cpp:266:    QVERIFY(ok(Q("asset.probe"), {{Q("path"), clip_}}).value(Q("hasAudio")).toBool());
+tests/tst_engine.cpp:386:    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+tests/tst_engine.cpp:395:    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+tests/tst_engine.cpp:501:    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_, music_}}});
+tests/tst_engine.cpp:599:    ok(Q("media.import"), {{Q("paths"), QJsonArray{clip_}}});
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "edit.split\|edit.trim\|assemble\|storyboard\|QCOMPARE(.*name\|label" tests/tst_engine.cpp | head -40
+159:    QCOMPARE(e_->find(Q("timeline_get"))->name, Q("timeline.get"));
+160:    QCOMPARE(e_->find(Q("splitItem"))->name, Q("item.split"));
+199:    QCOMPARE(info.value(Q("name")).toString(), Q("Fixture"));
+202:    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("m")}});
+209:    ok(Q("marker.add"), {{Q("frame"), 4}, {Q("label"), Q("m2")}});
+221:    QCOMPARE(ok(Q("project.info")).value(Q("name")).toString(), Q("Again"));
+233:    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("m")}});
+240:    QCOMPARE(info.value(Q("name")).toString(), Q("Vertical"));
+282:    ok(Q("marker.add"), {{Q("frame"), 12}, {Q("label"), Q("beat")}});
+325:    ok(Q("item.update"), {{Q("itemId"), clipId}, {Q("patch"), QJsonObject{{Q("transform"), QJsonObject{{Q("scale"), 0.5}}}, {Q("labels"), QJsonObject{{Q("name"), Q("renamed")}}}}}});
+401:    const QJsonArray ops{QJsonObject{{Q("type"), Q("marker.add")}, {Q("marker"), QJsonObject{{Q("id"), Q("mrk_0123456789abcdef")}, {Q("frame"), 1}, {Q("label"), Q("a")}}}},
+410:    const QJsonObject good = ok(Q("ops.apply"), {{Q("ops"), QJsonArray{ops.at(0), ops.at(1)}}, {Q("label"), Q("two ops")}});
+422:    ok(Q("session.group.begin"), {{Q("label"), Q("Editor: tidy")}, {Q("actor"), Q("agent:editor")}});
+425:      QJsonObject args{{Q("frame"), 5}, {Q("label"), Q("human")}};
+438:    QCOMPARE(raw(Q("session.group.begin"), {{Q("label"), Q("mine")}}).error.code, Q("agent_busy"));
+443:    QVERIFY(raw(Q("marker.add"), {{Q("frame"), 6}, {Q("label"), Q("agent")}, {Q("origin"), Q("agent:editor")}}).ok);
+450:    QVERIFY(raw(Q("marker.add"), {{Q("frame"), 5}, {Q("label"), Q("human")}}).ok);
+455:    ok(Q("marker.add"), {{Q("frame"), 1}, {Q("label"), Q("before the agent")}}); // a human step made earlier
+456:    ok(Q("session.group.begin"), {{Q("label"), Q("Editor: two markers")}, {Q("actor"), Q("agent:editor")}});
+457:    ok(Q("marker.add"), {{Q("frame"), 2}, {Q("label"), Q("a")}, {Q("origin"), Q("agent:editor")}});
+458:    ok(Q("marker.add"), {{Q("frame"), 3}, {Q("label"), Q("b")}, {Q("origin"), Q("agent:editor")}});
+471:    ok(Q("marker.add"), {{Q("frame"), 1}, {Q("label"), Q("user-ish")}});
+472:    ok(Q("ops.apply"), {{Q("ops"), QJsonArray{QJsonObject{{Q("type"), Q("project.rename")}, {Q("name"), Q("By agent")}}}}, {Q("label"), Q("rename")}, {Q("origin"), Q("agent:editor")}});
+473:    QCOMPARE(ok(Q("project.info")).value(Q("name")).toString(), Q("By agent"));
+479:    QCOMPARE(entries.at(1).toObject().value(Q("label")).toString(), Q("rename"));
+483:    QCOMPARE(ok(Q("project.info")).value(Q("name")).toString(), Q("Fixture"));
+487:    QCOMPARE(ok(Q("project.info")).value(Q("name")).toString(), Q("By agent"));
+806:    const QJsonObject labels = ok(Q("item.get"), {{Q("itemId"), id}}).value(Q("labels")).toObject();
+807:    QCOMPARE(labels.value(Q("name")).toString(), Q("story"));
+1121:    QCOMPARE(raw(Q("style.list"), {{Q("kind"), Q("look")}, {Q("name"), Q("sepia")}}).error.code, Q("not_found"));
+1340:    QCOMPARE(doc.value(Q("profile")).toObject().value(Q("name")).toString(), Q("documentary"));
+1570:    QCOMPARE(vignette.value(Q("params")).toArray().at(0).toObject().value(Q("name")).toString(), Q("amount"));
+1645:    QCOMPARE(raw(Q("transition.add"), {{Q("effectId"), Q("crossfade")}, {Q("duration"), 8}}).error.code, Q("invalid_params")); // no cut named
+1930:        QJsonObject{{Q("label"), Q("my-look")}, {Q("look"), QJsonObject{{Q("look"), lookName}, {Q("intensity"), 1.0}}}},
+1931:        QJsonObject{{Q("label"), Q("my-invert")}, {Q("effect"), QJsonObject{{Q("effectId"), Q("invert")}}}},
+1932:        QJsonObject{{Q("label"), Q("my-raw")}, {Q("ops"), QJsonArray{}}}
+1945:    QCOMPARE(cells.at(0).toObject().value(Q("label")).toString(), Q("original"));
+1983:        QJsonObject{{Q("label"), Q("bad-look")}, {Q("look"), QJsonObject{{Q("look"), Q("nonexistent_look_name_12345")}}}}
+1993:  void assembleCommand() {
+2012:    Result rDry = raw(Q("edit.assemble"), {
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "\.final\.\|\.v2\.\|dotted\|multi-dot\|dots" tests/*.cpp | head -20
+tests/tst_agent_harness.cpp:392:    // Round 0: the model asks for a real engine command (wire name has dots replaced by "__").
+tests/tst_llm_wire.cpp:2:// tools wrapped as {type:"function", function:{...}} with names free of dots, and tool-call names mapped
+tests/tst_llm_wire.cpp:3:// back to the engine's dotted command names on the way in.
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=50, offset=595][0m
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "void [a-zA-Z]" tests/tst_engine.cpp | tail -30
+500:  void renderAndAudio() {
+598:  void colourMeasurementAndProposals() {
+663:  void measuredAudio() {
+800:  void clipLabelsUseTheAssetName() {
+810:  void measuredEditing() {
+927:  void musicFit() {
+992:  void speechSafeCuts() {
+1040:  void snapMovesLinkedAudio() {
+1065:  void aspectMismatchUsesTransform() {
+1086:  void systemProfileCommands() {
+1111:  void styleLibraryCommands() {
+1133:  void presetsSuggestAndLuts() {
+1246:  void lookApplyOnAGreyClip() {
+1330:  void pacingProfilesOnASyntheticTimeline() {
+1367:  void mixProfilesApplyTheirNumbers() {
+1420:  void proxies() {
+1431:  void jobsCommands() {
+1500:  void exportJob() {
+1554:  void effectsAndTransitions() {
+1689:  void maskTrackHandsNoHands() {
+1723:  void safetyCheck() {
+1820:  void comfyCommands() {
+1890:  void variationsSheet() {
+1993:  void assembleCommand() {
+2060:  void assembleAcceptsMusicAssetId() {
+2125:  void assembleMusicAssetIdUnderAgentLock() {
+2148:  void storyboardSetAcceptsSceneFields() {
+2167:  void storyboardToTimelineTrackNameClash() {
+2208:  void storyboardToTimelinePlacesSceneClips() {
+2241:  void unknownTextureRejected() {
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=14, offset=798][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=75, offset=79][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=40, offset=1][0m
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -rn "duplicates\|sameHash\|hash" src/engine/cmd_media.cpp | head -20; grep -n "assetNamed" tests/tst_engine.cpp
+26:                            "as duplicates; files that are not media as skipped. Assets are library state: not undoable."),
+43:               for (const QString& id : sum.added + sum.duplicates)
+45:               return Result::success(QJsonObject{{q("added"), QJsonArray::fromStringList(sum.added)}, {q("duplicates"), QJsonArray::fromStringList(sum.duplicates)},
+786:  QString assetNamed(const QString& file) {
+802:    const QString story = assetNamed(Q("story.mp4"));
+812:    const QString story = assetNamed(Q("story.mp4")), beats = assetNamed(Q("beats.wav"));
+929:    const QString beats = assetNamed(Q("beats.wav"));
+994:    const QString talk = assetNamed(Q("talk.mp4"));
+1042:    const QString story = assetNamed(Q("story.mp4")), beats = assetNamed(Q("beats.wav"));
+1067:    const QString vert = assetNamed(Q("vert.mp4"));
+1248:    const QString item = addClip(assetNamed(Q("gray.mp4")), 0, 40, 0);
+1332:    const QString story = assetNamed(Q("story.mp4"));
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=12, offset=784][0m
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/src/engine/cmd_edit.cpp [90m[limit=14, offset=82][0m
+> build · deepseek-v4.1-flash-free
+[0m← [0mEdit native/tests/tst_engine.cpp
+Index: native/tests/tst_engine.cpp
+===================================================================
+--- native/tests/tst_engine.cpp
++++ native/tests/tst_engine.cpp
+@@ -797,15 +797,18 @@
+     return r;
+   }
+ 
+   void clipLabelsUseTheAssetName() {
+-    ok(Q("media.import"), {{Q("paths"), QJsonArray{story_}}});
+-    const QString story = assetNamed(Q("story.mp4"));
++    // A name with dots keeps every part but the extension ("scene.final.v2", not "scene").
++    const QString dotted = dir_.filePath(QStringLiteral("scene.final.v2.mp4"));
++    QVERIFY(QFile::copy(story_, dotted));
++    ok(Q("media.import"), {{Q("paths"), QJsonArray{dotted}}});
++    const QString story = assetNamed(Q("scene.final.v2.mp4"));
+     QVERIFY(!story.isEmpty());
+     const QString id = addClip(story, 0, 30, 0);
+     QVERIFY(!id.isEmpty());
+     const QJsonObject labels = ok(Q("item.get"), {{Q("itemId"), id}}).value(Q("labels")).toObject();
+-    QCOMPARE(labels.value(Q("name")).toString(), Q("story"));
++    QCOMPARE(labels.value(Q("name")).toString(), Q("scene.final.v2"));
+   }
+ 
+   void measuredEditing() {
+     ok(Q("media.import"), {{Q("paths"), QJsonArray{story_, talk_, beats_}}});
+
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd cmake --build --preset debug -j 8 2>&1 | tail -3 && scripts/dev.cmd ctest --preset debug -R tst_engine --output-on-failure 2>&1 | tail -8
+[229/232] Linking CXX executable bin\tst_copilot_commands.exe
+[230/232] Building CXX object tests\CMakeFiles\tst_engine.dir\tst_engine.cpp.obj
+[231/232] Linking CXX executable bin\tst_engine.exe
+Test project C:/Users/Ashman Das/Documents/OpenCardboard/native/build/debug
+    Start 44: tst_engine
+1/1 Test #44: tst_engine .......................   Passed  167.07 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) = 167.11 sec
+> build · deepseek-v4.1-flash-free
+[0m$ [0mscripts/dev.cmd ctest --preset debug -j 8 --output-on-failure 2>&1 | tail -8
+74/77 Test #76: tst_copilot_review ...............   Passed    0.15 sec
+75/77 Test #36: tst_audio_analysis ...............   Passed   69.70 sec
+76/77 Test #44: tst_engine .......................   Passed  104.60 sec
+77/77 Test #32: tst_ui_smoke .....................   Passed  115.00 sec
+
+100% tests passed, 0 tests failed out of 77
+
+Total Test time (real) = 115.05 sec
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "short\|…\|label.*Agent:\|group" tests/tst_agent_harness.cpp | head -20; grep -n "void specialists\|void .*[Ll]abel\|void .*[Gg]roup" tests/tst_agent_harness.cpp
+84:  // The undo group is named after the agent and a short form of the request, not the raw message.
+267:  // ---- copilot lock: however a run ends, the undo group closes and the project unlocks ----
+345:                                 "session.group.begin", "session.group.end", "session.group.rollback"})
+466:    harness_->chat(QStringLiteral("make a short film"));
+500:    harness_->chat(QStringLiteral("make a short film"));
+85:  void undoLabelIsAShortRequest() {
+340:  void agentToolListsKeepFilesAndUndoGroupsOut() {
+> build · deepseek-v4.1-flash-free
+[0m→ [0mRead native/tests/tst_engine.cpp [90m[limit=12, offset=770][0m
+> build · deepseek-v4.1-flash-free
+[0m$ [0mgrep -n "style\|audio.add\|Director\|Editor" tests/tst_agent_specialists.cpp | head -15; grep -n "setCanvas\|canvas" tests/tst_inspector.cpp | head
+1:// Unit tests for the three specialist agents (Editor, Colourist, Audio) in M5b.
+38:    Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get());
+63:    Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get());
+80:    Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get());
+83:    Specialist director(SpecialistKind::Director, engine_.get(), bus_.get());
+85:    // 1. Editor can execute an "engine" command
+89:    // 2. Editor may READ another domain's state (read tools are shared), so mixer.get is allowed.
+93:    // 3. Editor attempting to MUTATE an "audio" command directly is rejected!
+103:    QVERIFY(rEdit.error.message.contains(QStringLiteral("Video Editor")));
+154:    // 6. Titles and recipes are in the shared "style" domain: the Director and Editor own them.
+165:    // 7. The Audio specialist can add its own audio clips even though audio.add is registered under "editor".
+166:    const CommandSpec* audioAdd = engine_->find(QStringLiteral("audio.add"));
+170:    QVERIFY(audio.executeCommand(QStringLiteral("audio.add")).error.code != QStringLiteral("domain_forbidden"));
+175:    Specialist editor(SpecialistKind::Editor, engine_.get(), bus_.get());
+242:    QCOMPARE(log[0].from, SpecialistKind::Editor);
+213:  void canvasPresetIsOneUndoStep() {
+217:    QVERIFY(i.setCanvas(1080, 1920));
+224:    QVERIFY(!i.setCanvas(1920, 1080)); // unchanged: no op
+> build · deepseek-v4.1-flash-free
+Done. Final report:
+
+BUG BATCH REPORT
+
+1. FIXED — Clip/audio labels used the filename up to the first dot instead of the full stem.
+   native/src/engine/cmd_edit.cpp:87, cmd_assemble.cpp:287, cmd_storyboard.cpp:343, cmd_comfy.cpp:669
+   Now derives the label from `QFileInfo(asset->originalName).completeBaseName()`, keeping the existing "clip"/"audio" fallback.
+   Test: native/tests/tst_engine.cpp:800 (copies the fixture to `scene.final.v2.mp4`, expects the item name `scene.final.v2`).
+
+2. FIXED — Agent undo-group labels embedded the whole user request.
+   native/src/agent/agent_harness.cpp:79 (`shortRequest`, 48 chars + "…"), applied at :202, :385, :453, :541.
+   Test: native/tests/tst_agent_harness.cpp:85.
+
+3. FIXED — Specialists rejected commands they legitimately own.
+   native/src/agent/specialist.cpp:238 (Director/Editor may use the "style" domain), :240 (Audio may call `audio.add`).
+   Tests: native/tests/tst_agent_specialists.cpp:154, :165.
+
+4. FIXED — `agent.specialists` honoured an `all` argument its schema never declared.
+   native/src/agent/agent_harness.cpp:686-691 declares the boolean `all` property.
+   Test: native/tests/tst_agent_harness.cpp:61.
+
+5. SKIPPED — Not a real bug: `music.structure` already returns `invalid_params` for a missing `assetId`/asset before it could dereference a text item. Added a regression test only.
+   Test: native/tests/tst_engine.cpp:776.
+
+6. FIXED — `project.open` rejected `file:` URLs.
+   native/src/engine/cmd_session.cpp:114 converts the URL via `QUrl::toLocalFile()` before the existence check.
+   Test: native/tests/tst_engine.cpp:227.
+
+7. FIXED — Removed the two leftover `DBG:` `fprintf`/`fflush` lines in native/src/engine/cmd_comfy.cpp (grep confirms none remain).
+
+8. FIXED — Canvas preset in the Inspector ran two separate property writes, so it took two undo steps.
+   native/src/editor/inspector.h:50 and inspector.cpp:368 add `setCanvas(w,h)`; native/src/app/InspectorPanel.qml:550 calls it once.
+   Test: native/tests/tst_inspector.cpp:213.
+
+9. SKIPPED — Not a real bug: core `assertTracksUnlocked` (native/src/core/apply.cpp) already rejects `item.split`/`item.trim` on locked tracks, and `Project::apply` enforces locks by default. Added a core test only.
+   Test: native/tests/tst_trim_split.cpp:158.
+
+BUILD: success (`cmake --build --preset debug -j 8`).
+CTEST: 77/77 passed, 0 failed (`ctest --preset debug -j 8 --output-on-failure`).

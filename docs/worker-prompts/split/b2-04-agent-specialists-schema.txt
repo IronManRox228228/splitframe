@@ -1,0 +1,14 @@
+Fix one small bug in SplitFrame (native C++20/Qt 6.8 app in native/). Repo root is the current directory, branch comfy.
+
+RULES: Do not run git. Do not download or install anything. Never touch .env, docs/SPLITFRAME_PLAN.md, native/tst_*.txt, apps/desktop. Never delete or shorten existing comments. Match surrounding code style. Minimal changes.
+These findings came from an automated audit and may be wrong. For EACH item: first read the code and confirm the bug. If it is not real, skip it and say why. Line numbers are approximate.
+
+First check `git diff fork/comfy -- <files>` / the code: if this is already fixed (an earlier partial run may have done it), just verify, build and test.
+
+native/src/agent/agent_harness.cpp ~680: `agent.specialists` schema has additionalProperties:false with no properties but callers pass {"all": true}. Check whether anything passes "all"; if so add "all": {"type":"boolean"} and honour it if the handler reads it.
+
+Add or extend a QtTest for this where a test file for that area exists under native/tests.
+
+BUILD AND TEST: from native/: `scripts\dev.cmd cmake --build --preset debug -j 8` then `scripts\dev.cmd ctest --preset debug -j 8 --output-on-failure`. If splitframe.exe is locked (app open) and only that link fails, still run ctest and report it. All tests must pass.
+
+Finish with a short plain-text report: per item FIXED/SKIPPED, file:line, why; build result; ctest N/N.

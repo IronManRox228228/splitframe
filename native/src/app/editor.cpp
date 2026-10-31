@@ -529,6 +529,8 @@ QVariantMap Editor::aiConfig() const {
   m.insert(QStringLiteral("comfyUrl"), s.value(QStringLiteral("comfy/url")).toString());
   m.insert(QStringLiteral("comfyHome"), s.value(QStringLiteral("comfy/home")).toString());
   m.insert(QStringLiteral("comfyPython"), s.value(QStringLiteral("comfy/python")).toString());
+  m.insert(QStringLiteral("comfyAutoStart"), s.value(QStringLiteral("comfy/autoStart"), false).toBool());
+  m.insert(QStringLiteral("modelsDir"), s.value(QStringLiteral("jobs/modelsDir")).toString());
   const QString routerKey = s.value(QStringLiteral("comfyRouter/apiKey")).toString();
   const QString envRouter = qEnvironmentVariable("COMFY_API_KEY");
   m.insert(QStringLiteral("hasRouterKey"), !routerKey.isEmpty() || !envRouter.isEmpty());
@@ -536,7 +538,7 @@ QVariantMap Editor::aiConfig() const {
   m.insert(QStringLiteral("envOverrides"),
            envOverridesOf({QStringLiteral("SF_LLM_ENDPOINT"), QStringLiteral("SF_LLM_MODEL"), QStringLiteral("SF_LLM_MODEL_FAST"), QStringLiteral("SF_LLM_MODEL_DEEP"),
                            QStringLiteral("SF_LLM_MODEL_JUDGE"), QStringLiteral("SF_LLM_API_KEY"), QStringLiteral("SF_COMFY_URL"), QStringLiteral("SF_COMFY_HOME"),
-                           QStringLiteral("SF_COMFY_PYTHON"), QStringLiteral("COMFY_API_KEY")}));
+                           QStringLiteral("SF_COMFY_PYTHON"), QStringLiteral("COMFY_API_KEY"), QStringLiteral("SF_MODELS_DIR")}));
   return m;
 }
 
@@ -557,6 +559,8 @@ bool Editor::setAiConfig(const QVariantMap& c) {
   put(QStringLiteral("comfy/url"), c.value(QStringLiteral("comfyUrl")).toString());
   put(QStringLiteral("comfy/home"), c.value(QStringLiteral("comfyHome")).toString());
   put(QStringLiteral("comfy/python"), c.value(QStringLiteral("comfyPython")).toString());
+  s.setValue(QStringLiteral("comfy/autoStart"), c.value(QStringLiteral("comfyAutoStart")).toBool());
+  put(QStringLiteral("jobs/modelsDir"), c.value(QStringLiteral("modelsDir")).toString());
   if (c.value(QStringLiteral("clearRouterKey")).toBool()) s.remove(QStringLiteral("comfyRouter/apiKey"));
   else if (!c.value(QStringLiteral("routerKey")).toString().trimmed().isEmpty()) s.setValue(QStringLiteral("comfyRouter/apiKey"), c.value(QStringLiteral("routerKey")).toString().trimmed());
   s.sync();
