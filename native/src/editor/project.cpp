@@ -307,14 +307,18 @@ bool Project::save(QString* error) {
 
 bool Project::saveAs(const QString& path, QString* error) {
   const QString abs = QFileInfo(path).absoluteFilePath();
+  const bool pathDiffers = path_ != abs;
+  // a project that never had a name of its own takes the file's, so Save As to "My Cut" is not stuck as "Untitled video"
+  const bool takesFileName = bundle_.doc.project.name.isEmpty() || bundle_.doc.project.name == QLatin1String("Untitled video");
+  if (pathDiffers && takesFileName) bundle_.doc.project.name = QFileInfo(abs).completeBaseName();
   if (!writeTo(abs, error)) return false;
   clearOwnRecovery();
   saved_ = bundle_;
   forceDirty_ = false;
-  const bool pathDiffers = path_ != abs;
   path_ = abs;
   refreshDirty();
   if (pathDiffers) emit pathChanged();
+  if (pathDiffers && takesFileName) emit docChanged();
   return true;
 }
 

@@ -310,6 +310,8 @@ bool Job::openVideoEncoder() {
           queue_.reopen();
           p_.warnings << QStringLiteral("NVENC failed to open; encoding in software");
         }
+      } else if (p_.video == VideoCodec::H264 && p_.bits > 8) {
+        p_.warnings << QStringLiteral("NVENC can't encode 10-bit H.264; encoding in software (choose HEVC for GPU 10-bit)");
       }
     } else {
       p_.warnings << QStringLiteral("No usable NVENC encoder on this machine; encoding in software");

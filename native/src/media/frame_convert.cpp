@@ -8,7 +8,7 @@ namespace sf::media {
 FrameConverter::FrameConverter() : sws_(sws_alloc_context()) {
   if (!sws_) return;
   sws_->flags = SWS_BILINEAR;
-  sws_->threads = std::clamp(QThread::idealThreadCount() / 2, 1, 4);
+  sws_->threads = std::max(1, QThread::idealThreadCount() - 2);
 }
 
 QImage FrameConverter::toRgba(AVFrame* src, QSize out) {

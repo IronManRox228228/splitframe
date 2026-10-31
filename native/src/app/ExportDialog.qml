@@ -28,7 +28,7 @@ Dialog {
             rangeOut: outSpin.value,
             normalize: loudCheck.checked,
             lufs: lufsSpin.value,
-            hardware: hwCheck.checked,
+            hardware: hwCheck.checked && hwCheck.enabled,
             overwrite: overwriteCheck.checked
         }
     }
@@ -131,7 +131,7 @@ Dialog {
                 CheckBox {
                     id: hwCheck
                     text: "GPU encoder (NVENC)"
-                    enabled: !root.ex.running
+                    enabled: !root.ex.running && (formatBox.currentText.startsWith("H.264") || formatBox.currentText.startsWith("HEVC"))
                     contentItem: Text { text: hwCheck.text; color: Theme.text; font.pixelSize: 12; leftPadding: hwCheck.indicator.width + 6; verticalAlignment: Text.AlignVCenter }
                 }
                 CheckBox {

@@ -60,6 +60,24 @@ private slots:
     QVERIFY(!q.isDirty());
     QVERIFY(!q.canUndo()); // history starts fresh
   }
+  void saveAsNamesAnUntitledProjectFromTheFile() {
+    QTemporaryDir dir;
+    Project p;
+    QSignalSpy spy(&p, &Project::docChanged);
+    QString err;
+    QVERIFY2(p.saveAs(dir.filePath(QStringLiteral("My Cut.json")), &err), qPrintable(err));
+    QCOMPARE(p.name(), QStringLiteral("My Cut"));
+    QCOMPARE(p.displayName(), QStringLiteral("My Cut"));
+    QVERIFY(!p.isDirty());
+    QCOMPARE(spy.count(), 1);
+  }
+  void saveAsKeepsACustomProjectName() {
+    QTemporaryDir dir;
+    Project p;
+    QVERIFY(p.apply(ProjectRename{QStringLiteral("My Custom Cut")}));
+    QVERIFY(p.saveAs(dir.filePath(QStringLiteral("Other.json"))));
+    QCOMPARE(p.name(), QStringLiteral("My Custom Cut"));
+  }
   void fileIsTheBundleFormatCoreReads() {
     QTemporaryDir dir;
     Project p;
