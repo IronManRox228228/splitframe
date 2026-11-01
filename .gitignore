@@ -19,3 +19,10 @@ apps/desktop/evals/results/
 
 # packaged build output
 apps/desktop/release/
+
+# test run artifacts (QtTest -o output)
+native/tst_*.txt
+native/build/testrun/
+
+# splitframe-prompts prompt specs (separate repo)
+splitframe-prompts/
