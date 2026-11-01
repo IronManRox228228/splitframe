@@ -593,7 +593,8 @@ Result landOutputs(CallContext& c, const QStringList& files, const QString& trac
                    bool placeOnTimeline = true) {
   QJsonArray sidecarsArr;
   for (const QString& f : files) sidecarsArr.append(f + QStringLiteral(".sfgen.json"));
-  if (files.isEmpty()) {
+  if (files.isEmpty() || !c.session) {
+    // No session: nothing to import or place on the timeline. Just report the files.
     return Result::success(QJsonObject{{q("files"), QJsonArray::fromStringList(files)}, {q("created"), QJsonObject{}}, {q("sidecars"), sidecarsArr}});
   }
 
