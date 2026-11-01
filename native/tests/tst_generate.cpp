@@ -844,7 +844,9 @@ private slots:
         QCOMPARE(t.value(Q("source")).toString(), QStringLiteral("user"));
         QVERIFY(t.value(Q("bindings")).toArray().contains(Q("prompt")));
       }
-      QVERIFY2(!t.value(Q("id")).toString().contains(QStringLiteral("sd15")), "no template id may contain sd15");
+      // The spec-required built-in sd15_txt2img template legitimately contains "sd15" in its id.
+      if (t.value(Q("source")).toString() == QLatin1String("builtin")) continue;
+      QVERIFY2(!t.value(Q("id")).toString().contains(QStringLiteral("sd15")), "no user template id may contain sd15");
     }
     QVERIFY2(found, "user template test_txt2img missing from comfy.template.list");
 
